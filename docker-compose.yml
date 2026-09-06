@@ -1,0 +1,25 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: taskman-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-taskman}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-taskman}
+      POSTGRES_DB: ${POSTGRES_DB:-taskman}
+    ports:
+      # Publicado solo en loopback: la base no queda expuesta en la red.
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - taskman-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # Lo consume `docker compose up -d --wait`, que es como esperamos a la
+      # base sin scripts de espera propios.
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-taskman} -d ${POSTGRES_DB:-taskman}"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
+
+volumes:
+  taskman-pgdata:
