@@ -7,7 +7,14 @@ directorio son ese original binario; no intentes leerlos.
 
 ## Estado
 
-Fase F1a: fundación de datos. Todavía no existen servicios, API, MCP ni UI.
+Construido y verificado: packages/db (esquema, migracion inicial, restricciones)
+y packages/core (errores de dominio, normalizador de errores de base, repositorio
+de tareas y TaskService.move). 24 pruebas de integracion contra PostgreSQL real.
+
+Todavia NO existen: el resto del CRUD de tareas, boards, columnas, auditoria,
+packages/contracts, la API REST, el servidor MCP ni la UI.
+
+Fase en curso: F1b.2 — resto del CRUD de tareas sobre packages/core.
 
 ## Entorno
 
