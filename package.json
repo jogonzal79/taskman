@@ -1,0 +1,25 @@
+{
+  "name": "taskman",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Gestor de tareas Kanban personal con API REST y servidor MCP para agentes de IA.",
+  "packageManager": "pnpm@10.34.5",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "db:up": "docker compose up -d --wait",
+    "db:down": "docker compose down",
+    "db:nuke": "docker compose down -v",
+    "db:generate": "pnpm --filter @taskman/db run generate",
+    "db:migrate": "pnpm --filter @taskman/db run migrate:deploy",
+    "db:migrate:dev": "pnpm --filter @taskman/db run migrate:dev",
+    "db:constraints": "pnpm --filter @taskman/db run constraints",
+    "test": "pnpm -r --workspace-concurrency=1 run test",
+    "typecheck": "pnpm -r run typecheck",
+    "verify": "pnpm run db:up && pnpm run db:generate && pnpm run db:migrate && pnpm run test"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2"
+  }
+}

@@ -1,0 +1,107 @@
+// TaskMan - F1a: fundacion de datos.
+//
+// IMPORTANTE (invariantes del proyecto, ver CLAUDE.md):
+//   * Las UNIQUE diferibles sobre `position` NO se declaran aca. Viven solo en
+//     el SQL crudo de la migracion inicial, porque Prisma generaria una version
+//     no diferible que se pisaria con ellas.
+//   * La FK compuesta task(column_id, board_id) -> board_column(id, board_id)
+//     tampoco se declara aca: es SQL crudo. La relacion `Task.column` de abajo
+//     es la FK simple, con onDelete: NoAction (NO RESTRICT).
+//   * Los UUID los genera la aplicacion: ningun @default(uuid()).
+
+generator client {
+  provider               = "prisma-client"
+  output                 = "../src/generated/prisma"
+  runtime                = "nodejs"
+  moduleFormat           = "esm"
+  generatedFileExtension = "ts"
+  importFileExtension    = "js"
+}
+
+// Prisma 7: la URL de conexion ya no vive aca. Migrate la toma de
+// prisma.config.ts y el cliente la recibe via driver adapter (src/client.ts).
+datasource db {
+  provider = "postgresql"
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum ActorType {
+  USER
+  AGENT
+  API
+}
+
+model Board {
+  id          String   @id @db.Uuid
+  name        String   @db.VarChar(120)
+  description String?  @db.VarChar(2000)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  columns Column[]
+  tasks   Task[]
+
+  @@map("board")
+}
+
+model Column {
+  id        String   @id @db.Uuid
+  boardId   String   @map("board_id") @db.Uuid
+  name      String   @db.VarChar(80)
+  key       String   @db.VarChar(40)
+  position  Int
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  board Board  @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  tasks Task[]
+
+  @@unique([boardId, key])
+  @@index([boardId, position])
+  @@map("board_column")
+}
+
+model Task {
+  id          String    @id @db.Uuid
+  boardId     String    @map("board_id") @db.Uuid
+  columnId    String    @map("column_id") @db.Uuid
+  title       String    @db.VarChar(200)
+  description String?   @db.Text
+  priority    Priority  @default(MEDIUM)
+  dueDate     DateTime? @map("due_date") @db.Date
+  position    Int
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  board  Board  @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  column Column @relation(fields: [columnId], references: [id], onDelete: NoAction)
+
+  @@index([columnId, position])
+  @@index([boardId, priority])
+  @@index([boardId, dueDate])
+  @@map("task")
+}
+
+model AuditLog {
+  id         BigInt    @id @default(autoincrement())
+  actorType  ActorType @map("actor_type")
+  actorName  String    @map("actor_name") @db.VarChar(120)
+  clientId   String?   @map("client_id") @db.VarChar(120)
+  action     String    @db.VarChar(60)
+  entityType String    @map("entity_type") @db.VarChar(40)
+  entityId   String    @map("entity_id") @db.VarChar(64)
+  beforeData Json?     @map("before_data")
+  afterData  Json?     @map("after_data")
+  requestId  String?   @map("request_id") @db.VarChar(64)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([entityType, entityId, createdAt])
+  @@index([createdAt])
+  @@map("audit_log")
+}
