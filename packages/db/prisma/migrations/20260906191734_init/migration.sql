@@ -124,7 +124,11 @@ ALTER TABLE task
   REFERENCES board_column (id, board_id) ON DELETE NO ACTION;
 
 ALTER TABLE task ADD CONSTRAINT task_position_nonneg CHECK (position >= 0);
-ALTER TABLE task ADD CONSTRAINT task_title_not_blank CHECK (length(btrim(title)) > 0);
+-- `title ~ '\S'` = "contiene al menos un caracter no blanco". Cubre toda la
+-- clase de whitespace (espacio, tab, salto de linea, etc.) sin enumerarla, que
+-- es justo lo que se le escapaba a length(btrim(title)) > 0: btrim sin conjunto
+-- de caracteres recorta solo espacios.
+ALTER TABLE task ADD CONSTRAINT task_title_not_blank CHECK (title ~ '\S');
 
 -- Busqueda de texto en espaniol sobre titulo + descripcion.
 CREATE INDEX task_search_idx ON task

@@ -161,7 +161,7 @@ describe("integridad entre tablero y columna", () => {
 });
 
 describe("CHECK y unicidad de datos", () => {
-  it("T6: rechaza position negativa y titulo en blanco", async () => {
+  it("T6: rechaza position negativa y titulos en blanco, pero acepta blancos alrededor de contenido", async () => {
     const boardId = await insertBoard(db);
     const columnId = await insertColumn(db, { boardId, key: "todo", position: 0 });
 
@@ -177,15 +177,31 @@ describe("CHECK y unicidad de datos", () => {
     expect(emptyTitle.code).toBe(CHECK_VIOLATION);
     expect(emptyTitle.constraint).toBe("task_title_not_blank");
 
-    // Solo espacios. Ojo: el CHECK usa btrim(title) sin conjunto de caracteres,
-    // y btrim recorta unicamente espacios, no tabs ni saltos de linea.
-    const blankTitle = await expectDbFailure(() =>
-      insertTask(db, { boardId, columnId, title: "     ", position: 0 }),
-    );
-    expect(blankTitle.code).toBe(CHECK_VIOLATION);
-    expect(blankTitle.constraint).toBe("task_title_not_blank");
+    // El CHECK es `title ~ '\S'`: exige al menos un caracter no blanco, asi que
+    // cubre toda la clase de whitespace y no solo el espacio.
+    const blankTitles: Array<[string, string]> = [
+      ["espacios", "     "],
+      ["tab", "\t"],
+      ["salto de linea", "\n"],
+    ];
+
+    for (const [label, title] of blankTitles) {
+      const failure = await expectDbFailure(() =>
+        insertTask(db, { boardId, columnId, title, position: 0 }),
+      );
+      expect(failure.code, label).toBe(CHECK_VIOLATION);
+      expect(failure.constraint, label).toBe("task_title_not_blank");
+    }
 
     expect(await countRows(db, "task")).toBe(0);
+
+    // Pero no se pasa de rosca: un titulo con contenido real rodeado de blancos
+    // es valido, y se guarda tal cual (la restriccion valida, no normaliza).
+    const padded = await insertTask(db, { boardId, columnId, title: "  a  ", position: 0 });
+    const stored = await db.query<{ title: string }>("SELECT title FROM task WHERE id = $1", [
+      padded,
+    ]);
+    expect(stored.rows[0]?.title).toBe("  a  ");
   });
 
   it("T7: la key de columna es unica por tablero, no globalmente", async () => {
