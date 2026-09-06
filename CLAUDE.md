@@ -1,8 +1,9 @@
 # TaskMan
 
 Gestor de tareas Kanban personal con API REST y servidor MCP para agentes de IA.
-Especificación completa en `docs/` (.docx, binarios: pedime el contenido, no
-intentes leerlos).
+Especificación completa en `docs/*.md`: son la conversión legible de los
+originales y son la fuente que tenés que consultar. Los `.docx` del mismo
+directorio son ese original binario; no intentes leerlos.
 
 ## Estado
 
