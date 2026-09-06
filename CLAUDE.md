@@ -46,6 +46,20 @@ Fase F1a: fundación de datos. Todavía no existen servicios, API, MCP ni UI.
 - `expectDbFailure()` de `packages/db/test/helpers.ts` solo sirve para errores
   del camino `pg` directo: busca el SQLSTATE en `error.code`, donde Prisma
   pone otra cosa o nada. No lo uses para errores que vengan por Prisma.
+- El bloqueo de filas para mover una tarea se hace en UNA sola sentencia, que
+  resuelve la columna origen por subquery y bloquea con `FOR UPDATE` las filas
+  de ambas columnas ordenadas por `(column_id, id)`. Nunca un `FOR UPDATE`
+  previo sobre la tarea: ese lock queda fuera del orden canonico y produce
+  deadlock 40P01 en movimientos cruzados A->B y B->A. Verificado
+  empiricamente reintroduciendo el bloqueo previo: 40P01 a los ~1.2 s, el
+  `deadlock_timeout` de PostgreSQL.
+- Se ordena por `id`, no por `position`. `position` es justamente lo que la
+  transaccion muta, asi que dos snapshots distintos recorrerian la misma
+  columna en ordenes distintos y el interbloqueo reaparece dentro de una sola
+  columna. `id` no cambia nunca.
+- No se reintenta 40P01, solo 40001. Reintentar un deadlock taparia una
+  regresion en el orden de bloqueo, que es exactamente lo que detecta la
+  prueba C2 de `packages/core`.
 
 ## Cómo trabajamos
 
