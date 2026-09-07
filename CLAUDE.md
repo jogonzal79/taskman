@@ -7,15 +7,41 @@ directorio son ese original binario; no intentes leerlos.
 
 ## Estado
 
-Construido y verificado: packages/db (esquema, migracion inicial, restricciones),
-packages/core (errores de dominio, repositorios, BoardService, ColumnService y
-TaskService completo) y apps/mcp-stdio (servidor MCP por stdio con list_tasks,
-create_task y move_task). 139 pruebas de integracion contra PostgreSQL real.
+Construido y verificado:
 
-Todavia NO existen: auditoria, packages/contracts, la API REST, HttpPort, el
-transporte Streamable HTTP, las otras ocho herramientas de la 8.2 ni la UI.
+- `packages/db`: esquema, migracion inicial y las restricciones por SQL crudo.
+- `packages/core`: errores de dominio, repositorios, BoardService, ColumnService
+  y TaskService completos, mas el registro de herramientas MCP (`src/mcp`).
+- `apps/mcp-stdio`: servidor MCP por stdio en modo `core`, con las ONCE
+  herramientas del catalogo de la 8.2 y la politica de operaciones destructivas
+  de la 8.3.2 (MCP_DESTRUCTIVE_POLICY).
 
-Fase en curso: F2.1 cerrada — servidor MCP por stdio con tres herramientas.
+184 pruebas contra PostgreSQL real.
+
+Todavia NO existen: auditoria (RF-10), ActorContext, `packages/contracts`, la
+API REST, HttpPort, el transporte Streamable HTTP ni la UI.
+
+Fase en curso: F2.3 cerrada — catalogo MCP completo.
+
+## Deuda conocida
+
+Salio del uso real, no de la especificacion. Ninguna esta arreglada; anotarlas
+aca es para que no se redescubran de cero.
+
+- `ubicarTarea` no verifica que un id de tarea pertenezca al `board` indicado:
+  la resolucion por id no busca, asi que un id valido de OTRO tablero se acepta.
+  Afecta a `get_task` y a `update_task`. `delete_task` lo compensa recargando el
+  tablero real de la tarea antes de armar la confirmacion, porque ahi mostrar el
+  tablero equivocado y ninguna columna es peor que no confirmar. El arreglo de
+  fondo va en `ubicarTarea`, para las tres a la vez.
+- La busqueda full-text en espanol matchea PALABRAS COMPLETAS: `auth` no
+  encuentra "autenticacion". Es como funciona `to_tsvector('spanish', ...)`, no
+  un bug del query. La salida es `pg_trgm` en una migracion aditiva, sin tocar
+  el indice que ya existe.
+- `list_boards` y `list_tasks` devuelven `has_more` pero no el `cursor` (y
+  `search_tasks` tiene el mismo hueco). El nucleo lo tiene —`Page.nextCursor`, y
+  las herramientas lo leen para calcular `has_more`— pero lo descartan al
+  proyectar: el agente sabe que hay mas y no tiene con que pedirlo.
 
 ## Entorno
 
