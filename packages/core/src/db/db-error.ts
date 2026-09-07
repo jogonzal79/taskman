@@ -14,6 +14,12 @@
 /** SQLSTATE de fallo de serializacion; en REPEATABLE READ obliga a reintentar. */
 export const SERIALIZATION_FAILURE = "40001";
 
+/** SQLSTATE de interbloqueo. Esta aca para nombrarlo, NO para reintentarlo. */
+export const DEADLOCK_DETECTED = "40P01";
+
+/** UNIQUE diferida que sostiene el orden denso dentro de una columna. */
+export const TASK_POSITION_CONSTRAINT = "task_column_position_uniq";
+
 export interface DbFailure {
   /** Clase del error: PrismaClientKnownRequestError, DriverAdapterError... */
   ctor: string;
@@ -68,4 +74,25 @@ export function isSerializationFailure(error: unknown): boolean {
 /** El error viene de la restriccion indicada. El nombre lo pone el llamador. */
 export function violatesConstraint(error: unknown, constraint: string): boolean {
   return describeDbFailure(error).constraint === constraint;
+}
+
+/**
+ * Contencion legitima entre transacciones: reintentar con un snapshot nuevo
+ * resuelve el conflicto. Son dos causas distintas del mismo fenomeno:
+ *
+ *   - 40001: chocamos con una fila que otra transaccion modifico despues de
+ *     nuestro snapshot.
+ *   - `task_column_position_uniq`: sobre una columna vacia no hay filas que
+ *     bloquear, asi que dos operaciones simultaneas calculan la misma position
+ *     sin verse y la restriccion diferida las separa recien en el COMMIT.
+ *
+ * 40P01 NO entra, y no es un olvido: un interbloqueo significa que el orden de
+ * bloqueo esta mal, y reintentarlo esconderia el bug en vez de arreglarlo.
+ * Solo esta restriccion por nombre: cualquier otra unicidad es un error real.
+ */
+export function isRetryableConflict(error: unknown): boolean {
+  const falla = describeDbFailure(error);
+  return (
+    falla.sqlState === SERIALIZATION_FAILURE || falla.constraint === TASK_POSITION_CONSTRAINT
+  );
 }

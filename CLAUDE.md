@@ -65,9 +65,15 @@ Fase en curso: F1b.2 — resto del CRUD de tareas sobre packages/core.
   transaccion muta, asi que dos snapshots distintos recorrerian la misma
   columna en ordenes distintos y el interbloqueo reaparece dentro de una sola
   columna. `id` no cambia nunca.
-- No se reintenta 40P01, solo 40001. Reintentar un deadlock taparia una
-  regresion en el orden de bloqueo, que es exactamente lo que detecta la
-  prueba C2 de `packages/core`.
+- Se reintenta ante 40001 y ante violacion de `task_column_position_uniq`:
+  las dos son contencion legitima, y el tope es el mismo, dos reintentos.
+  Sobre una columna vacia no hay filas que bloquear, asi que dos operaciones
+  simultaneas calculan la misma position sin verse y la restriccion diferida
+  las separa recien en el COMMIT. Solo esa restriccion por nombre: cualquier
+  otra unicidad es un error real.
+- No se reintenta NUNCA ante 40P01. Un interbloqueo significa que el orden de
+  bloqueo esta mal, y reintentarlo esconde el bug que detecta la prueba C2 de
+  `packages/core` en vez de arreglarlo.
 
 ## Cómo trabajamos
 
