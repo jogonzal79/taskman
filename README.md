@@ -29,10 +29,12 @@ arrancar si se lo pide.
 
 ### Usarlo desde Claude Code
 
-El `.mcp.json` de la raíz ya está configurado. Con la base levantada y el
-servidor construido:
+El `.mcp.json` lleva credenciales en su bloque `env`, así que está
+gitignoreado igual que el `.env`: copiá `.mcp.json.example` a `.mcp.json` y
+completá los valores (la `DATABASE_URL` es la misma del `.env`).
 
 ```powershell
+Copy-Item .mcp.json.example .mcp.json           # solo la primera vez, y completalo
 pnpm run db:up                                  # PostgreSQL en Docker
 pnpm --filter @taskman/mcp-stdio run build      # o pnpm run build
 claude

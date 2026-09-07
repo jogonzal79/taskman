@@ -5,6 +5,10 @@ coverage/
 .env
 .env.*
 !.env.example
+
+# Lleva credenciales en el bloque env (hoy DATABASE_URL, manana
+# TASKMAN_API_KEY). Se versiona .mcp.json.example con placeholders.
+.mcp.json
 *.log
 .DS_Store
 
