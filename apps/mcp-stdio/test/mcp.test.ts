@@ -106,13 +106,22 @@ async function crear(
 // --- Catalogo ----------------------------------------------------------------
 
 describe("catalogo", () => {
-  it("anuncia las tres herramientas de F2.1", async () => {
+  it("anuncia las diez herramientas no destructivas de la 8.2", async () => {
     const { tools } = await cliente.listTools();
 
+    // Las once de la 8.2 menos delete_task, la unica destructiva: llega con la
+    // politica de confirmacion de la 8.3.2, que es una decision propia.
     expect(tools.map((tool) => tool.name).sort()).toEqual([
+      "create_board",
+      "create_column",
       "create_task",
+      "get_board",
+      "get_task",
+      "list_boards",
       "list_tasks",
       "move_task",
+      "search_tasks",
+      "update_task",
     ]);
   });
 
@@ -160,10 +169,231 @@ describe("catalogo", () => {
       "title",
     ]);
 
-    const move = tools.find((tool) => tool.name === "move_task");
+    expect(campos("list_boards")).toEqual(["limit"]);
+    expect(campos("get_board")).toEqual(["board"]);
+    expect(campos("create_board")).toEqual(["columns", "description", "name"]);
+    expect(campos("create_column")).toEqual(["board", "key", "name", "position"]);
+    expect(campos("get_task")).toEqual(["board", "task"]);
+    expect(campos("search_tasks")).toEqual(["board", "column", "limit", "text"]);
+    // `position` y `column` estan declarados a proposito aunque update_task no
+    // los aplique: sin declararlos el validador los descartaria en silencio y
+    // la herramienta contestaria "actualizada" sin haber movido nada.
+    expect(campos("update_task")).toEqual([
+      "board",
+      "column",
+      "description",
+      "due_date",
+      "position",
+      "priority",
+      "task",
+      "title",
+    ]);
+
+    const obligatorios = (nombre: string): string[] =>
+      [
+        ...((tools.find((candidata) => candidata.name === nombre)?.inputSchema.required ??
+          []) as string[]),
+      ].sort();
+
     // `task` y `to_column` son obligatorios; `board` no, porque un id de tarea
     // ya trae su tablero.
-    expect((move?.inputSchema.required as string[]).sort()).toEqual(["task", "to_column"]);
+    expect(obligatorios("move_task")).toEqual(["task", "to_column"]);
+    // Un tablero se crea solo con su nombre: las columnas son opcionales y sin
+    // ellas se crean las cuatro de la 4.3.
+    expect(obligatorios("create_board")).toEqual(["name"]);
+    expect(obligatorios("create_column")).toEqual(["board", "key", "name"]);
+    expect(obligatorios("get_task")).toEqual(["task"]);
+    expect(obligatorios("update_task")).toEqual(["task"]);
+    expect(obligatorios("search_tasks")).toEqual(["text"]);
+    // Listar tableros no necesita ningun argumento: es como se descubre que hay.
+    expect(obligatorios("list_boards")).toEqual([]);
+  });
+});
+
+// --- Tableros y columnas -----------------------------------------------------
+
+describe("create_board", () => {
+  it("sin columnas crea las cuatro por defecto de la 4.3", async () => {
+    const resultado = await llamar("create_board", { name: "QA" });
+
+    expect(resultado.isError, resultado.texto).toBe(false);
+    const columnas = resultado.json["columns"] as Array<Record<string, unknown>>;
+    // Keys, nombres y orden exactos: son el contrato con el que los agentes
+    // resuelven referencias, asi que un cambio aca rompe integraciones.
+    expect(columnas.map((c) => c["key"])).toEqual(["BACKLOG", "TODO", "IN_PROGRESS", "DONE"]);
+    expect(columnas.map((c) => c["name"])).toEqual([
+      "Backlog",
+      "Por hacer",
+      "En progreso",
+      "Completado",
+    ]);
+    expect(columnas.map((c) => c["position"])).toEqual([0, 1, 2, 3]);
+
+    const tablero = resultado.json["board"] as Record<string, unknown>;
+    expect(tablero["name"]).toBe("QA");
+    expect(resultado.texto).toContain('"QA"');
+  });
+
+  it("el tablero queda listo para recibir tareas en la llamada siguiente", async () => {
+    // Es el hueco que motivo la herramienta: sin ella un flujo que arranca con
+    // un tablero nuevo obliga a salir a crearlo por otra via.
+    await llamar("create_board", { name: "QA", description: "Tablero del equipo" });
+
+    const creada = await crear("QA", "TODO", "Revisar HU-25");
+
+    expect((creada.json["task"] as Record<string, unknown>)["column_key"]).toBe("TODO");
+  });
+
+  it("con columnas explicitas usa esas, en ese orden y con la key normalizada", async () => {
+    const resultado = await llamar("create_board", {
+      name: "Personal",
+      columns: [
+        { key: "ideas", name: "Ideas" },
+        { key: "en revision", name: "En revision" },
+      ],
+    });
+
+    expect(resultado.isError, resultado.texto).toBe(false);
+    const columnas = resultado.json["columns"] as Array<Record<string, unknown>>;
+    expect(columnas.map((c) => c["key"])).toEqual(["IDEAS", "EN_REVISION"]);
+    expect(columnas.map((c) => c["position"])).toEqual([0, 1]);
+  });
+
+  it("un nombre vacio devuelve el error de dominio, no una excepcion", async () => {
+    const resultado = await llamar("create_board", { name: "   " });
+
+    expect(error(resultado)["code"]).toBe("NAME_REQUIRED");
+  });
+});
+
+describe("create_column", () => {
+  it("agrega la columna al final y devuelve el orden final del tablero", async () => {
+    await sembrarTablero("QA");
+
+    const resultado = await llamar("create_column", {
+      board: "QA",
+      key: "en revision",
+      name: "En revision",
+    });
+
+    expect(resultado.isError, resultado.texto).toBe(false);
+    const columna = resultado.json["column"] as Record<string, unknown>;
+    expect(columna["key"]).toBe("EN_REVISION");
+    expect(columna["position"]).toBe(4);
+
+    const columnas = resultado.json["columns"] as Array<Record<string, unknown>>;
+    expect(columnas.map((c) => c["key"])).toEqual([
+      "BACKLOG",
+      "TODO",
+      "IN_PROGRESS",
+      "DONE",
+      "EN_REVISION",
+    ]);
+  });
+
+  it("con position concreta desplaza a las siguientes", async () => {
+    await sembrarTablero("QA");
+
+    const resultado = await llamar("create_column", {
+      board: "QA",
+      key: "TRIAGE",
+      name: "Triage",
+      position: 0,
+    });
+
+    expect((resultado.json["column"] as Record<string, unknown>)["position"]).toBe(0);
+    const columnas = resultado.json["columns"] as Array<Record<string, unknown>>;
+    expect(columnas.map((c) => c["key"])).toEqual([
+      "TRIAGE",
+      "BACKLOG",
+      "TODO",
+      "IN_PROGRESS",
+      "DONE",
+    ]);
+    expect(columnas.map((c) => c["position"])).toEqual([0, 1, 2, 3, 4]);
+  });
+
+  it("la columna nueva recibe tareas como cualquier otra", async () => {
+    await sembrarTablero("QA");
+    await llamar("create_column", { board: "QA", key: "EN_REVISION", name: "En revision" });
+
+    const creada = await crear("QA", "En revision", "Revisar HU-25");
+
+    expect((creada.json["task"] as Record<string, unknown>)["column_key"]).toBe("EN_REVISION");
+  });
+
+  it("una key repetida devuelve DUPLICATE_KEY con que hacer", async () => {
+    await sembrarTablero("QA");
+
+    const resultado = await llamar("create_column", { board: "QA", key: "todo", name: "Otra" });
+
+    expect(error(resultado)["code"]).toBe("DUPLICATE_KEY");
+    expect(error(resultado)["hint"]).toContain("otra key");
+  });
+});
+
+describe("list_boards", () => {
+  it("lista los tableros con su id y su nombre", async () => {
+    await sembrarTablero("QA");
+    await sembrarTablero("Personal");
+
+    const resultado = await llamar("list_boards", {});
+
+    expect(resultado.isError, resultado.texto).toBe(false);
+    const tableros = resultado.json["boards"] as Array<Record<string, unknown>>;
+    expect(tableros.map((t) => t["name"]).sort()).toEqual(["Personal", "QA"]);
+    expect(tableros.every((t) => typeof t["id"] === "string")).toBe(true);
+    expect(resultado.json["count"]).toBe(2);
+    expect(resultado.json["has_more"]).toBe(false);
+  });
+
+  it("sin tableros no falla: es como el agente descubre que no hay ninguno", async () => {
+    const resultado = await llamar("list_boards", {});
+
+    expect(resultado.isError, resultado.texto).toBe(false);
+    expect(resultado.json["boards"]).toEqual([]);
+  });
+});
+
+describe("get_board", () => {
+  it("devuelve las columnas en orden y cuantas tareas tiene cada una", async () => {
+    await sembrarTablero("QA");
+    await crear("QA", "TODO", "Uno");
+    await crear("QA", "TODO", "Dos");
+    await crear("QA", "DONE", "Tres");
+
+    const resultado = await llamar("get_board", { board: "QA" });
+
+    expect(resultado.isError, resultado.texto).toBe(false);
+    const columnas = resultado.json["columns"] as Array<Record<string, unknown>>;
+    expect(columnas.map((c) => c["key"])).toEqual(["BACKLOG", "TODO", "IN_PROGRESS", "DONE"]);
+    expect(columnas.map((c) => c["task_count"])).toEqual([0, 2, 0, 1]);
+    expect(resultado.json["task_count"]).toBe(3);
+    expect(resultado.texto).toContain("TODO");
+  });
+
+  it("trae lo que hace falta para encadenar sin volver a resolver nada", async () => {
+    await sembrarTablero("QA");
+
+    const tablero = await llamar("get_board", { board: "QA" });
+    const board = tablero.json["board"] as Record<string, unknown>;
+    const columnas = tablero.json["columns"] as Array<Record<string, unknown>>;
+    const todo = columnas.find((columna) => columna["key"] === "TODO");
+
+    // La llamada siguiente va con los ids que devolvio get_board, sin nombres.
+    const creada = await crear(board["id"] as string, todo?.["id"] as string, "Revisar HU-25");
+
+    const tarea = creada.json["task"] as Record<string, unknown>;
+    expect(tarea["column_id"]).toBe(todo?.["id"]);
+    expect(tarea["board_id"]).toBe(board["id"]);
+  });
+
+  it("un tablero inexistente devuelve BOARD_NOT_FOUND", async () => {
+    await sembrarTablero("QA");
+
+    const resultado = await llamar("get_board", { board: "Inexistente" });
+
+    expect(error(resultado)["code"]).toBe("BOARD_NOT_FOUND");
   });
 });
 
@@ -536,5 +766,248 @@ describe("orden", () => {
 
     expect(resultado.isError, resultado.texto).toBe(false);
     expect((resultado.json["task"] as Record<string, unknown>)["position"]).toBe(0);
+  });
+});
+
+// --- get_task ----------------------------------------------------------------
+
+describe("get_task", () => {
+  it("devuelve la tarea completa con su ubicacion", async () => {
+    await sembrarTablero("QA");
+    await crear("QA", "TODO", "Revisar HU-25", {
+      description: "Repasar los criterios de aceptacion",
+      priority: "HIGH",
+      due_date: "2026-09-11",
+    });
+
+    const resultado = await llamar("get_task", { board: "QA", task: "revisar hu-25" });
+
+    expect(resultado.isError, resultado.texto).toBe(false);
+    const tarea = resultado.json["task"] as Record<string, unknown>;
+    expect(tarea["title"]).toBe("Revisar HU-25");
+    expect(tarea["description"]).toBe("Repasar los criterios de aceptacion");
+    expect(tarea["priority"]).toBe("HIGH");
+    expect(tarea["due_date"]).toBe("2026-09-11");
+    expect(tarea["column_key"]).toBe("TODO");
+    expect(tarea["position"]).toBe(0);
+
+    expect((resultado.json["board"] as Record<string, unknown>)["name"]).toBe("QA");
+    expect((resultado.json["column"] as Record<string, unknown>)["key"]).toBe("TODO");
+
+    // La descripcion entera va tambien en el texto: es lo que list_tasks
+    // resume y por lo que un agente llama a esta herramienta.
+    expect(resultado.texto).toContain("Repasar los criterios de aceptacion");
+  });
+
+  it("con el id de la tarea, board es innecesario", async () => {
+    await sembrarTablero("QA");
+    const creada = await crear("QA", "DONE", "Revisar HU-25");
+    const id = (creada.json["task"] as Record<string, unknown>)["id"] as string;
+
+    const resultado = await llamar("get_task", { task: id });
+
+    expect(resultado.isError, resultado.texto).toBe(false);
+    expect((resultado.json["task"] as Record<string, unknown>)["column_key"]).toBe("DONE");
+  });
+
+  it("sin board, un titulo no se resuelve y se dice por que", async () => {
+    await sembrarTablero("QA");
+    await crear("QA", "TODO", "Revisar HU-25");
+
+    const resultado = await llamar("get_task", { task: "Revisar HU-25" });
+
+    expect(error(resultado)["code"]).toBe("VALIDATION_ERROR");
+    expect(detalles(resultado)["field"]).toBe("board");
+  });
+});
+
+// --- update_task -------------------------------------------------------------
+
+describe("update_task", () => {
+  it("aplica un patch parcial y deja el resto como estaba", async () => {
+    await sembrarTablero("QA");
+    await crear("QA", "TODO", "Revisar HU-25", {
+      priority: "LOW",
+      description: "Original",
+      due_date: "2026-09-11",
+    });
+
+    const resultado = await llamar("update_task", {
+      board: "QA",
+      task: "Revisar HU-25",
+      priority: "URGENT",
+    });
+
+    expect(resultado.isError, resultado.texto).toBe(false);
+    const tarea = resultado.json["task"] as Record<string, unknown>;
+    expect(tarea["priority"]).toBe("URGENT");
+    expect(tarea["title"]).toBe("Revisar HU-25");
+    expect(tarea["description"]).toBe("Original");
+    expect(tarea["due_date"]).toBe("2026-09-11");
+    // Ni la columna ni la posicion se tocan: update_task no las cambia.
+    expect(tarea["column_key"]).toBe("TODO");
+    expect(tarea["position"]).toBe(0);
+  });
+
+  it("null borra la descripcion y el vencimiento; omitirlos los deja", async () => {
+    await sembrarTablero("QA");
+    await crear("QA", "TODO", "Revisar HU-25", {
+      description: "Original",
+      due_date: "2026-09-11",
+    });
+
+    const resultado = await llamar("update_task", {
+      board: "QA",
+      task: "Revisar HU-25",
+      description: null,
+      title: "Revisar HU-26",
+    });
+
+    const tarea = resultado.json["task"] as Record<string, unknown>;
+    expect(tarea["description"]).toBeNull();
+    expect(tarea["title"]).toBe("Revisar HU-26");
+    expect(tarea["due_date"]).toBe("2026-09-11");
+
+    const sinFecha = await llamar("update_task", {
+      board: "QA",
+      task: "Revisar HU-26",
+      due_date: null,
+    });
+    expect((sinFecha.json["task"] as Record<string, unknown>)["due_date"]).toBeNull();
+  });
+
+  it("rechaza position y le dice al agente que use move_task", async () => {
+    await sembrarTablero("QA");
+    await crear("QA", "TODO", "Uno");
+    await crear("QA", "TODO", "Revisar HU-25");
+
+    const resultado = await llamar("update_task", {
+      board: "QA",
+      task: "Revisar HU-25",
+      position: 0,
+    });
+
+    expect(error(resultado)["code"]).toBe("VALIDATION_ERROR");
+    const campos = detalles(resultado)["fields"] as Array<Record<string, unknown>>;
+    expect(campos.map((campo) => campo["field"])).toEqual(["position"]);
+    // El hint es exactamente para esto: decir con que herramienta se hace.
+    expect(error(resultado)["hint"]).toContain("move_task");
+    expect(resultado.texto).toContain("move_task");
+
+    // Y no movio nada: aceptarlo en silencio seria lo peligroso.
+    const despues = await llamar("get_task", { board: "QA", task: "Revisar HU-25" });
+    expect((despues.json["task"] as Record<string, unknown>)["position"]).toBe(1);
+  });
+
+  it("rechaza column y le dice al agente que use move_task", async () => {
+    await sembrarTablero("QA");
+    await crear("QA", "TODO", "Revisar HU-25");
+
+    const resultado = await llamar("update_task", {
+      board: "QA",
+      task: "Revisar HU-25",
+      column: "DONE",
+    });
+
+    expect(error(resultado)["code"]).toBe("VALIDATION_ERROR");
+    const campos = detalles(resultado)["fields"] as Array<Record<string, unknown>>;
+    expect(campos.map((campo) => campo["field"])).toEqual(["column"]);
+    expect(error(resultado)["hint"]).toContain("move_task");
+
+    const despues = await llamar("get_task", { board: "QA", task: "Revisar HU-25" });
+    expect((despues.json["task"] as Record<string, unknown>)["column_key"]).toBe("TODO");
+  });
+
+  it("sin ningun campo modificable lo dice en vez de responder que actualizo", async () => {
+    await sembrarTablero("QA");
+    await crear("QA", "TODO", "Revisar HU-25");
+
+    const resultado = await llamar("update_task", { board: "QA", task: "Revisar HU-25" });
+
+    expect(error(resultado)["code"]).toBe("VALIDATION_ERROR");
+    expect(error(resultado)["hint"]).toContain("title");
+  });
+
+  it("un titulo vacio devuelve el error de dominio", async () => {
+    await sembrarTablero("QA");
+    await crear("QA", "TODO", "Revisar HU-25");
+
+    const resultado = await llamar("update_task", {
+      board: "QA",
+      task: "Revisar HU-25",
+      title: "   ",
+    });
+
+    expect(error(resultado)["code"]).toBe("TITLE_REQUIRED");
+  });
+});
+
+// --- search_tasks ------------------------------------------------------------
+
+describe("search_tasks", () => {
+  it("encuentra por titulo y por descripcion", async () => {
+    await sembrarTablero("QA");
+    await crear("QA", "TODO", "Revisar el contrato");
+    await crear("QA", "DONE", "Pendiente", { description: "Falta firmar el contrato" });
+    await crear("QA", "TODO", "Nada que ver");
+
+    const resultado = await llamar("search_tasks", { board: "QA", text: "contrato" });
+
+    expect(resultado.isError, resultado.texto).toBe(false);
+    const tareas = resultado.json["tasks"] as Array<Record<string, unknown>>;
+    expect(tareas.map((t) => t["title"]).sort()).toEqual(["Pendiente", "Revisar el contrato"]);
+    expect(resultado.json["count"]).toBe(2);
+    expect(resultado.json["has_more"]).toBe(false);
+  });
+
+  it("sin board busca en todos los tableros y dice en cual esta cada tarea", async () => {
+    await sembrarTablero("QA");
+    await sembrarTablero("Personal");
+    await crear("QA", "TODO", "Informe mensual");
+    await crear("Personal", "DONE", "Informe anual");
+
+    const resultado = await llamar("search_tasks", { text: "informe" });
+
+    const tareas = resultado.json["tasks"] as Array<Record<string, unknown>>;
+    // Sin el tablero y la columna de cada coincidencia, una busqueda global
+    // devuelve titulos que el agente no puede ubicar ni encadenar.
+    expect(tareas.map((t) => t["board_name"]).sort()).toEqual(["Personal", "QA"]);
+    expect(tareas.map((t) => t["column_key"]).sort()).toEqual(["DONE", "TODO"]);
+  });
+
+  it("acota por columna dentro del tablero", async () => {
+    await sembrarTablero("QA");
+    await crear("QA", "TODO", "Informe mensual");
+    await crear("QA", "DONE", "Informe anual");
+
+    const resultado = await llamar("search_tasks", {
+      board: "QA",
+      column: "DONE",
+      text: "informe",
+    });
+
+    const tareas = resultado.json["tasks"] as Array<Record<string, unknown>>;
+    expect(tareas.map((t) => t["title"])).toEqual(["Informe anual"]);
+  });
+
+  it("una columna sin board no se resuelve y se dice por que", async () => {
+    await sembrarTablero("QA");
+    await crear("QA", "DONE", "Informe anual");
+
+    const resultado = await llamar("search_tasks", { text: "informe", column: "DONE" });
+
+    expect(error(resultado)["code"]).toBe("VALIDATION_ERROR");
+    expect(detalles(resultado)["field"]).toBe("board");
+  });
+
+  it("sin coincidencias devuelve una pagina vacia y dice que hacer", async () => {
+    await sembrarTablero("QA");
+    await crear("QA", "TODO", "Revisar HU-25");
+
+    const resultado = await llamar("search_tasks", { board: "QA", text: "inexistente" });
+
+    expect(resultado.isError, resultado.texto).toBe(false);
+    expect(resultado.json["tasks"]).toEqual([]);
+    expect(resultado.texto).toContain("Ninguna coincidencia");
   });
 });

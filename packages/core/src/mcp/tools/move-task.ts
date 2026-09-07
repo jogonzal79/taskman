@@ -1,65 +1,24 @@
-import { z } from "zod";
-
-import { DomainError } from "../../domain/errors.js";
-import type { BoardDetail } from "../../domain/types.js";
-import { cargarTablero, resolverColumnaDelTablero, resolverTareaDelTablero } from "../lookup.js";
+import { resolverColumnaDelTablero, ubicarTarea } from "../lookup.js";
 import type { TaskManagerPort } from "../port.js";
-import { esUuid } from "../resolve.js";
 import { definirHandler, respuesta } from "../respuesta.js";
 import type { McpToolDefinition } from "../tool.js";
-import { campoBoard, campoColumn, campoPosition, cuentaTareas, tareaJson } from "./campos.js";
+import {
+  campoBoardDeTarea,
+  campoColumn,
+  campoPosition,
+  campoTask,
+  cuentaTareas,
+  tareaJson,
+} from "./campos.js";
 
 const shape = {
-  task: z
-    .string()
-    .describe(
-      "Tarea a mover, por id (UUID) o por titulo exacto sin distinguir mayusculas. " +
-        "Si el titulo coincide con varias tareas del tablero, la herramienta responde AMBIGUOUS_MATCH con los candidatos, sus ids y su columna, y no elige por vos.",
-    ),
-  board: campoBoard
-    .optional()
-    .describe(
-      "Tablero donde buscar la tarea, por id o por nombre. OBLIGATORIO si `task` es un titulo: la busqueda por titulo nunca es global. " +
-        "Innecesario si `task` ya es un id.",
-    ),
+  task: campoTask("a mover"),
+  board: campoBoardDeTarea,
   to_column: campoColumn.describe(
     "Columna destino, por id, key (TODO, IN_PROGRESS, DONE) o nombre. Tiene que ser del mismo tablero que la tarea.",
   ),
   position: campoPosition,
 };
-
-/**
- * Resuelve tarea y tablero a la vez, porque una cosa depende de la otra.
- *
- * Con `board` el ambito es ese tablero. Sin `board`, `task` tiene que ser un id
- * y el tablero sale de la propia tarea: hace falta igual, porque `to_column` se
- * resuelve por nombre o key CONTRA las columnas del tablero, y sin cargarlas la
- * resolucion de columnas dejaria de ser la misma en los dos caminos.
- */
-async function ubicar(
-  port: TaskManagerPort,
-  referenciaTarea: string,
-  referenciaTablero: string | undefined,
-): Promise<{ tablero: BoardDetail; taskId: string }> {
-  if (referenciaTablero !== undefined) {
-    const tablero = await cargarTablero(port, referenciaTablero);
-    return { tablero, taskId: await resolverTareaDelTablero(port, tablero, referenciaTarea) };
-  }
-
-  if (!esUuid(referenciaTarea)) {
-    throw new DomainError(
-      "VALIDATION_ERROR",
-      "Falta `board`: un titulo solo se resuelve dentro de un tablero.",
-      {
-        details: { field: "board", task: referenciaTarea },
-        hint: "Volve a llamar indicando board con el nombre o el id del tablero, o pasa el id de la tarea en task.",
-      },
-    );
-  }
-
-  const tarea = await port.getTask(referenciaTarea.trim());
-  return { tablero: await port.getBoard(tarea.boardId), taskId: tarea.id };
-}
 
 export function definirMoveTask(port: TaskManagerPort): McpToolDefinition {
   return {
@@ -78,7 +37,7 @@ export function definirMoveTask(port: TaskManagerPort): McpToolDefinition {
       openWorldHint: false,
     },
     handler: definirHandler("move_task", shape, async (args) => {
-      const { tablero, taskId } = await ubicar(port, args.task, args.board);
+      const { tablero, taskId } = await ubicarTarea(port, args.task, args.board);
       const destino = resolverColumnaDelTablero(tablero, args.to_column);
 
       const resultado = await port.moveTask(taskId, {

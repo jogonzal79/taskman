@@ -1,13 +1,19 @@
 import type {
   Board,
   BoardDetail,
+  Column,
+  CreateBoardInput,
+  CreateColumnInput,
   CreateTaskInput,
   ListBoardsQuery,
   ListTasksQuery,
   MoveResult,
   MoveTarget,
   Page,
+  SearchScope,
   Task,
+  TaskMatch,
+  UpdateTaskInput,
 } from "../domain/types.js";
 
 /**
@@ -18,19 +24,21 @@ import type {
  * (`HttpPort`, que todavia no existe). Las herramientas no conocen ninguna de
  * las dos implementaciones: solo esta interfaz.
  *
- * Es deliberadamente mas chica que el catalogo completo de la 8.2 —tiene lo que
- * usan list_tasks, create_task y move_task, mas las dos lecturas que hacen
- * falta para resolver referencias por nombre— porque una interfaz con metodos
- * que nadie implementa contra la API real no es un contrato, es una promesa.
+ * Sigue siendo mas chica que el catalogo completo de la 8.2 —falta `deleteTask`,
+ * que llega con delete_task y su politica de confirmacion (8.3.2)— porque una
+ * interfaz con metodos que nadie implementa contra la API real no es un
+ * contrato, es una promesa.
  *
  * Los tipos que entran y salen son los del dominio, no los del borde: la
  * traduccion a snake_case y a texto legible ocurre en las herramientas.
  */
 export interface TaskManagerPort {
-  /** Para resolver un tablero por nombre: no hay busqueda por nombre en el nucleo. */
+  /** Tambien resuelve un tablero por nombre: no hay busqueda por nombre en el nucleo. */
   listBoards(query: ListBoardsQuery): Promise<Page<Board>>;
   /** Con sus columnas: es como se resuelve una columna por key o por nombre. */
   getBoard(boardId: string): Promise<BoardDetail>;
+  createBoard(input: CreateBoardInput): Promise<BoardDetail>;
+  createColumn(input: CreateColumnInput): Promise<Column>;
   listTasks(query: ListTasksQuery): Promise<Page<Task>>;
   /**
    * Para resolver el tablero de una tarea dada por id: sin el, `to_column` se
@@ -39,5 +47,9 @@ export interface TaskManagerPort {
    */
   getTask(taskId: string): Promise<Task>;
   createTask(input: CreateTaskInput): Promise<Task>;
+  /** Patch parcial. `columnId` y `position` no se tocan aca: son `moveTask`. */
+  updateTask(taskId: string, patch: UpdateTaskInput): Promise<Task>;
   moveTask(taskId: string, target: MoveTarget): Promise<MoveResult>;
+  /** Texto completo sobre titulo y descripcion. El ambito puede ser global. */
+  searchTasks(text: string, scope: SearchScope): Promise<Page<TaskMatch>>;
 }
