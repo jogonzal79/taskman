@@ -80,19 +80,38 @@ Fase en curso: F2.1 cerrada — servidor MCP por stdio con tres herramientas.
   restriccion diferida las separa recien en el COMMIT. La lista va por nombre
   explicito: `board_column_board_id_key_key` tambien es una UNIQUE, y
   reintentarla seria reintentar para siempre un error real del llamador.
-- Limite conocido de contencion, aceptable para uso personal. Cada create de
-  columna reescribe TODAS las filas de `board_column` del tablero, y cada
-  create de tarea toma FOR KEY SHARE sobre la fila de su columna al validar
-  la FK. Varios create de columna concurrentes sobre un mismo tablero se
-  serializan entre si y forman una cadena de invalidacion que dura mas de una
-  transaccion, asi que un create de tarea simultaneo puede ser abortado por
-  cada eslabon, agotar sus dos reintentos y fallar. Medido con 4 operaciones
-  concurrentes: falla 3 de cada 15 corridas. El backoff con jitter NO lo
-  resuelve (mismas 3 de 15 con el y sin el): hay que saltear la cadena
-  entera, no desfasarse dentro de ella. Si algun dia importa, la salida es un
-  backoff del orden de la duracion de la cadena —con 40 ms de base pasa 10 de
-  10— y no mas reintentos. Por eso la prueba de compatibilidad de modos de
-  bloqueo en `packages/core` usa una operacion de cada tipo y no cuatro.
+- Hay DOS limites de contencion conocidos, los dos aceptables para uso
+  personal. Terminan igual —40001 tras agotar los dos reintentos— pero son
+  mecanismos distintos y no se arreglan igual. No los confundas.
+- (1) Contencion sobre UNA columna. Bajo REPEATABLE READ, N operaciones
+  concurrentes sobre las filas de una misma columna se serializan en escalera:
+  la primera commitea y las demas despiertan con el snapshot viejo, asi que la
+  ultima necesita N intentos, es decir N-1 reintentos. Con el presupuesto en
+  dos, el maximo que soporta una columna son 3 operaciones concurrentes.
+  Medido aislado: con N=4 falla 20 de 20 corridas; con N=3, 0 de 20. El conteo
+  de intentos por operacion es la escalera exacta: con N=4 y maxRetries=2 da
+  1, 2, 3 y un cuarto que necesitaba 4 y se queda en 3; con maxRetries=3 se
+  completa en 1, 2, 3, 4. Por eso ningun test de concurrencia sobre una misma
+  columna usa mas de 2 operaciones: probar que el orden queda denso no
+  necesita mas, y una tercera convierte el test en una medicion del
+  presupuesto de reintentos en vez de la correccion. Subir `maxRetries` NO es
+  la salida por defecto: es la palanca correcta solo si algun dia aparece un
+  caso de uso real con mas de 3 escritores simultaneos sobre una columna, y en
+  uso personal no existe.
+- (2) Cadena de invalidacion sobre `board_column`. Distinto de (1): no es la
+  escalera de una columna, es una cadena que dura mas de una transaccion. Cada
+  create de columna reescribe TODAS las filas de `board_column` del tablero, y
+  cada create de tarea toma FOR KEY SHARE sobre la fila de su columna al
+  validar la FK. Varios create de columna concurrentes sobre un mismo tablero
+  se serializan entre si y forman esa cadena, asi que un create de tarea
+  simultaneo puede ser abortado por cada eslabon, agotar sus dos reintentos y
+  fallar. Medido con 4 operaciones concurrentes: falla 3 de cada 15 corridas.
+  El backoff con jitter NO lo resuelve (mismas 3 de 15 con el y sin el): hay
+  que saltear la cadena entera, no desfasarse dentro de ella. Si algun dia
+  importa, la salida es un backoff del orden de la duracion de la cadena —con
+  40 ms de base pasa 10 de 10— y no mas reintentos. Por eso la prueba de
+  compatibilidad de modos de bloqueo en `packages/core` usa una operacion de
+  cada tipo y no cuatro.
 - No se reintenta NUNCA ante 40P01. Un interbloqueo significa que el orden de
   bloqueo esta mal, y reintentarlo esconde el bug que detecta la prueba C2 de
   `packages/core` en vez de arreglarlo.
