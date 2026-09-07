@@ -2,7 +2,7 @@ import { prisma } from "@taskman/db";
 import type { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { DomainError, TaskRepository, TaskService } from "../src/index.js";
+import { DomainError, TaskRepository, TaskService, TransactionRunner } from "../src/index.js";
 import {
   connectDb,
   expectColumnaDensa,
@@ -19,7 +19,7 @@ let servicio: TaskService;
 
 beforeAll(async () => {
   db = await connectDb();
-  servicio = new TaskService(new TaskRepository(prisma));
+  servicio = new TaskService(new TaskRepository(new TransactionRunner(prisma)));
 });
 
 afterAll(async () => {

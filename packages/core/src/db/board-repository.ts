@@ -1,0 +1,300 @@
+import { Prisma, type PrismaClient } from "@taskman/db";
+
+import type { Board, Column, ListBoardsQuery } from "../domain/types.js";
+import type { OrdenSql } from "./pagination.js";
+import { clausulaOrden, condicionCursor, decodificarCursor, normalizarLimite, paginar } from "./pagination.js";
+import type { LockedTask } from "./task-repository.js";
+import { lockTasksOfColumns, rewriteTaskPositions } from "./task-repository.js";
+import type { TransactionRunner } from "./transaction-runner.js";
+
+/** Fila de columna bloqueada: lo minimo para recalcular el orden del tablero. */
+export interface LockedColumn {
+  id: string;
+  boardId: string;
+  position: number;
+}
+
+export interface NewBoardRow {
+  id: string;
+  name: string;
+  description: string | null;
+}
+
+export interface NewColumnRow {
+  id: string;
+  boardId: string;
+  name: string;
+  key: string;
+  position: number;
+}
+
+export interface BoardTransaction {
+  findBoard(boardId: string): Promise<Board | undefined>;
+  insertBoard(row: NewBoardRow): Promise<void>;
+  updateBoardFields(
+    boardId: string,
+    fields: { name: string; description: string | null },
+  ): Promise<void>;
+  /** La cascada la hace la FK; ver la prueba T4 de F1a. */
+  deleteBoard(boardId: string): Promise<void>;
+
+  /**
+   * Bloquea las filas de columna del tablero en orden canonico `(board_id, id)`.
+   *
+   * Es FOR NO KEY UPDATE, no FOR UPDATE, y la diferencia importa: insertar o
+   * mover una tarea toma FOR KEY SHARE sobre la fila de su columna al validar
+   * la FK. FOR UPDATE choca con ese modo, asi que una operacion de columnas que
+   * lo tomara y despues esperara filas de tarea se interbloquearia con un move
+   * que ya tiene esas filas y necesita el chequeo de FK. FOR NO KEY UPDATE no
+   * choca con FOR KEY SHARE y sigue serializando las operaciones de columnas
+   * entre si, que es lo unico que necesitamos.
+   */
+  lockBoardColumns(boardId: string): Promise<LockedColumn[]>;
+  findColumn(columnId: string): Promise<Column | undefined>;
+  findColumnByKey(boardId: string, key: string): Promise<Column | undefined>;
+  insertColumn(row: NewColumnRow): Promise<void>;
+  updateColumnName(columnId: string, name: string): Promise<void>;
+  deleteColumn(columnId: string): Promise<void>;
+  /** Reescribe la secuencia completa 0..n-1 de columnas del tablero. */
+  rewriteBoardColumns(boardId: string, orderedColumnIds: readonly string[]): Promise<void>;
+  readBoardColumns(boardId: string): Promise<Column[]>;
+  countTasksInColumn(columnId: string): Promise<number>;
+
+  // Para el reassignTo de `ColumnService.delete`, que mueve tareas entre
+  // columnas dentro de la misma transaccion que borra la columna.
+  lockTasksOfColumns(columnIds: readonly string[]): Promise<LockedTask[]>;
+  rewriteTaskColumn(columnId: string, orderedTaskIds: readonly string[]): Promise<void>;
+}
+
+interface FilaColumnaBloqueada {
+  id: string;
+  board_id: string;
+  position: number;
+}
+
+function aBoard(fila: {
+  id: string;
+  name: string;
+  description: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}): Board {
+  return {
+    id: fila.id,
+    name: fila.name,
+    description: fila.description,
+    createdAt: fila.createdAt,
+    updatedAt: fila.updatedAt,
+  };
+}
+
+function aColumn(fila: {
+  id: string;
+  boardId: string;
+  name: string;
+  key: string;
+  position: number;
+  createdAt: Date;
+  updatedAt: Date;
+}): Column {
+  return {
+    id: fila.id,
+    boardId: fila.boardId,
+    name: fila.name,
+    key: fila.key,
+    position: fila.position,
+    createdAt: fila.createdAt,
+    updatedAt: fila.updatedAt,
+  };
+}
+
+function crearBoardTransaction(tx: Prisma.TransactionClient): BoardTransaction {
+  return {
+    async findBoard(boardId) {
+      const tablero = await tx.board.findUnique({ where: { id: boardId } });
+      return tablero === null ? undefined : aBoard(tablero);
+    },
+
+    async insertBoard(row) {
+      await tx.board.create({
+        data: { id: row.id, name: row.name, description: row.description },
+      });
+    },
+
+    async updateBoardFields(boardId, fields) {
+      await tx.board.update({
+        where: { id: boardId },
+        data: { name: fields.name, description: fields.description },
+      });
+    },
+
+    async deleteBoard(boardId) {
+      await tx.board.delete({ where: { id: boardId } });
+    },
+
+    async lockBoardColumns(boardId) {
+      const filas = await tx.$queryRaw<FilaColumnaBloqueada[]>`
+        SELECT id, board_id, position
+          FROM board_column
+         WHERE board_id = ${boardId}::uuid
+         ORDER BY board_id, id
+           FOR NO KEY UPDATE
+      `;
+      return filas.map((fila) => ({
+        id: fila.id,
+        boardId: fila.board_id,
+        position: fila.position,
+      }));
+    },
+
+    async findColumn(columnId) {
+      const columna = await tx.column.findUnique({ where: { id: columnId } });
+      return columna === null ? undefined : aColumn(columna);
+    },
+
+    async findColumnByKey(boardId, key) {
+      const columna = await tx.column.findUnique({
+        where: { boardId_key: { boardId, key } },
+      });
+      return columna === null ? undefined : aColumn(columna);
+    },
+
+    async insertColumn(row) {
+      await tx.column.create({
+        data: {
+          id: row.id,
+          boardId: row.boardId,
+          name: row.name,
+          key: row.key,
+          position: row.position,
+        },
+      });
+    },
+
+    async updateColumnName(columnId, name) {
+      await tx.column.update({ where: { id: columnId }, data: { name } });
+    },
+
+    async deleteColumn(columnId) {
+      await tx.column.delete({ where: { id: columnId } });
+    },
+
+    async rewriteBoardColumns(boardId, orderedColumnIds) {
+      if (orderedColumnIds.length === 0) {
+        return;
+      }
+
+      // Mismo criterio que el orden de tareas: se reescribe la secuencia
+      // entera, y `updated_at` solo se toca donde la position cambia de verdad.
+      await tx.$executeRaw`
+        UPDATE board_column AS c
+           SET position   = v.pos,
+               updated_at = CASE
+                              WHEN c.position IS DISTINCT FROM v.pos
+                              THEN now()
+                              ELSE c.updated_at
+                            END
+          FROM (
+                SELECT elem::uuid AS id, (ord - 1)::int AS pos
+                  FROM jsonb_array_elements_text(${JSON.stringify(orderedColumnIds)}::jsonb)
+                       WITH ORDINALITY AS a(elem, ord)
+               ) AS v
+         WHERE c.id = v.id AND c.board_id = ${boardId}::uuid
+      `;
+    },
+
+    async readBoardColumns(boardId) {
+      const filas = await tx.column.findMany({
+        where: { boardId },
+        orderBy: { position: "asc" },
+      });
+      return filas.map(aColumn);
+    },
+
+    async countTasksInColumn(columnId) {
+      return tx.task.count({ where: { columnId } });
+    },
+
+    async lockTasksOfColumns(columnIds) {
+      return lockTasksOfColumns(tx, columnIds);
+    },
+
+    async rewriteTaskColumn(columnId, orderedTaskIds) {
+      await rewriteTaskPositions(tx, columnId, orderedTaskIds);
+    },
+  };
+}
+
+/** Los tableros se listan por nombre; `id` hace total el orden para el cursor. */
+const ORDEN_BOARD: OrdenSql = {
+  columna: "name",
+  direccion: "ASC",
+  admiteNulos: false,
+  cast: "::text",
+};
+
+export class BoardRepository {
+  readonly #runner: TransactionRunner;
+
+  constructor(runner: TransactionRunner) {
+    this.#runner = runner;
+  }
+
+  get #prisma(): PrismaClient {
+    return this.#runner.prisma;
+  }
+
+  /** Ver `TransactionRunner`: REPEATABLE READ y reintentos ante contencion. */
+  async inTransaction<T>(fn: (tx: BoardTransaction) => Promise<T>): Promise<T> {
+    return this.#runner.run(async (tx) => fn(crearBoardTransaction(tx)));
+  }
+
+  async findBoard(boardId: string): Promise<Board | undefined> {
+    const tablero = await this.#prisma.board.findUnique({ where: { id: boardId } });
+    return tablero === null ? undefined : aBoard(tablero);
+  }
+
+  async findColumn(columnId: string): Promise<Column | undefined> {
+    const columna = await this.#prisma.column.findUnique({ where: { id: columnId } });
+    return columna === null ? undefined : aColumn(columna);
+  }
+
+  async readBoardColumns(boardId: string): Promise<Column[]> {
+    const filas = await this.#prisma.column.findMany({
+      where: { boardId },
+      orderBy: { position: "asc" },
+    });
+    return filas.map(aColumn);
+  }
+
+  async listBoards(query: ListBoardsQuery): Promise<{ items: Board[]; nextCursor: string | null }> {
+    const limite = normalizarLimite(query.limit);
+    const cursor = query.cursor === undefined ? undefined : decodificarCursor(query.cursor);
+    const where =
+      cursor === undefined ? Prisma.empty : Prisma.sql`WHERE ${condicionCursor(ORDEN_BOARD, cursor)}`;
+
+    // Se pide una fila de mas para saber si hay pagina siguiente.
+    const filas = await this.#prisma.$queryRaw<Array<{ id: string; orden: string | null }>>`
+      SELECT id, name::text AS orden
+        FROM board
+        ${where}
+       ORDER BY ${clausulaOrden(ORDEN_BOARD)}
+       LIMIT ${limite + 1}
+    `;
+
+    return paginar(filas, limite, (ids) => this.#hidratar(ids));
+  }
+
+  async #hidratar(ids: readonly string[]): Promise<Board[]> {
+    if (ids.length === 0) {
+      return [];
+    }
+
+    const filas = await this.#prisma.board.findMany({ where: { id: { in: [...ids] } } });
+    const porId = new Map(filas.map((fila) => [fila.id, aBoard(fila)]));
+    return ids.flatMap((id) => {
+      const tablero = porId.get(id);
+      return tablero === undefined ? [] : [tablero];
+    });
+  }
+}

@@ -17,8 +17,25 @@ export const SERIALIZATION_FAILURE = "40001";
 /** SQLSTATE de interbloqueo. Esta aca para nombrarlo, NO para reintentarlo. */
 export const DEADLOCK_DETECTED = "40P01";
 
-/** UNIQUE diferida que sostiene el orden denso dentro de una columna. */
+/** UNIQUE diferida que sostiene el orden denso de tareas dentro de una columna. */
 export const TASK_POSITION_CONSTRAINT = "task_column_position_uniq";
+
+/** UNIQUE diferida que sostiene el orden denso de columnas dentro de un tablero. */
+export const COLUMN_POSITION_CONSTRAINT = "column_board_position_uniq";
+
+/** Unicidad de `key` por tablero. NO es reintentable: es un error del llamador. */
+export const COLUMN_KEY_CONSTRAINT = "board_column_board_id_key_key";
+
+/**
+ * Las dos UNIQUE diferidas de orden, por nombre explicito. La lista se enumera
+ * a proposito en vez de aceptar cualquier unicidad: `board_column_board_id_key_key`
+ * tambien es una UNIQUE y reintentarla seria reintentar para siempre un error
+ * real del llamador.
+ */
+const RESTRICCIONES_DE_ORDEN: ReadonlySet<string> = new Set([
+  TASK_POSITION_CONSTRAINT,
+  COLUMN_POSITION_CONSTRAINT,
+]);
 
 export interface DbFailure {
   /** Clase del error: PrismaClientKnownRequestError, DriverAdapterError... */
@@ -82,17 +99,19 @@ export function violatesConstraint(error: unknown, constraint: string): boolean 
  *
  *   - 40001: chocamos con una fila que otra transaccion modifico despues de
  *     nuestro snapshot.
- *   - `task_column_position_uniq`: sobre una columna vacia no hay filas que
- *     bloquear, asi que dos operaciones simultaneas calculan la misma position
- *     sin verse y la restriccion diferida las separa recien en el COMMIT.
+ *   - Las UNIQUE diferidas de orden: sobre una columna vacia (o un tablero sin
+ *     columnas) no hay filas que bloquear, asi que dos operaciones simultaneas
+ *     calculan la misma position sin verse y la restriccion las separa recien
+ *     en el COMMIT.
  *
  * 40P01 NO entra, y no es un olvido: un interbloqueo significa que el orden de
  * bloqueo esta mal, y reintentarlo esconderia el bug en vez de arreglarlo.
- * Solo esta restriccion por nombre: cualquier otra unicidad es un error real.
+ * Tampoco entra cualquier unicidad: solo las dos de orden, por nombre.
  */
 export function isRetryableConflict(error: unknown): boolean {
   const falla = describeDbFailure(error);
-  return (
-    falla.sqlState === SERIALIZATION_FAILURE || falla.constraint === TASK_POSITION_CONSTRAINT
-  );
+  if (falla.sqlState === SERIALIZATION_FAILURE) {
+    return true;
+  }
+  return falla.constraint !== undefined && RESTRICCIONES_DE_ORDEN.has(falla.constraint);
 }

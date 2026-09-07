@@ -6,6 +6,69 @@
 
 export type Priority = "LOW" | "MEDIUM" | "HIGH" | "URGENT";
 
+export interface Board {
+  id: string;
+  name: string;
+  description: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface Column {
+  id: string;
+  boardId: string;
+  name: string;
+  /** Estable y en mayusculas: es como los agentes referencian la columna. */
+  key: string;
+  position: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/** Un tablero con sus columnas en orden: es como se lo consulta siempre. */
+export interface BoardDetail extends Board {
+  columns: Column[];
+}
+
+export interface CreateBoardInput {
+  name: string;
+  description?: string | null;
+  /** Omitidas, se crean las cuatro columnas por defecto de la 4.3. */
+  columns?: ReadonlyArray<{ name: string; key: string }>;
+}
+
+export interface UpdateBoardInput {
+  name?: string;
+  description?: string | null;
+}
+
+export interface ListBoardsQuery {
+  limit?: number;
+  cursor?: string;
+}
+
+export interface CreateColumnInput {
+  boardId: string;
+  name: string;
+  key: string;
+  /** Omitida, la columna va al final del tablero. */
+  position?: TargetPosition;
+}
+
+/**
+ * Renombrar o reordenar (6.2). `key` no esta: las keys son estables porque los
+ * agentes resuelven referencias con ellas.
+ */
+export interface UpdateColumnInput {
+  name?: string;
+  position?: TargetPosition;
+}
+
+export interface DeleteColumnOptions {
+  /** Columna del mismo tablero a la que van a parar las tareas. */
+  reassignTo?: string;
+}
+
 export interface Task {
   id: string;
   boardId: string;

@@ -3,6 +3,8 @@ import { randomUUID } from "node:crypto";
 import { Client } from "pg";
 import { expect } from "vitest";
 
+import type { Column } from "../src/index.js";
+
 const ALL_TABLES = ["task", "board_column", "board", "audit_log"] as const;
 
 /**
@@ -116,4 +118,47 @@ export async function expectColumnaDensa(client: Client, columnId: string): Prom
   );
   const posiciones = filas.rows.map((fila) => fila.position);
   expect(posiciones).toEqual(posiciones.map((_, indice) => indice));
+}
+
+const TABLAS = ["task", "board_column", "board", "audit_log"] as const;
+
+export async function contarFilas(
+  client: Client,
+  tabla: (typeof TABLAS)[number],
+): Promise<number> {
+  const filas = await client.query<{ count: string }>(
+    `SELECT count(*)::text AS count FROM "${tabla}"`,
+  );
+  return Number(filas.rows[0]?.count ?? "0");
+}
+
+export async function leerColumnas(client: Client, boardId: string): Promise<string[]> {
+  const filas = await client.query<{ id: string }>(
+    `SELECT id FROM board_column WHERE board_id = $1 ORDER BY position`,
+    [boardId],
+  );
+  return filas.rows.map((fila) => fila.id);
+}
+
+/** El orden de columnas del tablero es 0..n-1, sin huecos ni duplicados. */
+export async function expectTableroDenso(client: Client, boardId: string): Promise<void> {
+  const filas = await client.query<{ position: number }>(
+    `SELECT position FROM board_column WHERE board_id = $1 ORDER BY position`,
+    [boardId],
+  );
+  const posiciones = filas.rows.map((fila) => fila.position);
+  expect(posiciones).toEqual(posiciones.map((_, indice) => indice));
+}
+
+/**
+ * Busca una columna por su key. Se usa en vez de desestructurar por posicion
+ * porque la key es el contrato: si el orden por defecto cambiara, el test tiene
+ * que fallar por la razon correcta.
+ */
+export function porKey(columnas: readonly Column[], key: string): string {
+  const columna = columnas.find((candidata) => candidata.key === key);
+  if (columna === undefined) {
+    throw new Error(`El tablero no tiene una columna con key ${key}.`);
+  }
+  return columna.id;
 }

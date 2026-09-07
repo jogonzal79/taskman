@@ -65,12 +65,20 @@ Fase en curso: F1b.2 — resto del CRUD de tareas sobre packages/core.
   transaccion muta, asi que dos snapshots distintos recorrerian la misma
   columna en ordenes distintos y el interbloqueo reaparece dentro de una sola
   columna. `id` no cambia nunca.
-- Se reintenta ante 40001 y ante violacion de `task_column_position_uniq`:
-  las dos son contencion legitima, y el tope es el mismo, dos reintentos.
-  Sobre una columna vacia no hay filas que bloquear, asi que dos operaciones
-  simultaneas calculan la misma position sin verse y la restriccion diferida
-  las separa recien en el COMMIT. Solo esa restriccion por nombre: cualquier
-  otra unicidad es un error real.
+- Las filas de `board_column` se bloquean con FOR NO KEY UPDATE, no con
+  FOR UPDATE. Insertar o mover una tarea toma FOR KEY SHARE sobre la fila de
+  su columna al validar la FK, y FOR UPDATE choca con ese modo: una operacion
+  de columnas que lo tomara y despues esperara filas de tarea se
+  interbloquearia con un move en curso. FOR NO KEY UPDATE no choca y sigue
+  serializando las operaciones de columnas entre si.
+- Se reintenta ante 40001 y ante violacion de las dos UNIQUE diferidas de
+  orden, `task_column_position_uniq` y `column_board_position_uniq`: las tres
+  son contencion legitima, y el tope es el mismo, dos reintentos. Sobre una
+  columna vacia o un tablero sin columnas no hay filas que bloquear, asi que
+  dos operaciones simultaneas calculan la misma position sin verse y la
+  restriccion diferida las separa recien en el COMMIT. La lista va por nombre
+  explicito: `board_column_board_id_key_key` tambien es una UNIQUE, y
+  reintentarla seria reintentar para siempre un error real del llamador.
 - No se reintenta NUNCA ante 40P01. Un interbloqueo significa que el orden de
   bloqueo esta mal, y reintentarlo esconde el bug que detecta la prueba C2 de
   `packages/core` en vez de arreglarlo.
