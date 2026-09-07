@@ -24,10 +24,11 @@ import type {
  * (`HttpPort`, que todavia no existe). Las herramientas no conocen ninguna de
  * las dos implementaciones: solo esta interfaz.
  *
- * Sigue siendo mas chica que el catalogo completo de la 8.2 —falta `deleteTask`,
- * que llega con delete_task y su politica de confirmacion (8.3.2)— porque una
- * interfaz con metodos que nadie implementa contra la API real no es un
- * contrato, es una promesa.
+ * Cubre el catalogo completo de la 8.2. `deleteTask` es la ultima que llego y
+ * la unica destructiva: la politica de confirmacion (8.3.2) NO esta aca, es del
+ * borde. El puerto solo dice que el sistema sabe borrar una tarea; si hay que
+ * preguntar antes es una decision de la herramienta, y meterla en el puerto
+ * obligaria a cada implementacion a repetirla.
  *
  * Los tipos que entran y salen son los del dominio, no los del borde: la
  * traduccion a snake_case y a texto legible ocurre en las herramientas.
@@ -50,6 +51,8 @@ export interface TaskManagerPort {
   /** Patch parcial. `columnId` y `position` no se tocan aca: son `moveTask`. */
   updateTask(taskId: string, patch: UpdateTaskInput): Promise<Task>;
   moveTask(taskId: string, target: MoveTarget): Promise<MoveResult>;
+  /** Unica operacion destructiva del catalogo (8.2). Reindexa su columna. */
+  deleteTask(taskId: string): Promise<void>;
   /** Texto completo sobre titulo y descripcion. El ambito puede ser global. */
   searchTasks(text: string, scope: SearchScope): Promise<Page<TaskMatch>>;
 }

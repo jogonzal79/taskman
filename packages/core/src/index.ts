@@ -72,6 +72,13 @@ export { normalizarTexto, recortarBlancos } from "./domain/text.js";
 // app las monta sobre su propio transporte (ver src/mcp/tool.ts).
 
 export { crearHerramientas } from "./mcp/registry.js";
+export type { OpcionesRegistro } from "./mcp/registry.js";
+export {
+  leerPoliticaDestructiva,
+  POLITICAS_DESTRUCTIVAS,
+  POLITICA_DESTRUCTIVA_POR_DEFECTO,
+} from "./mcp/politica.js";
+export type { PoliticaDestructiva } from "./mcp/politica.js";
 export type { TaskManagerPort } from "./mcp/port.js";
 export { CorePort, crearCorePort } from "./mcp/core-port.js";
 export type {

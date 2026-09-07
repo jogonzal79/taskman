@@ -1,16 +1,20 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { crearHerramientas, type TaskManagerPort } from "@taskman/core";
+import { crearHerramientas, type OpcionesRegistro, type TaskManagerPort } from "@taskman/core";
 
 /**
  * Monta el registro unico de herramientas del nucleo sobre un `McpServer`.
  *
  * Esto es TODO el adaptador. No valida, no resuelve nombres, no traduce
- * errores: eso vive en `packages/core/mcp` y es lo mismo para cualquier
- * transporte. Si algun dia aparece el Streamable HTTP de la 8.1, va a montar
- * la misma lista con este mismo bucle.
+ * errores, y tampoco decide que herramientas hay: eso vive en
+ * `packages/core/mcp` y es lo mismo para cualquier transporte. Si algun dia
+ * aparece el Streamable HTTP de la 8.1, va a montar la misma lista con este
+ * mismo bucle.
  */
-export function crearServidorMcp(port: TaskManagerPort): McpServer {
+export function crearServidorMcp(
+  port: TaskManagerPort,
+  opciones: OpcionesRegistro = {},
+): McpServer {
   const server = new McpServer(
     { name: "taskman", version: "0.1.0" },
     {
@@ -22,8 +26,8 @@ export function crearServidorMcp(port: TaskManagerPort): McpServer {
     },
   );
 
-  for (const herramienta of crearHerramientas(port)) {
-    server.registerTool(
+  for (const herramienta of crearHerramientas(port, opciones)) {
+    const registrada = server.registerTool(
       herramienta.name,
       {
         title: herramienta.title,
@@ -38,6 +42,18 @@ export function crearServidorMcp(port: TaskManagerPort): McpServer {
       async (args: unknown): Promise<CallToolResult> =>
         (await herramienta.handler(args)) as CallToolResult,
     );
+
+    // Una herramienta que el nucleo declara pero no ofrece (hoy, delete_task
+    // con MCP_DESTRUCTIVE_POLICY=deny). Deshabilitada, el SDK la saca del
+    // listado Y rechaza la llamada, que es el filtrado en los dos lados que
+    // pide la 8.1. El precio es que el rechazo lo redacta el SDK ("Tool
+    // delete_task disabled") y no llega al handler del nucleo, que tiene el
+    // mensaje bueno: no hay forma de ocultarla del listado y conservar el
+    // handler. Ese mensaje sigue siendo el que ve cualquier otro llamador de la
+    // definicion, y "disabled" al menos no miente diciendo que no existe.
+    if (herramienta.anunciada === false) {
+      registrada.disable();
+    }
   }
 
   return server;

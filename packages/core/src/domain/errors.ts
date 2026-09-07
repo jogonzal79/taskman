@@ -18,6 +18,12 @@ export type DomainErrorCode =
   // solo es obligatorio en combinacion con otro (un titulo sin tablero donde
   // buscarlo). Es del contrato del borde, no de la base.
   | "VALIDATION_ERROR"
+  // Una operacion destructiva se pidio sin `confirm: true` (8.3.2). No es un
+  // fallo: es la mitad de un dialogo de dos pasos, y `details` lleva la tarea
+  // entera para que el agente pueda mostrar que desapareceria.
+  | "CONFIRMATION_REQUIRED"
+  // MCP_DESTRUCTIVE_POLICY=deny: el servidor no borra, se pida como se pida.
+  | "DESTRUCTIVE_POLICY_DENIED"
   // Una columna con tareas no se borra sin decir que hacer con ellas.
   | "COLUMN_NOT_EMPTY"
   | "INVALID_REASSIGN_TARGET"

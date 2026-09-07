@@ -49,6 +49,30 @@ de por id, así que "creá 'Revisar HU-25' en TODO del tablero QA" es una sola
 llamada. Si un nombre es ambiguo, la herramienta devuelve `AMBIGUOUS_MATCH` con
 los candidatos y no elige: hay que desambiguar.
 
+### Borrado de tareas
+
+`delete_task` es la única herramienta destructiva del catálogo (sección 8.2) y
+se controla con `MCP_DESTRUCTIVE_POLICY` en el bloque `env` del `.mcp.json`:
+
+| Valor | Qué hace |
+| --- | --- |
+| `confirm` (por defecto) | La llamada sin `confirm: true` no borra: devuelve `CONFIRMATION_REQUIRED` con la tarea entera —título, columna, prioridad, vencimiento y descripción— para que el agente te la muestre. Recién la segunda llamada, con `confirm: true`, la elimina. |
+| `allow` | Borra de inmediato, sin el paso de confirmación. |
+| `deny` | La herramienta **no se anuncia**: el agente no la ve al listar y no puede planificar un borrado. Si la invoca igual, la llamada falla y no toca la base. |
+
+El filtrado con `deny` ocurre en el listado y no solo en la ejecución, como pide
+la sección 8.1: una herramienta visible que siempre falla hace que el agente
+planifique acciones que no puede completar.
+
+Un valor que no sea uno de esos tres impide el arranque del servidor con un
+mensaje en stderr, en vez de caer en silencio al valor por defecto (sección
+11.2). Con `MCP_DESTRUCTIVE_POLICY=denyy` creerías tener el borrado apagado y lo
+tendrías encendido, solo que preguntando primero.
+
+El borrado reindexa la columna dentro de la misma transacción, así que el orden
+queda denso `0..n-1`; la respuesta trae el orden final completo de la columna
+para que el agente no tenga que volver a listar.
+
 ### El primer tablero
 
 F2.1 tiene tres herramientas —`list_tasks`, `create_task`, `move_task`— y
