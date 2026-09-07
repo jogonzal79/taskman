@@ -1,3 +1,5 @@
+import type { ColumnReference } from "./column-key.js";
+
 /**
  * Tipos del dominio. Deliberadamente NO son los tipos generados por Prisma:
  * el repositorio es la unica capa que ve Prisma y mapea a estas formas, asi
@@ -85,10 +87,13 @@ export interface Task {
 /** Posicion destino: un indice concreto o el final de la columna. */
 export type TargetPosition = number | "end";
 
-export interface MoveTarget {
-  columnId: string;
+/**
+ * Destino de un movimiento: la columna por id o por key, mas la posicion.
+ * Si vienen las dos formas, `columnId` prevalece (6.3.1).
+ */
+export type MoveTarget = ColumnReference & {
   position: TargetPosition;
-}
+};
 
 /**
  * Orden final y autoritativo de una columna, leido de la base tras escribir.
@@ -110,16 +115,15 @@ export interface MoveResult {
 
 // --- Entradas de las operaciones ---------------------------------------------
 
-export interface CreateTaskInput {
+export type CreateTaskInput = ColumnReference & {
   boardId: string;
-  columnId: string;
   title: string;
   description?: string | null;
   priority?: Priority;
   dueDate?: Date | null;
   /** Omitida, la tarea va al final de la columna. */
   position?: TargetPosition;
-}
+};
 
 /**
  * Patch parcial: solo los campos presentes se modifican. `position` y
@@ -143,6 +147,8 @@ export type TaskOrderBy = "position" | "dueDate" | "priority" | "createdAt";
 export interface ListTasksQuery {
   boardId?: string;
   columnId?: string;
+  /** Alternativa a `columnId` dentro del tablero indicado (6.3.2). */
+  columnKey?: string;
   /** Varias prioridades actuan como OR. */
   priority?: readonly Priority[];
   dueBefore?: Date;

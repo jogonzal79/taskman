@@ -82,6 +82,7 @@ export interface TaskTransaction extends MoveTransaction {
    * es como `delete` detecta TASK_NOT_FOUND sin una lectura previa sin bloqueo.
    */
   lockColumnOfTask(taskId: string): Promise<LockedTask[]>;
+  findColumnByKey(boardId: string, key: string): Promise<ColumnRef | undefined>;
   findBoard(boardId: string): Promise<{ id: string } | undefined>;
   insertTask(row: NewTaskRow): Promise<void>;
   deleteTask(taskId: string): Promise<void>;
@@ -240,6 +241,14 @@ function crearTaskTransaction(tx: Prisma.TransactionClient): TaskTransaction {
       return columna ?? undefined;
     },
 
+    async findColumnByKey(boardId, key) {
+      const columna = await tx.column.findUnique({
+        where: { boardId_key: { boardId, key } },
+        select: { id: true, boardId: true },
+      });
+      return columna ?? undefined;
+    },
+
     async findBoard(boardId) {
       const tablero = await tx.board.findUnique({ where: { id: boardId }, select: { id: true } });
       return tablero ?? undefined;
@@ -335,6 +344,24 @@ export class TaskRepository {
   async findTask(taskId: string): Promise<Task | undefined> {
     const tarea = await this.#prisma.task.findUnique({ where: { id: taskId } });
     return tarea === null ? undefined : aTask(tarea);
+  }
+
+  // Con estas dos, el repositorio cumple `BuscadorDeColumnas` y sirve para
+  // resolver una columnKey fuera de transaccion.
+  async findColumn(columnId: string): Promise<ColumnRef | undefined> {
+    const columna = await this.#prisma.column.findUnique({
+      where: { id: columnId },
+      select: { id: true, boardId: true },
+    });
+    return columna ?? undefined;
+  }
+
+  async findColumnByKey(boardId: string, key: string): Promise<ColumnRef | undefined> {
+    const columna = await this.#prisma.column.findUnique({
+      where: { boardId_key: { boardId, key } },
+      select: { id: true, boardId: true },
+    });
+    return columna ?? undefined;
   }
 
   /** Hidrata por id respetando el orden recibido. */
