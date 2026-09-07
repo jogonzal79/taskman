@@ -40,14 +40,17 @@ export function computeMoveOrder(args: {
 }
 
 /** `position` valida: el literal "end" o un entero >= 0. */
-export function assertValidPosition(position: TargetPosition, taskId: string): void {
+export function assertValidPosition(
+  position: TargetPosition,
+  details: Readonly<Record<string, unknown>>,
+): void {
   if (position === "end") {
     return;
   }
 
   if (!Number.isInteger(position) || position < 0) {
     throw new DomainError("INVALID_ORDER", `La posicion destino no es valida: ${String(position)}.`, {
-      details: { taskId, position },
+      details: { ...details, position },
       hint: 'Usa un entero mayor o igual que 0, o el literal "end" para mandar la tarea al final.',
     });
   }

@@ -3,12 +3,17 @@
  * traducen a HTTP o a respuestas MCP, pero no los interpretan de nuevo.
  */
 
-/** Solo los codigos que necesita `move`. Se amplia cuando llegue cada operacion. */
+/** Solo los codigos que necesitan las operaciones ya escritas. */
 export type DomainErrorCode =
+  | "BOARD_NOT_FOUND"
   | "TASK_NOT_FOUND"
   | "COLUMN_NOT_FOUND"
   | "COLUMN_NOT_IN_BOARD"
-  | "INVALID_ORDER";
+  | "INVALID_ORDER"
+  // Dos causas distintas del mismo campo, con codigos distintos a proposito:
+  // un agente tiene que poder saber si le falto contenido o si le sobro.
+  | "TITLE_REQUIRED"
+  | "TITLE_TOO_LONG";
 
 export interface DomainErrorOptions {
   /** Datos estructurados para el llamador: ids involucrados, limites, etc. */

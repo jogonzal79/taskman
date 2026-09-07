@@ -82,8 +82,8 @@ describe("mover entre columnas", () => {
 
     // El orden devuelto es el autoritativo de la base.
     expect(resultado.affectedColumns).toEqual([
-      { columnId: t.todo, taskIds: [primera, tercera] },
-      { columnId: t.doing, taskIds: [d0, segunda, d1] },
+      { columnId: t.todo, taskOrder: [primera, tercera] },
+      { columnId: t.doing, taskOrder: [d0, segunda, d1] },
     ]);
     expect(await leerOrden(db, t.todo)).toEqual([primera, tercera]);
     expect(await leerOrden(db, t.doing)).toEqual([d0, segunda, d1]);
@@ -118,7 +118,7 @@ describe("C3: mover dentro de la misma columna", () => {
     // Una sola columna afectada: no es una rama distinta del algoritmo, es el
     // mismo calculo con origen igual a destino.
     expect(resultado.affectedColumns).toEqual([
-      { columnId: t.todo, taskIds: [segunda, tercera, primera] },
+      { columnId: t.todo, taskOrder: [segunda, tercera, primera] },
     ]);
     expect(resultado.task.position).toBe(2);
     await expectColumnaDensa(db, t.todo);
@@ -131,7 +131,7 @@ describe("C3: mover dentro de la misma columna", () => {
     const resultado = await servicio.move(tercera, { columnId: t.todo, position: 0 });
 
     expect(resultado.affectedColumns).toEqual([
-      { columnId: t.todo, taskIds: [tercera, primera, segunda] },
+      { columnId: t.todo, taskOrder: [tercera, primera, segunda] },
     ]);
     expect(resultado.task.position).toBe(0);
     await expectColumnaDensa(db, t.todo);
@@ -295,6 +295,33 @@ describe("concurrencia", () => {
       await expectColumnaDensa(db, t.todo);
       await expectColumnaDensa(db, t.doing);
     }
+  });
+
+  it("dos move simultaneos hacia una columna VACIA terminan los dos", async () => {
+    // Mismo agujero que en create, por la misma razon: la columna destino no
+    // tiene filas que bloquear. Lo cubre el reintento ante
+    // task_column_position_uniq, no el orden de bloqueo.
+    const t = await sembrar();
+    const vacia = await insertColumn(db, { boardId: t.boardId, key: "done", position: 2 });
+    const [deTodo] = t.tareasTodo as [string, string, string];
+    const [deDoing] = t.tareasDoing as [string, string];
+
+    const resultados = await Promise.allSettled([
+      servicio.move(deTodo, { columnId: vacia, position: 0 }),
+      servicio.move(deDoing, { columnId: vacia, position: 0 }),
+    ]);
+
+    const motivos = resultados
+      .filter((r): r is PromiseRejectedResult => r.status === "rejected")
+      .map((r) => String(r.reason));
+    expect(motivos).toEqual([]);
+
+    const orden = await leerOrden(db, vacia);
+    expect(orden).toHaveLength(2);
+    expect(new Set(orden).size).toBe(2);
+    expect(orden).toContain(deTodo);
+    expect(orden).toContain(deDoing);
+    await expectColumnaDensa(db, vacia);
   });
 
   it("C5: una rafaga hacia la misma columna deja el orden denso", async () => {
