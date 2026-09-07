@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import type { CreateTaskInput } from "../../domain/types.js";
 import { cargarTablero, ordenDeColumna, resolverColumnaDelTablero } from "../lookup.js";
+import type { FabricaDeContexto } from "../contexto.js";
 import type { TaskManagerPort } from "../port.js";
 import { definirHandler, respuesta } from "../respuesta.js";
 import type { McpToolDefinition } from "../tool.js";
@@ -43,7 +44,10 @@ const shape = {
   ),
 };
 
-export function definirCreateTask(port: TaskManagerPort): McpToolDefinition {
+export function definirCreateTask(
+  port: TaskManagerPort,
+  contexto: FabricaDeContexto,
+): McpToolDefinition {
   return {
     name: "create_task",
     title: "Crear tarea",
@@ -74,7 +78,7 @@ export function definirCreateTask(port: TaskManagerPort): McpToolDefinition {
         ...(args.due_date === undefined ? {} : { dueDate: aFecha(args.due_date) }),
       };
 
-      const tarea = await port.createTask(input);
+      const tarea = await port.createTask(input, contexto());
       const orden = await ordenDeColumna(port, tablero.id, columna.id);
 
       return respuesta(

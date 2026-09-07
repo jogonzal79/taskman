@@ -5,6 +5,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { DomainError, TaskRepository, TaskService, TransactionRunner } from "../src/index.js";
 import {
   connectDb,
+  ctx,
   expectColumnaDensa,
   insertBoard,
   insertColumn,
@@ -73,7 +74,7 @@ describe("mover entre columnas", () => {
     const [primera, segunda, tercera] = t.tareasTodo as [string, string, string];
     const [d0, d1] = t.tareasDoing as [string, string];
 
-    const resultado = await servicio.move(segunda, { columnId: t.doing, position: 1 });
+    const resultado = await servicio.move(segunda, { columnId: t.doing, position: 1 }, ctx());
 
     expect(resultado.fromColumnId).toBe(t.todo);
     expect(resultado.toColumnId).toBe(t.doing);
@@ -97,7 +98,7 @@ describe("mover entre columnas", () => {
     const vacia = await insertColumn(db, { boardId: t.boardId, key: "done", position: 2 });
     const [primera] = t.tareasTodo as [string, string, string];
 
-    const resultado = await servicio.move(primera, { columnId: vacia, position: 0 });
+    const resultado = await servicio.move(primera, { columnId: vacia, position: 0 }, ctx());
 
     expect(resultado.task.position).toBe(0);
     expect(await leerOrden(db, vacia)).toEqual([primera]);
@@ -111,7 +112,7 @@ describe("C3: mover dentro de la misma columna", () => {
     const t = await sembrar();
     const [primera, segunda, tercera] = t.tareasTodo as [string, string, string];
 
-    const resultado = await servicio.move(primera, { columnId: t.todo, position: 2 });
+    const resultado = await servicio.move(primera, { columnId: t.todo, position: 2 }, ctx());
 
     expect(resultado.fromColumnId).toBe(t.todo);
     expect(resultado.toColumnId).toBe(t.todo);
@@ -128,7 +129,7 @@ describe("C3: mover dentro de la misma columna", () => {
     const t = await sembrar();
     const [primera, segunda, tercera] = t.tareasTodo as [string, string, string];
 
-    const resultado = await servicio.move(tercera, { columnId: t.todo, position: 0 });
+    const resultado = await servicio.move(tercera, { columnId: t.todo, position: 0 }, ctx());
 
     expect(resultado.affectedColumns).toEqual([
       { columnId: t.todo, taskOrder: [tercera, primera, segunda] },
@@ -143,8 +144,8 @@ describe("C4: end y una posicion mayor que la columna", () => {
     const t = await sembrar();
     const [primera, segunda] = t.tareasTodo as [string, string, string];
 
-    const conLiteral = await servicio.move(primera, { columnId: t.doing, position: "end" });
-    const conDesborde = await servicio.move(segunda, { columnId: t.doing, position: 999 });
+    const conLiteral = await servicio.move(primera, { columnId: t.doing, position: "end" }, ctx());
+    const conDesborde = await servicio.move(segunda, { columnId: t.doing, position: 999 }, ctx());
 
     // Las dos quedaron al final, en el orden en que se pidieron.
     expect(conLiteral.task.position).toBe(2);
@@ -157,14 +158,14 @@ describe("C4: end y una posicion mayor que la columna", () => {
     const t = await sembrar();
     const [primera] = t.tareasTodo as [string, string, string];
 
-    const conDesborde = await servicio.move(primera, { columnId: t.doing, position: 999 });
+    const conDesborde = await servicio.move(primera, { columnId: t.doing, position: 999 }, ctx());
     const ordenDesborde = await leerOrden(db, t.doing);
 
     // Se rehace la misma jugada desde cero, ahora con el literal.
     await truncateAll(db);
     const u = await sembrar();
     const [primeraU] = u.tareasTodo as [string, string, string];
-    const conLiteral = await servicio.move(primeraU, { columnId: u.doing, position: "end" });
+    const conLiteral = await servicio.move(primeraU, { columnId: u.doing, position: "end" }, ctx());
     const ordenLiteral = await leerOrden(db, u.doing);
 
     expect(conDesborde.task.position).toBe(conLiteral.task.position);
@@ -179,7 +180,7 @@ describe("errores de dominio", () => {
     const inexistente = uuid();
 
     const error = await capturarDominio(() =>
-      servicio.move(inexistente, { columnId: t.doing, position: 0 }),
+      servicio.move(inexistente, { columnId: t.doing, position: 0 }, ctx()),
     );
 
     expect(error.code).toBe("TASK_NOT_FOUND");
@@ -194,7 +195,7 @@ describe("errores de dominio", () => {
     const [primera] = t.tareasTodo as [string, string, string];
 
     const error = await capturarDominio(() =>
-      servicio.move(primera, { columnId: inexistente, position: 0 }),
+      servicio.move(primera, { columnId: inexistente, position: 0 }, ctx()),
     );
 
     expect(error.code).toBe("COLUMN_NOT_FOUND");
@@ -209,7 +210,7 @@ describe("errores de dominio", () => {
     const [primera] = t.tareasTodo as [string, string, string];
 
     const error = await capturarDominio(() =>
-      servicio.move(primera, { columnId: ajena, position: 0 }),
+      servicio.move(primera, { columnId: ajena, position: 0 }, ctx()),
     );
 
     expect(error.code).toBe("COLUMN_NOT_IN_BOARD");
@@ -228,7 +229,7 @@ describe("errores de dominio", () => {
     const [primera] = t.tareasTodo as [string, string, string];
 
     const error = await capturarDominio(() =>
-      servicio.move(primera, { columnId: t.doing, position: -1 }),
+      servicio.move(primera, { columnId: t.doing, position: -1 }, ctx()),
     );
 
     expect(error.code).toBe("INVALID_ORDER");
@@ -241,7 +242,7 @@ describe("errores de dominio", () => {
     const [primera] = t.tareasTodo as [string, string, string];
 
     const error = await capturarDominio(() =>
-      servicio.move(primera, { columnId: t.doing, position: 1.5 }),
+      servicio.move(primera, { columnId: t.doing, position: 1.5 }, ctx()),
     );
 
     expect(error.code).toBe("INVALID_ORDER");
@@ -254,8 +255,8 @@ describe("concurrencia", () => {
     const [primera, segunda] = t.tareasTodo as [string, string, string];
 
     const resultados = await Promise.allSettled([
-      servicio.move(primera, { columnId: t.doing, position: 0 }),
-      servicio.move(segunda, { columnId: t.doing, position: 0 }),
+      servicio.move(primera, { columnId: t.doing, position: 0 }, ctx()),
+      servicio.move(segunda, { columnId: t.doing, position: 0 }, ctx()),
     ]);
 
     expect(resultados.map((r) => r.status)).toEqual(["fulfilled", "fulfilled"]);
@@ -280,8 +281,8 @@ describe("concurrencia", () => {
       const [deDoing] = t.tareasDoing as [string, string];
 
       const resultados = await Promise.allSettled([
-        servicio.move(deTodo, { columnId: t.doing, position: 0 }),
-        servicio.move(deDoing, { columnId: t.todo, position: 0 }),
+        servicio.move(deTodo, { columnId: t.doing, position: 0 }, ctx()),
+        servicio.move(deDoing, { columnId: t.todo, position: 0 }, ctx()),
       ]);
 
       const motivos = resultados
@@ -307,8 +308,8 @@ describe("concurrencia", () => {
     const [deDoing] = t.tareasDoing as [string, string];
 
     const resultados = await Promise.allSettled([
-      servicio.move(deTodo, { columnId: vacia, position: 0 }),
-      servicio.move(deDoing, { columnId: vacia, position: 0 }),
+      servicio.move(deTodo, { columnId: vacia, position: 0 }, ctx()),
+      servicio.move(deDoing, { columnId: vacia, position: 0 }, ctx()),
     ]);
 
     const motivos = resultados
@@ -329,9 +330,9 @@ describe("concurrencia", () => {
     const [primera, segunda, tercera] = t.tareasTodo as [string, string, string];
 
     const resultados = await Promise.allSettled([
-      servicio.move(primera, { columnId: t.doing, position: 0 }),
-      servicio.move(segunda, { columnId: t.doing, position: 1 }),
-      servicio.move(tercera, { columnId: t.doing, position: "end" }),
+      servicio.move(primera, { columnId: t.doing, position: 0 }, ctx()),
+      servicio.move(segunda, { columnId: t.doing, position: 1 }, ctx()),
+      servicio.move(tercera, { columnId: t.doing, position: "end" }, ctx()),
     ]);
 
     expect(resultados.map((r) => r.status)).toEqual(["fulfilled", "fulfilled", "fulfilled"]);

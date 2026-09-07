@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { cargarTablero } from "../lookup.js";
+import type { FabricaDeContexto } from "../contexto.js";
 import type { TaskManagerPort } from "../port.js";
 import { definirHandler, respuesta } from "../respuesta.js";
 import type { McpToolDefinition } from "../tool.js";
@@ -29,7 +30,10 @@ const shape = {
     ),
 };
 
-export function definirCreateColumn(port: TaskManagerPort): McpToolDefinition {
+export function definirCreateColumn(
+  port: TaskManagerPort,
+  contexto: FabricaDeContexto,
+): McpToolDefinition {
   return {
     name: "create_column",
     title: "Crear columna",
@@ -49,12 +53,15 @@ export function definirCreateColumn(port: TaskManagerPort): McpToolDefinition {
     handler: definirHandler("create_column", shape, async (args) => {
       const tablero = await cargarTablero(port, args.board);
 
-      const columna = await port.createColumn({
-        boardId: tablero.id,
-        name: args.name,
-        key: args.key,
-        position: args.position,
-      });
+      const columna = await port.createColumn(
+        {
+          boardId: tablero.id,
+          name: args.name,
+          key: args.key,
+          position: args.position,
+        },
+        contexto(),
+      );
 
       // Se relee el tablero porque insertar en el medio reescribe la position
       // de las demas: devolver el detalle previo seria devolver un orden viejo.

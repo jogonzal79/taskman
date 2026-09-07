@@ -6,9 +6,21 @@ import type {
   TaskFields,
   TaskRepository,
 } from "../db/task-repository.js";
+import type { ActorContext } from "../domain/actor.js";
+import {
+  actualizacion,
+  borrado,
+  camposModificados,
+  CAMPOS_TAREA,
+  creacion,
+  movimiento,
+  tareaCompleta,
+  ubicacion,
+} from "../domain/audit.js";
 import { DomainError } from "../domain/errors.js";
 import { assertValidPosition, computeMoveOrder } from "../domain/order.js";
 import { normalizarTitulo } from "../domain/title.js";
+import { AuditService } from "./audit-service.js";
 import { resolverColumna } from "./column-reference.js";
 import type {
   ColumnOrder,
@@ -47,22 +59,6 @@ function agruparPorColumna(filas: readonly LockedTask[]): Map<string, string[]> 
 /** Las filas llegan en orden de bloqueo `(column_id, id)`, no de `position`. */
 function ordenarPorPosicion(filas: readonly LockedTask[]): string[] {
   return [...filas].sort((a, b) => a.position - b.position).map((fila) => fila.id);
-}
-
-function mismaFecha(a: Date | null, b: Date | null): boolean {
-  if (a === null || b === null) {
-    return a === b;
-  }
-  return a.getTime() === b.getTime();
-}
-
-function sinCambioEfectivo(actual: Task, siguiente: TaskFields): boolean {
-  return (
-    actual.title === siguiente.title &&
-    actual.description === siguiente.description &&
-    actual.priority === siguiente.priority &&
-    mismaFecha(actual.dueDate, siguiente.dueDate)
-  );
 }
 
 /**
@@ -107,9 +103,11 @@ function tareaNoEncontrada(taskId: string): DomainError {
 
 export class TaskService {
   readonly #tasks: TaskRepository;
+  readonly #audit: AuditService;
 
-  constructor(tasks: TaskRepository) {
+  constructor(tasks: TaskRepository, audit: AuditService = new AuditService()) {
     this.#tasks = tasks;
+    this.#audit = audit;
   }
 
   /**
@@ -119,7 +117,7 @@ export class TaskService {
    * al final. En los dos casos la columna entera se reescribe dentro de la
    * transaccion, que es lo que garantiza que no queden huecos.
    */
-  async create(input: CreateTaskInput): Promise<Task> {
+  async create(input: CreateTaskInput, ctx: ActorContext): Promise<Task> {
     const detalle: Record<string, unknown> = {
       boardId: input.boardId,
       ...(input.columnId === undefined ? {} : { columnId: input.columnId }),
@@ -169,6 +167,8 @@ export class TaskService {
       if (creada === undefined) {
         throw tareaNoEncontrada(id);
       }
+
+      await this.#audit.registrar(tx, ctx, creacion("task", id, tareaCompleta(creada)));
       return creada;
     });
   }
@@ -218,7 +218,7 @@ export class TaskService {
    * Si el patch no produce cambio efectivo la operacion es exitosa y no
    * escribe: devuelve la tarea tal como estaba.
    */
-  async update(taskId: string, patch: UpdateTaskInput): Promise<Task> {
+  async update(taskId: string, patch: UpdateTaskInput, ctx: ActorContext): Promise<Task> {
     return this.#tasks.inTransaction(async (tx) => {
       const actual = await tx.readTask(taskId);
       if (actual === undefined) {
@@ -233,11 +233,19 @@ export class TaskService {
         dueDate: patch.dueDate === undefined ? actual.dueDate : patch.dueDate,
       };
 
-      if (sinCambioEfectivo(actual, siguiente)) {
+      // El mismo diff decide las dos cosas que la 5.2 ata: si hay que escribir
+      // y que registrar. Antes eran dos comparaciones distintas del mismo par
+      // de valores, y nada impedia que se separaran.
+      //
+      // `due_date` se compara como fecha sola, que es como la guarda la base
+      // (DATE): cambiarle solo la hora a un vencimiento no es un cambio.
+      const cambios = camposModificados(actual, { ...actual, ...siguiente }, CAMPOS_TAREA);
+      if (cambios === null) {
         return actual;
       }
 
       await tx.updateTaskFields(taskId, siguiente);
+      await this.#audit.registrar(tx, ctx, actualizacion("task", taskId, cambios));
 
       const actualizada = await tx.readTask(taskId);
       if (actualizada === undefined) {
@@ -248,7 +256,7 @@ export class TaskService {
   }
 
   /** Elimina la tarea y reindexa su columna en la misma transaccion. */
-  async delete(taskId: string): Promise<void> {
+  async delete(taskId: string, ctx: ActorContext): Promise<void> {
     await this.#tasks.inTransaction(async (tx) => {
       // La columna se resuelve dentro de la sentencia que bloquea, igual que en
       // `move`: si la tarea no existe, no hay filas y no hay columna que tocar.
@@ -258,11 +266,23 @@ export class TaskService {
         throw tareaNoEncontrada(taskId);
       }
 
+      // La fila bloqueada trae lo justo para reordenar (id, columna, position).
+      // La auditoria necesita la tarea ENTERA —titulo, descripcion, prioridad,
+      // vencimiento— porque despues del DELETE ya no hay de donde sacarla, y un
+      // registro que no dice que se perdio no sirve para reconstruir nada.
+      const entera = await tx.readTask(taskId);
+      if (entera === undefined) {
+        // Inalcanzable: la fila esta bloqueada por esta misma transaccion.
+        throw tareaNoEncontrada(taskId);
+      }
+
       await tx.deleteTask(taskId);
       await tx.rewriteColumn(
         actual.columnId,
         ordenarPorPosicion(bloqueadas.filter((fila) => fila.id !== taskId)),
       );
+
+      await this.#audit.registrar(tx, ctx, borrado("task", taskId, tareaCompleta(entera)));
     });
   }
 
@@ -273,10 +293,10 @@ export class TaskService {
    * completa 0..n-1 de cada columna afectada. Mover dentro de la misma columna
    * no es una rama aparte: es el mismo calculo con origen igual a destino.
    */
-  async move(taskId: string, target: MoveTarget): Promise<MoveResult> {
+  async move(taskId: string, target: MoveTarget, ctx: ActorContext): Promise<MoveResult> {
     const toColumnId = await this.#resolverDestino(taskId, target);
     return this.#tasks.inTransaction(async (tx) =>
-      this.#move(tx, taskId, toColumnId, target.position),
+      this.#move(tx, taskId, toColumnId, target.position, ctx),
     );
   }
 
@@ -310,6 +330,7 @@ export class TaskService {
     taskId: string,
     toColumnId: string,
     position: TargetPosition,
+    ctx: ActorContext,
   ): Promise<MoveResult> {
     // Pasos 1 y 3 del algoritmo, en una sola sentencia y en orden canonico.
     // Ver el comentario de `lockTaskAndColumns`: separarlos reintroduce el
@@ -354,6 +375,12 @@ export class TaskService {
       // Inalcanzable: la fila esta bloqueada por esta misma transaccion.
       throw tareaNoEncontrada(taskId);
     }
+
+    // MOVE se registra siempre, tambien cuando la tarea termina donde estaba:
+    // a diferencia de un patch sin efecto (5.2), aca la operacion SI corrio y
+    // reescribio el orden de la columna. `{ column_id, position }` en las dos
+    // puntas es exactamente lo que pide la 7.4.
+    await this.#audit.registrar(tx, ctx, movimiento(taskId, ubicacion(actual), ubicacion(tarea)));
 
     // El orden que devolvemos se relee de la base, no se asume del calculo.
     const columnasAfectadas =

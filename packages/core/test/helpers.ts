@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { Client } from "pg";
 import { expect } from "vitest";
 
-import type { Column } from "../src/index.js";
+import type { ActorContext, Column } from "../src/index.js";
 
 const ALL_TABLES = ["task", "board_column", "board", "audit_log"] as const;
 
@@ -42,6 +42,18 @@ export async function truncateAll(client: Client): Promise<void> {
 
 export function uuid(): string {
   return randomUUID();
+}
+
+/**
+ * El `ActorContext` de las pruebas de servicios.
+ *
+ * `API` y no `AGENT`: estas pruebas invocan los servicios directamente, que es
+ * el camino de un cliente REST; AGENT es lo que registra el borde MCP y se
+ * verifica ahi. El `requestId` es uno por llamada, como en produccion, asi que
+ * dos operaciones de un mismo test no comparten correlacion.
+ */
+export function ctx(): ActorContext {
+  return { actorType: "API", actorName: "pruebas", requestId: uuid() };
 }
 
 // --- Siembra -----------------------------------------------------------------

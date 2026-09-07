@@ -1,3 +1,4 @@
+import { CONTEXTO_MCP_POR_DEFECTO, type FabricaDeContexto } from "./contexto.js";
 import { POLITICA_DESTRUCTIVA_POR_DEFECTO, type PoliticaDestructiva } from "./politica.js";
 import type { TaskManagerPort } from "./port.js";
 import type { McpToolDefinition } from "./tool.js";
@@ -16,6 +17,12 @@ import { definirUpdateTask } from "./tools/update-task.js";
 export interface OpcionesRegistro {
   /** MCP_DESTRUCTIVE_POLICY (8.3.2). Ausente equivale a `confirm`. */
   politicaDestructiva?: PoliticaDestructiva;
+  /**
+   * De donde sale el `ActorContext` de cada llamada (7.4). Ausente, se usa uno
+   * que igual registra AGENT pero sin nombre de cliente: el transporte que sabe
+   * quien se conecto pasa el suyo (ver `contextoDeAgente`).
+   */
+  contexto?: FabricaDeContexto;
 }
 
 /**
@@ -40,18 +47,22 @@ export function crearHerramientas(
   opciones: OpcionesRegistro = {},
 ): McpToolDefinition[] {
   const politica = opciones.politicaDestructiva ?? POLITICA_DESTRUCTIVA_POR_DEFECTO;
+  const contexto = opciones.contexto ?? CONTEXTO_MCP_POR_DEFECTO;
 
+  // Solo las seis que escriben reciben `contexto`. Las cinco de lectura no lo
+  // necesitan porque no se auditan (7.4), y darselo igual repetiria el error
+  // que hizo diferir `ctx` en F1b.2: un parametro que nadie lee.
   return [
     definirListBoards(port),
     definirGetBoard(port),
-    definirCreateBoard(port),
-    definirCreateColumn(port),
+    definirCreateBoard(port, contexto),
+    definirCreateColumn(port, contexto),
     definirListTasks(port),
     definirSearchTasks(port),
     definirGetTask(port),
-    definirCreateTask(port),
-    definirUpdateTask(port),
-    definirMoveTask(port),
-    definirDeleteTask(port, politica),
+    definirCreateTask(port, contexto),
+    definirUpdateTask(port, contexto),
+    definirMoveTask(port, contexto),
+    definirDeleteTask(port, politica, contexto),
   ];
 }

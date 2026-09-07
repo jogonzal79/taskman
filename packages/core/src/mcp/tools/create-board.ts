@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { CreateBoardInput } from "../../domain/types.js";
+import type { FabricaDeContexto } from "../contexto.js";
 import type { TaskManagerPort } from "../port.js";
 import { definirHandler, respuesta } from "../respuesta.js";
 import type { McpToolDefinition } from "../tool.js";
@@ -38,7 +39,10 @@ const shape = {
     ),
 };
 
-export function definirCreateBoard(port: TaskManagerPort): McpToolDefinition {
+export function definirCreateBoard(
+  port: TaskManagerPort,
+  contexto: FabricaDeContexto,
+): McpToolDefinition {
   return {
     name: "create_board",
     title: "Crear tablero",
@@ -62,7 +66,9 @@ export function definirCreateBoard(port: TaskManagerPort): McpToolDefinition {
         ...(args.columns === undefined ? {} : { columns: args.columns }),
       };
 
-      const tablero = await port.createBoard(input);
+      // Un contexto por llamada: el requestId correlaciona ESTA invocacion con
+      // el registro de auditoria que deja (5.1).
+      const tablero = await port.createBoard(input, contexto());
 
       return respuesta(
         [

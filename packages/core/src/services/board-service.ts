@@ -1,6 +1,15 @@
 import { randomUUID } from "node:crypto";
 
 import type { BoardRepository, BoardTransaction, NewColumnRow } from "../db/board-repository.js";
+import type { ActorContext } from "../domain/actor.js";
+import {
+  actualizacion,
+  borrado,
+  camposModificados,
+  CAMPOS_TABLERO,
+  creacion,
+  tableroConColumnas,
+} from "../domain/audit.js";
 import { LIMITE_COLUMN_NAME, normalizarColumnKey } from "../domain/column-key.js";
 import { DomainError } from "../domain/errors.js";
 import { normalizarTexto } from "../domain/text.js";
@@ -12,6 +21,7 @@ import type {
   Page,
   UpdateBoardInput,
 } from "../domain/types.js";
+import { AuditService } from "./audit-service.js";
 
 /** Iguales a los VARCHAR de `board`. */
 export const LIMITE_BOARD_NAME = 120;
@@ -79,9 +89,17 @@ function tableroNoEncontrado(boardId: string): DomainError {
 
 export class BoardService {
   readonly #boards: BoardRepository;
+  readonly #audit: AuditService;
 
-  constructor(boards: BoardRepository) {
+  /**
+   * `audit` es inyectable y tiene default porque solo hay una implementacion
+   * real: el punto de la inyeccion no es elegir entre varias, es poder darle a
+   * una prueba una que falle y comprobar que la operacion se revierte de
+   * verdad, como pide el criterio de F3.
+   */
+  constructor(boards: BoardRepository, audit: AuditService = new AuditService()) {
     this.#boards = boards;
+    this.#audit = audit;
   }
 
   /**
@@ -91,7 +109,7 @@ export class BoardService {
    * columnas no es un estado util, y dejarlo a medias obligaria a todos los
    * llamadores a contemplarlo.
    */
-  async create(input: CreateBoardInput): Promise<BoardDetail> {
+  async create(input: CreateBoardInput, ctx: ActorContext): Promise<BoardDetail> {
     const name = normalizarNombre(input.name, LIMITE_BOARD_NAME, {});
     const description = normalizarDescripcion(input.description, {});
 
@@ -126,7 +144,12 @@ export class BoardService {
       for (const columna of columnas) {
         await tx.insertColumn(columna);
       }
-      return this.#detalle(tx, boardId);
+
+      const detalle = await this.#detalle(tx, boardId);
+      // Dentro de la MISMA transaccion (7.4): si el registro falla, el tablero
+      // y sus columnas se van con el.
+      await this.#audit.registrar(tx, ctx, creacion("board", boardId, tableroConColumnas(detalle)));
+      return detalle;
     });
   }
 
@@ -143,7 +166,7 @@ export class BoardService {
   }
 
   /** Patch parcial. Sin cambio efectivo es exitoso y no escribe. */
-  async update(boardId: string, patch: UpdateBoardInput): Promise<BoardDetail> {
+  async update(boardId: string, patch: UpdateBoardInput, ctx: ActorContext): Promise<BoardDetail> {
     return this.#boards.inTransaction(async (tx) => {
       const actual = await tx.findBoard(boardId);
       if (actual === undefined) {
@@ -159,8 +182,13 @@ export class BoardService {
           ? actual.description
           : normalizarDescripcion(patch.description, { boardId });
 
-      if (name !== actual.name || description !== actual.description) {
+      // Un solo criterio de "cambio efectivo" para escribir y para auditar: la
+      // 5.2 los ata ("si el patch no produce cambio efectivo... no genera
+      // registro"), asi que tenerlos separados solo permitiria que se separen.
+      const cambios = camposModificados(actual, { ...actual, name, description }, CAMPOS_TABLERO);
+      if (cambios !== null) {
         await tx.updateBoardFields(boardId, { name, description });
+        await this.#audit.registrar(tx, ctx, actualizacion("board", boardId, cambios));
       }
 
       return this.#detalle(tx, boardId);
@@ -174,13 +202,27 @@ export class BoardService {
    * servicio no la replica: hacerlo a mano abriria la posibilidad de que las
    * dos versiones se separen.
    */
-  async delete(boardId: string): Promise<void> {
+  async delete(boardId: string, ctx: ActorContext): Promise<void> {
     await this.#boards.inTransaction(async (tx) => {
       const actual = await tx.findBoard(boardId);
       if (actual === undefined) {
         throw tableroNoEncontrado(boardId);
       }
+
+      // Se lee lo que se va a perder ANTES de borrarlo: despues del DELETE ya
+      // no hay de donde sacarlo, y la 5.2 pide el recuento de las entidades
+      // eliminadas en cascada.
+      const columnas = await tx.readBoardColumns(boardId);
+      const tareas = await tx.countTasksInBoard(boardId);
+
       await tx.deleteBoard(boardId);
+      await this.#audit.registrar(
+        tx,
+        ctx,
+        borrado("board", boardId, tableroConColumnas({ ...actual, columns: columnas }), {
+          tasks: tareas,
+        }),
+      );
     });
   }
 

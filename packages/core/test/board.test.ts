@@ -11,7 +11,7 @@ import {
   TaskService,
   TransactionRunner,
 } from "../src/index.js";
-import { connectDb, contarFilas, porKey, truncateAll, uuid } from "./helpers.js";
+import { connectDb, contarFilas, ctx, porKey, truncateAll, uuid } from "./helpers.js";
 
 let db: Client;
 let tableros: BoardService;
@@ -47,7 +47,7 @@ async function capturarDominio(run: () => Promise<unknown>): Promise<DomainError
 
 describe("create", () => {
   it("sin columnas crea las cuatro por defecto de la 4.3", async () => {
-    const tablero = await tableros.create({ name: "Personal" });
+    const tablero = await tableros.create({ name: "Personal" }, ctx());
 
     // Orden, keys y nombres exactos: son el contrato con el que los agentes
     // resuelven referencias por nombre.
@@ -72,7 +72,7 @@ describe("create", () => {
         { name: "Ideas", key: " ideas " },
         { name: "En revision", key: "en revision" },
       ],
-    });
+    }, ctx());
 
     expect(tablero.columns.map((columna) => [columna.position, columna.key])).toEqual([
       [0, "IDEAS"],
@@ -88,7 +88,7 @@ describe("create", () => {
           { name: "Uno", key: "todo" },
           { name: "Dos", key: " TODO " },
         ],
-      }),
+      }, ctx()),
     );
 
     expect(error.code).toBe("DUPLICATE_KEY");
@@ -96,15 +96,15 @@ describe("create", () => {
   });
 
   it("guarda el nombre recortado y rechaza uno en blanco", async () => {
-    const tablero = await tableros.create({ name: "  Personal  " });
+    const tablero = await tableros.create({ name: "  Personal  " }, ctx());
     expect(tablero.name).toBe("Personal");
 
-    const error = await capturarDominio(() => tableros.create({ name: " " }));
+    const error = await capturarDominio(() => tableros.create({ name: " " }, ctx()));
     expect(error.code).toBe("NAME_REQUIRED");
   });
 
   it("rechaza un nombre de mas de 120 caracteres con error de dominio", async () => {
-    const error = await capturarDominio(() => tableros.create({ name: "a".repeat(121) }));
+    const error = await capturarDominio(() => tableros.create({ name: "a".repeat(121) }, ctx()));
 
     expect(error.code).toBe("NAME_TOO_LONG");
     expect(error.details).toMatchObject({ field: "name", length: 121, maxLength: 120 });
@@ -112,7 +112,7 @@ describe("create", () => {
 
   it("rechaza una descripcion de mas de 2000 caracteres", async () => {
     const error = await capturarDominio(() =>
-      tableros.create({ name: "Personal", description: "a".repeat(2001) }),
+      tableros.create({ name: "Personal", description: "a".repeat(2001) }, ctx()),
     );
 
     expect(error.code).toBe("DESCRIPTION_TOO_LONG");
@@ -120,7 +120,10 @@ describe("create", () => {
 
   it("el tablero y sus columnas se crean en la misma transaccion", async () => {
     const error = await capturarDominio(() =>
-      tableros.create({ name: "Roto", columns: [{ name: "Ok", key: "OK" }, { name: " ", key: "X" }] }),
+      tableros.create(
+        { name: "Roto", columns: [{ name: "Ok", key: "OK" }, { name: " ", key: "X" }] },
+        ctx(),
+      ),
     );
 
     expect(error.code).toBe("NAME_REQUIRED");
@@ -132,7 +135,7 @@ describe("create", () => {
 
 describe("get, list y update", () => {
   it("get devuelve el tablero con sus columnas en orden", async () => {
-    const creado = await tableros.create({ name: "Personal" });
+    const creado = await tableros.create({ name: "Personal" }, ctx());
 
     const leido = await tableros.get(creado.id);
 
@@ -152,7 +155,7 @@ describe("get, list y update", () => {
 
   it("list pagina por cursor", async () => {
     for (const nombre of ["Alfa", "Beta", "Gamma"]) {
-      await tableros.create({ name: nombre });
+      await tableros.create({ name: nombre }, ctx());
     }
 
     const vistos: string[] = [];
@@ -171,32 +174,32 @@ describe("get, list y update", () => {
   });
 
   it("update cambia nombre y descripcion, y sin cambio efectivo no escribe", async () => {
-    const creado = await tableros.create({ name: "Personal" });
+    const creado = await tableros.create({ name: "Personal" }, ctx());
 
-    const renombrado = await tableros.update(creado.id, { name: "Trabajo" });
+    const renombrado = await tableros.update(creado.id, { name: "Trabajo" }, ctx());
     expect(renombrado.name).toBe("Trabajo");
     expect(renombrado.columns).toHaveLength(4);
 
-    const sinCambio = await tableros.update(creado.id, { name: "Trabajo" });
+    const sinCambio = await tableros.update(creado.id, { name: "Trabajo" }, ctx());
     expect(sinCambio.updatedAt.getTime()).toBe(renombrado.updatedAt.getTime());
   });
 });
 
 describe("delete", () => {
   it("se lleva columnas y tareas en cascada, sin error", async () => {
-    const tablero = await tableros.create({ name: "Personal" });
+    const tablero = await tableros.create({ name: "Personal" }, ctx());
     await tareas.create({
       boardId: tablero.id,
       columnId: porKey(tablero.columns, "BACKLOG"),
       title: "Una",
-    });
+    }, ctx());
     await tareas.create({
       boardId: tablero.id,
       columnId: porKey(tablero.columns, "TODO"),
       title: "Otra",
-    });
+    }, ctx());
 
-    await tableros.delete(tablero.id);
+    await tableros.delete(tablero.id, ctx());
 
     expect(await contarFilas(db, "board")).toBe(0);
     expect(await contarFilas(db, "board_column")).toBe(0);
@@ -204,22 +207,22 @@ describe("delete", () => {
   });
 
   it("no toca los otros tableros", async () => {
-    const uno = await tableros.create({ name: "Uno" });
-    const dos = await tableros.create({ name: "Dos" });
+    const uno = await tableros.create({ name: "Uno" }, ctx());
+    const dos = await tableros.create({ name: "Dos" }, ctx());
     await tareas.create({
       boardId: dos.id,
       columnId: porKey(dos.columns, "TODO"),
       title: "Sobrevive",
-    });
+    }, ctx());
 
-    await tableros.delete(uno.id);
+    await tableros.delete(uno.id, ctx());
 
     expect(await contarFilas(db, "board")).toBe(1);
     expect(await contarFilas(db, "task")).toBe(1);
   });
 
   it("BOARD_NOT_FOUND si no existe", async () => {
-    const error = await capturarDominio(() => tableros.delete(uuid()));
+    const error = await capturarDominio(() => tableros.delete(uuid(), ctx()));
     expect(error.code).toBe("BOARD_NOT_FOUND");
   });
 });

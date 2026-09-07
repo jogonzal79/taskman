@@ -1,4 +1,5 @@
 import { resolverColumnaDelTablero, ubicarTarea } from "../lookup.js";
+import type { FabricaDeContexto } from "../contexto.js";
 import type { TaskManagerPort } from "../port.js";
 import { definirHandler, respuesta } from "../respuesta.js";
 import type { McpToolDefinition } from "../tool.js";
@@ -20,7 +21,10 @@ const shape = {
   position: campoPosition,
 };
 
-export function definirMoveTask(port: TaskManagerPort): McpToolDefinition {
+export function definirMoveTask(
+  port: TaskManagerPort,
+  contexto: FabricaDeContexto,
+): McpToolDefinition {
   return {
     name: "move_task",
     title: "Mover tarea",
@@ -40,10 +44,11 @@ export function definirMoveTask(port: TaskManagerPort): McpToolDefinition {
       const { tablero, taskId } = await ubicarTarea(port, args.task, args.board);
       const destino = resolverColumnaDelTablero(tablero, args.to_column);
 
-      const resultado = await port.moveTask(taskId, {
-        columnId: destino.id,
-        position: args.position,
-      });
+      const resultado = await port.moveTask(
+        taskId,
+        { columnId: destino.id, position: args.position },
+        contexto(),
+      );
 
       const keyDe = new Map(tablero.columns.map((columna) => [columna.id, columna.key]));
       const origen = keyDe.get(resultado.fromColumnId) ?? resultado.fromColumnId;

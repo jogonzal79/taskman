@@ -1,6 +1,15 @@
 import { randomUUID } from "node:crypto";
 
 import type { BoardRepository, BoardTransaction, LockedColumn } from "../db/board-repository.js";
+import type { ActorContext } from "../domain/actor.js";
+import {
+  actualizacion,
+  borrado,
+  camposModificados,
+  CAMPOS_COLUMNA,
+  columnaCompleta,
+  creacion,
+} from "../domain/audit.js";
 import { LIMITE_COLUMN_NAME, normalizarColumnKey } from "../domain/column-key.js";
 import { DomainError } from "../domain/errors.js";
 import { assertValidPosition } from "../domain/order.js";
@@ -12,6 +21,7 @@ import type {
   TargetPosition,
   UpdateColumnInput,
 } from "../domain/types.js";
+import { AuditService } from "./audit-service.js";
 
 /** Saca el elemento de la lista y lo reinserta en la posicion pedida. */
 function reubicar(ids: readonly string[], id: string, position: TargetPosition): string[] {
@@ -48,16 +58,18 @@ function columnaNoEncontrada(columnId: string): DomainError {
 
 export class ColumnService {
   readonly #boards: BoardRepository;
+  readonly #audit: AuditService;
 
-  constructor(boards: BoardRepository) {
+  constructor(boards: BoardRepository, audit: AuditService = new AuditService()) {
     this.#boards = boards;
+    this.#audit = audit;
   }
 
   /**
    * Crea una columna en el tablero. La key se normaliza a mayusculas sin
    * espacios y tiene que ser unica dentro del tablero (5.2).
    */
-  async create(input: CreateColumnInput): Promise<Column> {
+  async create(input: CreateColumnInput, ctx: ActorContext): Promise<Column> {
     const detalle = { boardId: input.boardId };
     const name = normalizarNombre(input.name, detalle);
     const key = normalizarColumnKey(input.key, detalle);
@@ -97,7 +109,11 @@ export class ColumnService {
       await tx.insertColumn({ id, boardId: input.boardId, name, key, position: indice });
       await tx.rewriteBoardColumns(input.boardId, orden);
 
-      return this.#leer(tx, id);
+      // Se lee despues de reescribir el orden: la position que se registra es
+      // la definitiva, no la que se calculo antes de reindexar el tablero.
+      const columna = await this.#leer(tx, id);
+      await this.#audit.registrar(tx, ctx, creacion("column", id, columnaCompleta(columna)));
+      return columna;
     });
   }
 
@@ -105,7 +121,7 @@ export class ColumnService {
    * Renombra o reordena (6.2). La `key` no se toca: los agentes resuelven
    * referencias con ella, asi que es estable por diseno.
    */
-  async update(columnId: string, patch: UpdateColumnInput): Promise<Column> {
+  async update(columnId: string, patch: UpdateColumnInput, ctx: ActorContext): Promise<Column> {
     return this.#boards.inTransaction(async (tx) => {
       const actual = await tx.findColumn(columnId);
       if (actual === undefined) {
@@ -127,7 +143,20 @@ export class ColumnService {
         await tx.rewriteBoardColumns(actual.boardId, reubicar(existentes, columnId, patch.position));
       }
 
-      return this.#leer(tx, columnId);
+      // El antes y el despues salen los dos de la base. Importa para `position`:
+      // "end" o un indice pasado de largo se ajustan al reindexar, asi que la
+      // position pedida no es necesariamente la que quedo.
+      //
+      // Reordenar una columna mueve tambien a las demas del tablero, y eso NO
+      // deja un registro por columna: el evento es el de la columna que se
+      // pidio mover, igual que un move de tarea no audita a sus vecinas.
+      const final = await this.#leer(tx, columnId);
+      const cambios = camposModificados(actual, final, CAMPOS_COLUMNA);
+      if (cambios !== null) {
+        await this.#audit.registrar(tx, ctx, actualizacion("column", columnId, cambios));
+      }
+
+      return final;
     });
   }
 
@@ -139,7 +168,7 @@ export class ColumnService {
    * la MISMA transaccion, asi que nunca hay un instante con tareas huerfanas ni
    * con la columna a medio borrar.
    */
-  async delete(columnId: string, options: DeleteColumnOptions = {}): Promise<void> {
+  async delete(columnId: string, options: DeleteColumnOptions, ctx: ActorContext): Promise<void> {
     await this.#boards.inTransaction(async (tx) => {
       const actual = await tx.findColumn(columnId);
       if (actual === undefined) {
@@ -156,6 +185,18 @@ export class ColumnService {
       await tx.rewriteBoardColumns(
         actual.boardId,
         existentes.filter((id) => id !== columnId),
+      );
+
+      // `reassigned_to` distingue las dos formas de borrar una columna con
+      // tareas: sin el, el registro de una columna que cedio veinte tareas es
+      // identico al de una que estaba vacia.
+      await this.#audit.registrar(
+        tx,
+        ctx,
+        borrado("column", columnId, columnaCompleta(actual), {
+          tasks: tareas,
+          reassigned_to: tareas === 0 ? null : (options.reassignTo ?? null),
+        }),
       );
     });
   }

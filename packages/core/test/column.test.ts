@@ -13,6 +13,7 @@ import {
 } from "../src/index.js";
 import {
   connectDb,
+  ctx,
   expectColumnaDensa,
   expectTableroDenso,
   insertBoard,
@@ -67,7 +68,7 @@ interface Tablero {
 }
 
 async function sembrar(): Promise<Tablero> {
-  const tablero = await tableros.create({ name: "Personal" });
+  const tablero = await tableros.create({ name: "Personal" }, ctx());
   return {
     id: tablero.id,
     backlog: porKey(tablero.columns, "BACKLOG"),
@@ -81,7 +82,10 @@ describe("create", () => {
   it("sin position va al final y normaliza la key", async () => {
     const t = await sembrar();
 
-    const creada = await columnas.create({ boardId: t.id, name: "En revision", key: "en revision" });
+    const creada = await columnas.create(
+      { boardId: t.id, name: "En revision", key: "en revision" },
+      ctx(),
+    );
 
     expect(creada.position).toBe(4);
     expect(creada.key).toBe("EN_REVISION");
@@ -96,7 +100,7 @@ describe("create", () => {
       name: "Bloqueado",
       key: "BLOCKED",
       position: 1,
-    });
+    }, ctx());
 
     expect(creada.position).toBe(1);
     expect(await leerColumnas(db, t.id)).toEqual([
@@ -113,7 +117,7 @@ describe("create", () => {
     const t = await sembrar();
 
     const error = await capturarDominio(() =>
-      columnas.create({ boardId: t.id, name: "Otra", key: " todo " }),
+      columnas.create({ boardId: t.id, name: "Otra", key: " todo " }, ctx()),
     );
 
     expect(error.code).toBe("DUPLICATE_KEY");
@@ -123,9 +127,15 @@ describe("create", () => {
 
   it("la misma key en otro tablero si se permite", async () => {
     const t = await sembrar();
-    const otro = await tableros.create({ name: "Otro", columns: [{ name: "Uno", key: "UNO" }] });
+    const otro = await tableros.create(
+      { name: "Otro", columns: [{ name: "Uno", key: "UNO" }] },
+      ctx(),
+    );
 
-    const creada = await columnas.create({ boardId: otro.id, name: "Por hacer", key: "TODO" });
+    const creada = await columnas.create(
+      { boardId: otro.id, name: "Por hacer", key: "TODO" },
+      ctx(),
+    );
 
     expect(creada.key).toBe("TODO");
     expect(creada.boardId).toBe(otro.id);
@@ -134,7 +144,7 @@ describe("create", () => {
 
   it("BOARD_NOT_FOUND si el tablero no existe", async () => {
     const error = await capturarDominio(() =>
-      columnas.create({ boardId: uuid(), name: "X", key: "X" }),
+      columnas.create({ boardId: uuid(), name: "X", key: "X" }, ctx()),
     );
     expect(error.code).toBe("BOARD_NOT_FOUND");
   });
@@ -142,7 +152,7 @@ describe("create", () => {
   it("rechaza una key en blanco", async () => {
     const t = await sembrar();
     const error = await capturarDominio(() =>
-      columnas.create({ boardId: t.id, name: "Sin key", key: " " }),
+      columnas.create({ boardId: t.id, name: "Sin key", key: " " }, ctx()),
     );
     expect(error.code).toBe("COLUMN_KEY_REQUIRED");
   });
@@ -152,7 +162,7 @@ describe("update", () => {
   it("renombra sin tocar el orden", async () => {
     const t = await sembrar();
 
-    const renombrada = await columnas.update(t.todo, { name: "  Pendiente  " });
+    const renombrada = await columnas.update(t.todo, { name: "  Pendiente  " }, ctx());
 
     expect(renombrada.name).toBe("Pendiente");
     expect(renombrada.key).toBe("TODO");
@@ -162,7 +172,7 @@ describe("update", () => {
   it("reordena hacia adelante y deja el orden denso", async () => {
     const t = await sembrar();
 
-    const movida = await columnas.update(t.backlog, { position: 2 });
+    const movida = await columnas.update(t.backlog, { position: 2 }, ctx());
 
     expect(movida.position).toBe(2);
     expect(await leerColumnas(db, t.id)).toEqual([t.todo, t.inProgress, t.backlog, t.done]);
@@ -172,7 +182,7 @@ describe("update", () => {
   it("reordena hacia atras y deja el orden denso", async () => {
     const t = await sembrar();
 
-    const movida = await columnas.update(t.done, { position: 0 });
+    const movida = await columnas.update(t.done, { position: 0 }, ctx());
 
     expect(movida.position).toBe(0);
     expect(await leerColumnas(db, t.id)).toEqual([t.done, t.backlog, t.todo, t.inProgress]);
@@ -182,7 +192,7 @@ describe("update", () => {
   it("una position mayor que el tablero se ajusta al final", async () => {
     const t = await sembrar();
 
-    const movida = await columnas.update(t.backlog, { position: 99 });
+    const movida = await columnas.update(t.backlog, { position: 99 }, ctx());
 
     expect(movida.position).toBe(3);
     await expectTableroDenso(db, t.id);
@@ -190,12 +200,12 @@ describe("update", () => {
 
   it("INVALID_ORDER si la position es negativa", async () => {
     const t = await sembrar();
-    const error = await capturarDominio(() => columnas.update(t.todo, { position: -1 }));
+    const error = await capturarDominio(() => columnas.update(t.todo, { position: -1 }, ctx()));
     expect(error.code).toBe("INVALID_ORDER");
   });
 
   it("COLUMN_NOT_FOUND si no existe", async () => {
-    const error = await capturarDominio(() => columnas.update(uuid(), { name: "X" }));
+    const error = await capturarDominio(() => columnas.update(uuid(), { name: "X" }, ctx()));
     expect(error.code).toBe("COLUMN_NOT_FOUND");
   });
 });
@@ -204,7 +214,7 @@ describe("delete", () => {
   it("una columna vacia se va y el tablero queda denso", async () => {
     const t = await sembrar();
 
-    await columnas.delete(t.todo);
+    await columnas.delete(t.todo, {}, ctx());
 
     expect(await leerColumnas(db, t.id)).toEqual([t.backlog, t.inProgress, t.done]);
     await expectTableroDenso(db, t.id);
@@ -212,9 +222,9 @@ describe("delete", () => {
 
   it("COLUMN_NOT_EMPTY si tiene tareas y no se indica reassignTo", async () => {
     const t = await sembrar();
-    await tareas.create({ boardId: t.id, columnId: t.todo, title: "Una" });
+    await tareas.create({ boardId: t.id, columnId: t.todo, title: "Una" }, ctx());
 
-    const error = await capturarDominio(() => columnas.delete(t.todo));
+    const error = await capturarDominio(() => columnas.delete(t.todo, {}, ctx()));
 
     expect(error.code).toBe("COLUMN_NOT_EMPTY");
     expect(error.details).toMatchObject({ columnId: t.todo, taskCount: 1 });
@@ -226,11 +236,20 @@ describe("delete", () => {
 
   it("con reassignTo las tareas quedan al final de la columna destino", async () => {
     const t = await sembrar();
-    const destino1 = await tareas.create({ boardId: t.id, columnId: t.inProgress, title: "Ya estaba" });
-    const origen1 = await tareas.create({ boardId: t.id, columnId: t.todo, title: "Primera" });
-    const origen2 = await tareas.create({ boardId: t.id, columnId: t.todo, title: "Segunda" });
+    const destino1 = await tareas.create(
+      { boardId: t.id, columnId: t.inProgress, title: "Ya estaba" },
+      ctx(),
+    );
+    const origen1 = await tareas.create(
+      { boardId: t.id, columnId: t.todo, title: "Primera" },
+      ctx(),
+    );
+    const origen2 = await tareas.create(
+      { boardId: t.id, columnId: t.todo, title: "Segunda" },
+      ctx(),
+    );
 
-    await columnas.delete(t.todo, { reassignTo: t.inProgress });
+    await columnas.delete(t.todo, { reassignTo: t.inProgress }, ctx());
 
     // Las de la columna que se fue quedan al final, en su orden original.
     expect(await leerOrden(db, t.inProgress)).toEqual([destino1.id, origen1.id, origen2.id]);
@@ -241,11 +260,13 @@ describe("delete", () => {
 
   it("reassignTo a una columna de otro tablero es rechazado", async () => {
     const t = await sembrar();
-    await tareas.create({ boardId: t.id, columnId: t.todo, title: "Una" });
-    const otro = await tableros.create({ name: "Otro" });
+    await tareas.create({ boardId: t.id, columnId: t.todo, title: "Una" }, ctx());
+    const otro = await tableros.create({ name: "Otro" }, ctx());
     const ajena = porKey(otro.columns, "TODO");
 
-    const error = await capturarDominio(() => columnas.delete(t.todo, { reassignTo: ajena }));
+    const error = await capturarDominio(() =>
+      columnas.delete(t.todo, { reassignTo: ajena }, ctx()),
+    );
 
     expect(error.code).toBe("COLUMN_NOT_IN_BOARD");
     // La transaccion no dejo rastro: ni se movieron tareas ni se borro nada.
@@ -255,24 +276,28 @@ describe("delete", () => {
 
   it("reassignTo a la misma columna es rechazado", async () => {
     const t = await sembrar();
-    await tareas.create({ boardId: t.id, columnId: t.todo, title: "Una" });
+    await tareas.create({ boardId: t.id, columnId: t.todo, title: "Una" }, ctx());
 
-    const error = await capturarDominio(() => columnas.delete(t.todo, { reassignTo: t.todo }));
+    const error = await capturarDominio(() =>
+      columnas.delete(t.todo, { reassignTo: t.todo }, ctx()),
+    );
 
     expect(error.code).toBe("INVALID_REASSIGN_TARGET");
   });
 
   it("reassignTo a una columna inexistente es rechazado", async () => {
     const t = await sembrar();
-    await tareas.create({ boardId: t.id, columnId: t.todo, title: "Una" });
+    await tareas.create({ boardId: t.id, columnId: t.todo, title: "Una" }, ctx());
 
-    const error = await capturarDominio(() => columnas.delete(t.todo, { reassignTo: uuid() }));
+    const error = await capturarDominio(() =>
+      columnas.delete(t.todo, { reassignTo: uuid() }, ctx()),
+    );
 
     expect(error.code).toBe("COLUMN_NOT_FOUND");
   });
 
   it("COLUMN_NOT_FOUND si no existe", async () => {
-    const error = await capturarDominio(() => columnas.delete(uuid()));
+    const error = await capturarDominio(() => columnas.delete(uuid(), {}, ctx()));
     expect(error.code).toBe("COLUMN_NOT_FOUND");
   });
 });
@@ -282,8 +307,8 @@ describe("concurrencia", () => {
     const t = await sembrar();
 
     const resultados = await Promise.allSettled([
-      columnas.create({ boardId: t.id, name: "Una", key: "UNA", position: 0 }),
-      columnas.create({ boardId: t.id, name: "Otra", key: "OTRA", position: 0 }),
+      columnas.create({ boardId: t.id, name: "Una", key: "UNA", position: 0 }, ctx()),
+      columnas.create({ boardId: t.id, name: "Otra", key: "OTRA", position: 0 }, ctx()),
     ]);
 
     const motivos = resultados
@@ -305,8 +330,8 @@ describe("concurrencia", () => {
     expect(await leerColumnas(db, boardId)).toEqual([]);
 
     const resultados = await Promise.allSettled([
-      columnas.create({ boardId, name: "Una", key: "UNA" }),
-      columnas.create({ boardId, name: "Otra", key: "OTRA" }),
+      columnas.create({ boardId, name: "Una", key: "UNA" }, ctx()),
+      columnas.create({ boardId, name: "Otra", key: "OTRA" }, ctx()),
     ]);
 
     const motivos = resultados
@@ -336,8 +361,8 @@ describe("concurrencia", () => {
     const t = await sembrar();
 
     const resultados = await Promise.allSettled([
-      columnas.create({ boardId: t.id, name: "Nueva", key: "NUEVA", position: 0 }),
-      tareas.create({ boardId: t.id, columnId: t.todo, title: "Tarea" }),
+      columnas.create({ boardId: t.id, name: "Nueva", key: "NUEVA", position: 0 }, ctx()),
+      tareas.create({ boardId: t.id, columnId: t.todo, title: "Tarea" }, ctx()),
     ]);
 
     const motivos = resultados

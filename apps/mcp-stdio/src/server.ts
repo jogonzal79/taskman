@@ -1,6 +1,11 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { crearHerramientas, type OpcionesRegistro, type TaskManagerPort } from "@taskman/core";
+import {
+  contextoDeAgente,
+  crearHerramientas,
+  type OpcionesRegistro,
+  type TaskManagerPort,
+} from "@taskman/core";
 
 /**
  * Monta el registro unico de herramientas del nucleo sobre un `McpServer`.
@@ -26,7 +31,14 @@ export function crearServidorMcp(
     },
   );
 
-  for (const herramienta of crearHerramientas(port, opciones)) {
+  // El nombre del cliente se lee EN CADA llamada y no al montar: cuando esto
+  // corre, el cliente todavia no se identifico —eso pasa en el initialize del
+  // protocolo, despues del connect— asi que resolverlo ahora dejaria todos los
+  // registros de auditoria con el actor desconocido.
+  const contexto = (): ReturnType<typeof contextoDeAgente> =>
+    contextoDeAgente(server.server.getClientVersion()?.name);
+
+  for (const herramienta of crearHerramientas(port, { ...opciones, contexto })) {
     const registrada = server.registerTool(
       herramienta.name,
       {

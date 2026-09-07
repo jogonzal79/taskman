@@ -18,7 +18,7 @@ import type { Client as PgClient } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { crearServidorMcp } from "../src/server.js";
-import { connectDb, truncateAll } from "./helpers.js";
+import { connectDb, ctx, truncateAll } from "./helpers.js";
 
 /**
  * El servidor MCP visto como lo ve un agente: por el protocolo, con un cliente
@@ -112,7 +112,7 @@ function detalles(resultado: Resultado): Record<string, unknown> {
 // --- Siembra -----------------------------------------------------------------
 
 async function sembrarTablero(name = "QA"): Promise<BoardDetail> {
-  return tableros.create({ name });
+  return tableros.create({ name }, ctx());
 }
 
 async function crear(
@@ -1316,5 +1316,126 @@ describe("MCP_DESTRUCTIVE_POLICY", () => {
     expect(salida.code).toBe(1);
     expect(salida.stderr).toContain("MCP_DESTRUCTIVE_POLICY");
     expect(salida.stderr).toContain("confirm, allow, deny");
+  });
+});
+
+// --- Auditoria (7.4) ---------------------------------------------------------
+
+interface FilaAuditoria {
+  actor_type: string;
+  actor_name: string;
+  action: string;
+  entity_type: string;
+  request_id: string | null;
+}
+
+async function auditoria(): Promise<FilaAuditoria[]> {
+  const filas = await db.query<FilaAuditoria>(
+    `SELECT actor_type, actor_name, action, entity_type, request_id
+       FROM audit_log
+      ORDER BY id`,
+  );
+  return filas.rows;
+}
+
+describe("auditoria", () => {
+  /**
+   * Las once herramientas de la 8.2 en una sola pasada.
+   *
+   * Se ejercitan TODAS y no solo las que escriben porque la afirmacion que hay
+   * que sostener tiene dos mitades: lo que pasa por MCP se registra como AGENT,
+   * y las lecturas no dejan nada (7.4). Probar solo las seis escrituras dejaria
+   * la segunda mitad sin verificar, que es justo la que se rompe sola.
+   */
+  it("las once herramientas: las seis que escriben registran AGENT y las cinco que leen no registran", async () => {
+    // 1. create_board
+    const tablero = await llamar("create_board", { name: "Auditado" });
+    expect(tablero.isError, tablero.texto).toBe(false);
+
+    // 2 y 3. Lecturas de tablero.
+    expect((await llamar("list_boards", {})).isError).toBe(false);
+    expect((await llamar("get_board", { board: "Auditado" })).isError).toBe(false);
+
+    // 4. create_column
+    expect(
+      (await llamar("create_column", { board: "Auditado", key: "REVIEW", name: "En revision" }))
+        .isError,
+    ).toBe(false);
+
+    // 5. create_task
+    await crear("Auditado", "TODO", "Auditar esto");
+
+    // 6, 7 y 8. Lecturas de tarea.
+    expect((await llamar("list_tasks", { board: "Auditado" })).isError).toBe(false);
+    expect((await llamar("search_tasks", { text: "Auditar" })).isError).toBe(false);
+    expect((await llamar("get_task", { board: "Auditado", task: "Auditar esto" })).isError).toBe(
+      false,
+    );
+
+    // 9. update_task
+    expect(
+      (await llamar("update_task", { board: "Auditado", task: "Auditar esto", priority: "HIGH" }))
+        .isError,
+    ).toBe(false);
+
+    // 10. move_task
+    expect(
+      (await llamar("move_task", {
+        board: "Auditado",
+        task: "Auditar esto",
+        to_column: "REVIEW",
+        position: 0,
+      })).isError,
+    ).toBe(false);
+
+    // 11. delete_task, en sus dos mitades. La primera NO es una escritura: la
+    // confirmacion de la 8.3.2 no toca la base, asi que tampoco se audita.
+    const pendiente = await llamar("delete_task", { board: "Auditado", task: "Auditar esto" });
+    expect(error(pendiente)["code"]).toBe("CONFIRMATION_REQUIRED");
+    const antesDeConfirmar = await auditoria();
+
+    const borrada = await llamar("delete_task", {
+      board: "Auditado",
+      task: "Auditar esto",
+      confirm: true,
+    });
+    expect(borrada.isError, borrada.texto).toBe(false);
+
+    const filas = await auditoria();
+    expect(filas.map((fila) => `${fila.action} ${fila.entity_type}`)).toEqual([
+      "CREATE board",
+      "CREATE column",
+      "CREATE task",
+      "UPDATE task",
+      "MOVE task",
+      "DELETE task",
+    ]);
+    // La confirmacion pendiente no habia dejado nada: el DELETE aparece recien
+    // con la segunda llamada.
+    expect(antesDeConfirmar).toHaveLength(filas.length - 1);
+
+    // Todo lo que entra por MCP es AGENT, y el nombre es el del cliente
+    // conectado, no una constante del servidor.
+    expect(new Set(filas.map((fila) => fila.actor_type))).toEqual(new Set(["AGENT"]));
+    expect(new Set(filas.map((fila) => fila.actor_name))).toEqual(new Set(["prueba"]));
+
+    // Un requestId por llamada: si fuera uno por proceso no correlacionaria
+    // nada, que es justamente lo que la 5.1 le pide.
+    const correlaciones = filas.map((fila) => fila.request_id);
+    expect(correlaciones.every((id) => typeof id === "string" && id !== "")).toBe(true);
+    expect(new Set(correlaciones).size).toBe(filas.length);
+  });
+
+  it("una llamada que falla no deja registro", async () => {
+    // El tablero se crea por la herramienta y no por `sembrarTablero`: la
+    // siembra pasa por los servicios con su propio contexto y dejaria un
+    // registro que no es el que esta prueba mira.
+    expect((await llamar("create_board", { name: "QA" })).isError).toBe(false);
+    const antes = await auditoria();
+
+    const fallida = await llamar("create_task", { board: "QA", column: "NO_EXISTE", title: "X" });
+    expect(fallida.isError).toBe(true);
+
+    expect(await auditoria()).toEqual(antes);
   });
 });

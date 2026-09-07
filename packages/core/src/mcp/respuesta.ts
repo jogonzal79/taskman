@@ -37,7 +37,15 @@ export function fechaIso(fecha: Date | null): string | null {
 
 // --- Errores -----------------------------------------------------------------
 
-/** La envoltura de error de la 6.4, sin `request_id`: todavia no hay auditoria. */
+/**
+ * La envoltura de error de la 6.4, sin `request_id`.
+ *
+ * Desde F3 hay requestId, pero vive en el `ActorContext` de las ESCRITURAS
+ * (7.4: las lecturas no se auditan), y un error puede venir de cualquiera de
+ * las once herramientas. Ponerlo aca obligaria a fabricar un contexto en las
+ * cinco de lectura solo para nombrar una correlacion que ademas todavia no
+ * apunta a nada: no hay log correlacionado hasta la 11.1.
+ */
 export interface ErrorSerializado {
   code: string;
   message: string;

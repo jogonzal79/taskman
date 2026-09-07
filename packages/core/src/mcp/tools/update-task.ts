@@ -3,6 +3,7 @@ import { z } from "zod";
 import { DomainError } from "../../domain/errors.js";
 import type { UpdateTaskInput } from "../../domain/types.js";
 import { ubicarTarea } from "../lookup.js";
+import type { FabricaDeContexto } from "../contexto.js";
 import type { TaskManagerPort } from "../port.js";
 import { definirHandler, respuesta } from "../respuesta.js";
 import type { McpToolDefinition } from "../tool.js";
@@ -71,7 +72,10 @@ const shape = {
 /** Los campos que este patch SI modifica. Vacio significa que no hay que escribir. */
 const MODIFICABLES = ["title", "description", "priority", "due_date"] as const;
 
-export function definirUpdateTask(port: TaskManagerPort): McpToolDefinition {
+export function definirUpdateTask(
+  port: TaskManagerPort,
+  contexto: FabricaDeContexto,
+): McpToolDefinition {
   return {
     name: "update_task",
     title: "Actualizar tarea",
@@ -134,7 +138,7 @@ export function definirUpdateTask(port: TaskManagerPort): McpToolDefinition {
         ...(dueDate === undefined ? {} : { dueDate }),
       };
 
-      const tarea = await port.updateTask(taskId, patch);
+      const tarea = await port.updateTask(taskId, patch, contexto());
       const columna = tablero.columns.find((candidata) => candidata.id === tarea.columnId);
 
       return respuesta(
