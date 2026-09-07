@@ -79,6 +79,10 @@ export class CorePort implements TaskManagerPort {
     return this.#tasks.move(taskId, target);
   }
 
+  async deleteTask(taskId: string): Promise<void> {
+    return this.#tasks.delete(taskId);
+  }
+
   async searchTasks(text: string, scope: SearchScope): Promise<Page<TaskMatch>> {
     return this.#tasks.search(text, scope);
   }

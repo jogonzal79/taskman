@@ -6,7 +6,7 @@ Especificación en `docs/`:
 - Documento Técnico-Funcional v1.0
 - Especificación Técnica de Desarrollo v1.0
 
-Estado: F2.1 — servidor MCP por stdio con tres herramientas.
+Estado: F2.3 — servidor MCP por stdio con el catálogo completo de la sección 8.2.
 
 ## Puesta en marcha
 
@@ -19,13 +19,23 @@ pnpm run verify                # levanta la base, migra, compila y corre las pru
 `verify` deja construido `apps/mcp-stdio/dist/index.js`, que es lo que arranca
 el servidor MCP.
 
-## Servidor MCP (F2.1)
+## Servidor MCP
 
-Tres herramientas —`list_tasks`, `create_task`, `move_task`— sobre el transporte
-stdio de la sección 8.1 de la especificación, en modo `core`: los servicios
-corren en el mismo proceso y hablan con PostgreSQL directamente, sin pasar por
-HTTP. El modo `http` de la 8.1 todavía no existe y el servidor falla al
-arrancar si se lo pide.
+Las once herramientas del catálogo de la sección 8.2, completo, sobre el
+transporte stdio de la 8.1 en modo `core`: los servicios corren en el mismo
+proceso y hablan con PostgreSQL directamente, sin pasar por HTTP. El modo `http`
+de la 8.1 todavía no existe y el servidor falla al arrancar si se lo pide.
+
+| Entidad | Herramientas |
+| --- | --- |
+| Tableros | `list_boards`, `get_board`, `create_board` |
+| Columnas | `create_column` |
+| Tareas | `list_tasks`, `search_tasks`, `get_task`, `create_task`, `update_task`, `move_task`, `delete_task` |
+
+`delete_task` es la única destructiva y tiene su propia política, más abajo. No
+hay borrado masivo, y es a propósito (sección 8.3.3): enumerar con `list_tasks`
+y borrar de a una hace que el alcance sea visible antes de actuar y que un fallo
+parcial sea reparable elemento a elemento.
 
 ### Usarlo desde Claude Code
 
@@ -44,30 +54,41 @@ Claude Code toma el `.mcp.json` del directorio desde el que arranca y pide
 confirmación la primera vez. `/mcp` dentro de la sesión muestra el estado del
 servidor y sus herramientas.
 
-Las tres herramientas resuelven tableros, columnas y tareas por nombre además
-de por id, así que "creá 'Revisar HU-25' en TODO del tablero QA" es una sola
-llamada. Si un nombre es ambiguo, la herramienta devuelve `AMBIGUOUS_MATCH` con
-los candidatos y no elige: hay que desambiguar.
+Todas resuelven tableros, columnas y tareas por nombre además de por id, así que
+"creá 'Revisar HU-25' en TODO del tablero QA" es una sola llamada. Si un nombre
+es ambiguo, la herramienta devuelve `AMBIGUOUS_MATCH` con los candidatos y no
+elige: hay que desambiguar.
+
+### Borrado de tareas
+
+`delete_task` es la única herramienta destructiva del catálogo (sección 8.2) y
+se controla con `MCP_DESTRUCTIVE_POLICY` en el bloque `env` del `.mcp.json`:
+
+| Valor | Qué hace |
+| --- | --- |
+| `confirm` (por defecto) | La llamada sin `confirm: true` no borra: devuelve `CONFIRMATION_REQUIRED` con la tarea entera —título, columna, prioridad, vencimiento y descripción— para que el agente te la muestre. Recién la segunda llamada, con `confirm: true`, la elimina. |
+| `allow` | Borra de inmediato, sin el paso de confirmación. |
+| `deny` | La herramienta **no se anuncia**: el agente no la ve al listar y no puede planificar un borrado. Si la invoca igual, la llamada falla y no toca la base. |
+
+El filtrado con `deny` ocurre en el listado y no solo en la ejecución, como pide
+la sección 8.1: una herramienta visible que siempre falla hace que el agente
+planifique acciones que no puede completar.
+
+Un valor que no sea uno de esos tres impide el arranque del servidor con un
+mensaje en stderr, en vez de caer en silencio al valor por defecto (sección
+11.2). Con `MCP_DESTRUCTIVE_POLICY=denyy` creerías tener el borrado apagado y lo
+tendrías encendido, solo que preguntando primero.
+
+El borrado reindexa la columna dentro de la misma transacción, así que el orden
+queda denso `0..n-1`; la respuesta trae el orden final completo de la columna
+para que el agente no tenga que volver a listar.
 
 ### El primer tablero
 
-F2.1 tiene tres herramientas —`list_tasks`, `create_task`, `move_task`— y
-ninguna crea tableros: `create_board` llega en un paso posterior. Hace falta al
-menos un tablero antes de que el agente pueda hacer nada, y por ahora se crea
-por SQL, con las cuatro columnas por defecto de la sección 4.3:
-
-```powershell
-docker exec -i taskman-postgres psql -U taskman -d taskman -v ON_ERROR_STOP=1 -c @'
-WITH nuevo AS (
-  INSERT INTO board (id, name) VALUES (gen_random_uuid(), 'Personal') RETURNING id
-)
-INSERT INTO board_column (id, board_id, name, key, position)
-SELECT gen_random_uuid(), nuevo.id, c.name, c.key, c.position
-  FROM nuevo, (VALUES (0,'BACKLOG','Backlog'),(1,'TODO','Por hacer'),
-                      (2,'IN_PROGRESS','En progreso'),(3,'DONE','Completado'))
-              AS c(position, key, name);
-'@
-```
+Ya no hace falta sembrarlo por SQL: `create_board` está en el catálogo, así que
+"creá un tablero Personal" alcanza. Sin columnas indicadas se crean las cuatro
+por defecto de la sección 4.3 —`BACKLOG`, `TODO`, `IN_PROGRESS`, `DONE`—, que es
+lo que espera el resto de las herramientas.
 
 ### Diagnóstico
 
@@ -77,10 +98,12 @@ Para ejecutarlo a mano y ver por qué no arranca:
 ```powershell
 $env:MCP_PORT_MODE = "core"
 $env:DATABASE_URL = "postgresql://taskman:taskman@127.0.0.1:5432/taskman?schema=public"
+$env:MCP_DESTRUCTIVE_POLICY = "confirm"
 node .\apps\mcp-stdio\dist\index.js
 ```
 
-Se queda esperando mensajes MCP por stdin; `Ctrl+C` lo corta.
+Se queda esperando mensajes MCP por stdin; `Ctrl+C` lo corta. La línea que
+escribe al arrancar dice con qué política de borrado quedó.
 
 ## Estructura
 

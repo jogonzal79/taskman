@@ -5,7 +5,8 @@
       "args": ["./apps/mcp-stdio/dist/index.js"],
       "env": {
         "MCP_PORT_MODE": "core",
-        "DATABASE_URL": "postgresql://USUARIO:CONTRASENA@127.0.0.1:5432/BASE?schema=public"
+        "DATABASE_URL": "postgresql://USUARIO:CONTRASENA@127.0.0.1:5432/BASE?schema=public",
+        "MCP_DESTRUCTIVE_POLICY": "confirm"
       }
     }
   }

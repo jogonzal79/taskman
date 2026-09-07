@@ -7,8 +7,13 @@ import {
   crearHerramientas,
   TransactionRunner,
   type BoardDetail,
+  type OpcionesRegistro,
+  type PoliticaDestructiva,
 } from "@taskman/core";
 import { prisma } from "@taskman/db";
+import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import type { Client as PgClient } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
@@ -29,14 +34,24 @@ let db: PgClient;
 let cliente: McpClient;
 let tableros: BoardService;
 
+/**
+ * Un cliente conectado a un servidor propio. La configuracion se pasa por
+ * parametro porque MCP_DESTRUCTIVE_POLICY cambia el CATALOGO, no solo el
+ * comportamiento de una llamada: probarla exige levantar otro servidor, no
+ * reconfigurar el que ya esta.
+ */
+async function conectar(opciones: OpcionesRegistro = {}): Promise<McpClient> {
+  const servidor = crearServidorMcp(crearCorePort(), opciones);
+  const [transporteCliente, transporteServidor] = InMemoryTransport.createLinkedPair();
+  const conectado = new McpClient({ name: "prueba", version: "0.0.0" });
+  await Promise.all([servidor.connect(transporteServidor), conectado.connect(transporteCliente)]);
+  return conectado;
+}
+
 beforeAll(async () => {
   db = await connectDb();
   tableros = new BoardService(new BoardRepository(new TransactionRunner(prisma)));
-
-  const servidor = crearServidorMcp(crearCorePort());
-  const [transporteCliente, transporteServidor] = InMemoryTransport.createLinkedPair();
-  cliente = new McpClient({ name: "prueba", version: "0.0.0" });
-  await Promise.all([servidor.connect(transporteServidor), cliente.connect(transporteCliente)]);
+  cliente = await conectar();
 });
 
 afterAll(async () => {
@@ -67,14 +82,22 @@ function extraerJson(texto: string): Record<string, unknown> {
   return JSON.parse(texto.slice(inicio + "```json\n".length, fin)) as Record<string, unknown>;
 }
 
-async function llamar(name: string, args: Record<string, unknown>): Promise<Resultado> {
-  const salida = await cliente.callTool({ name, arguments: args });
+async function llamarCon(
+  destino: McpClient,
+  name: string,
+  args: Record<string, unknown>,
+): Promise<Resultado> {
+  const salida = await destino.callTool({ name, arguments: args });
   const bloques = salida.content as Array<{ type: string; text?: string }>;
 
   expect(bloques).toHaveLength(1);
   const texto = bloques[0]?.text ?? "";
 
   return { texto, json: extraerJson(texto), isError: salida.isError === true };
+}
+
+async function llamar(name: string, args: Record<string, unknown>): Promise<Resultado> {
+  return llamarCon(cliente, name, args);
 }
 
 function error(resultado: Resultado): Record<string, unknown> {
@@ -106,15 +129,16 @@ async function crear(
 // --- Catalogo ----------------------------------------------------------------
 
 describe("catalogo", () => {
-  it("anuncia las diez herramientas no destructivas de la 8.2", async () => {
+  it("anuncia las once herramientas de la 8.2", async () => {
     const { tools } = await cliente.listTools();
 
-    // Las once de la 8.2 menos delete_task, la unica destructiva: llega con la
-    // politica de confirmacion de la 8.3.2, que es una decision propia.
+    // El catalogo completo. delete_task esta porque la politica por defecto es
+    // `confirm`: con `deny` no se anunciaria (ver el bloque de politica).
     expect(tools.map((tool) => tool.name).sort()).toEqual([
       "create_board",
       "create_column",
       "create_task",
+      "delete_task",
       "get_board",
       "get_task",
       "list_boards",
@@ -123,6 +147,19 @@ describe("catalogo", () => {
       "search_tasks",
       "update_task",
     ]);
+  });
+
+  it("solo delete_task se anuncia como destructiva", async () => {
+    const { tools } = await cliente.listTools();
+
+    const destructivas = tools
+      .filter((tool) => tool.annotations?.destructiveHint === true)
+      .map((tool) => tool.name);
+
+    // La 8.2 tiene una sola columna "Destructiva" en Si. Que el anuncio no
+    // coincida con esa tabla es lo que haria que un cliente que confia en las
+    // anotaciones pida confirmacion donde no hace falta, o peor, no la pida.
+    expect(destructivas).toEqual(["delete_task"]);
   });
 
   it("cada campo de cada esquema lleva descripcion", async () => {
@@ -174,6 +211,7 @@ describe("catalogo", () => {
     expect(campos("create_board")).toEqual(["columns", "description", "name"]);
     expect(campos("create_column")).toEqual(["board", "key", "name", "position"]);
     expect(campos("get_task")).toEqual(["board", "task"]);
+    expect(campos("delete_task")).toEqual(["board", "confirm", "task"]);
     expect(campos("search_tasks")).toEqual(["board", "column", "limit", "text"]);
     // `position` y `column` estan declarados a proposito aunque update_task no
     // los aplique: sin declararlos el validador los descartaria en silencio y
@@ -204,6 +242,10 @@ describe("catalogo", () => {
     expect(obligatorios("create_column")).toEqual(["board", "key", "name"]);
     expect(obligatorios("get_task")).toEqual(["task"]);
     expect(obligatorios("update_task")).toEqual(["task"]);
+    // `confirm` NO es obligatorio: omitirlo es justamente la primera mitad del
+    // dialogo de la 8.3.2. Declararlo requerido convertiria una confirmacion
+    // pendiente en un error de esquema, y el agente no veria que iba a borrar.
+    expect(obligatorios("delete_task")).toEqual(["task"]);
     expect(obligatorios("search_tasks")).toEqual(["text"]);
     // Listar tableros no necesita ningun argumento: es como se descubre que hay.
     expect(obligatorios("list_boards")).toEqual([]);
@@ -1009,5 +1051,270 @@ describe("search_tasks", () => {
     expect(resultado.isError, resultado.texto).toBe(false);
     expect(resultado.json["tasks"]).toEqual([]);
     expect(resultado.texto).toContain("Ninguna coincidencia");
+  });
+});
+
+// --- delete_task -------------------------------------------------------------
+
+describe("delete_task", () => {
+  it("sin confirm no borra y devuelve el detalle completo de lo que desapareceria", async () => {
+    await sembrarTablero("QA");
+    await crear("QA", "TODO", "Revisar HU-25", {
+      priority: "HIGH",
+      due_date: "2026-09-11",
+      description: "Falta el criterio de aceptacion 3.",
+    });
+
+    const resultado = await llamar("delete_task", { board: "QA", task: "Revisar HU-25" });
+
+    expect(error(resultado)["code"]).toBe("CONFIRMATION_REQUIRED");
+
+    // El agente tiene que poder mostrarle al usuario que va a desaparecer, y
+    // eso se lee del TEXTO: un detalle que solo esta en el JSON obliga al
+    // modelo a parafrasear una estructura en vez de citar una tarea.
+    expect(resultado.texto).toContain("Revisar HU-25");
+    expect(resultado.texto).toContain("TODO");
+    expect(resultado.texto).toContain("HIGH");
+    expect(resultado.texto).toContain("2026-09-11");
+    expect(resultado.texto).toContain("Falta el criterio de aceptacion 3.");
+
+    const tarea = detalles(resultado)["task"] as Record<string, unknown>;
+    expect(tarea["title"]).toBe("Revisar HU-25");
+    expect(tarea["column_key"]).toBe("TODO");
+    expect(tarea["priority"]).toBe("HIGH");
+    expect(tarea["due_date"]).toBe("2026-09-11");
+    expect(tarea["description"]).toBe("Falta el criterio de aceptacion 3.");
+
+    // Y la tarea sigue existiendo: una confirmacion que ya borro no confirma nada.
+    const despues = await llamar("get_task", { board: "QA", task: "Revisar HU-25" });
+    expect(despues.isError, despues.texto).toBe(false);
+  });
+
+  it("el hint trae el id resuelto, no el titulo con el que se llamo", async () => {
+    await sembrarTablero("QA");
+    const creada = await crear("QA", "TODO", "Revisar HU-25");
+    const id = (creada.json["task"] as Record<string, unknown>)["id"] as string;
+
+    const resultado = await llamar("delete_task", { board: "QA", task: "Revisar HU-25" });
+
+    // La segunda llamada tiene que apuntar a ESTA tarea. Si el hint repitiera
+    // el titulo, entre la confirmacion y el borrado podria aparecer otra tarea
+    // homonima, y el "si, borrala" del usuario caeria sobre un conjunto
+    // distinto del que se le mostro.
+    expect(error(resultado)["hint"]).toContain(id);
+  });
+
+  it("con confirm borra y la columna queda densa", async () => {
+    await sembrarTablero("QA");
+    const primera = await crear("QA", "TODO", "Uno");
+    await crear("QA", "TODO", "Dos");
+    const tercera = await crear("QA", "TODO", "Tres");
+
+    const resultado = await llamar("delete_task", { board: "QA", task: "Dos", confirm: true });
+
+    expect(resultado.isError, resultado.texto).toBe(false);
+    expect(resultado.texto).toContain("Tarea eliminada");
+
+    const columna = resultado.json["column"] as Record<string, unknown>;
+    expect(columna["key"]).toBe("TODO");
+    // El orden final completo, para encadenar sin volver a listar (8.5).
+    expect(columna["task_order"]).toEqual([
+      (primera.json["task"] as Record<string, unknown>)["id"],
+      (tercera.json["task"] as Record<string, unknown>)["id"],
+    ]);
+
+    const quedan = await llamar("list_tasks", { board: "QA", column: "TODO" });
+    const tareas = quedan.json["tasks"] as Array<Record<string, unknown>>;
+    expect(tareas.map((tarea) => tarea["title"])).toEqual(["Uno", "Tres"]);
+    // 0..n-1 sin huecos: el borrado reescribe la secuencia entera.
+    expect(tareas.map((tarea) => tarea["position"])).toEqual([0, 1]);
+  });
+
+  it("un titulo ambiguo devuelve AMBIGUOUS_MATCH antes de pedir confirmacion", async () => {
+    await sembrarTablero("QA");
+    await crear("QA", "TODO", "Revisar HU-25");
+    await crear("QA", "DONE", "Revisar HU-25");
+
+    const resultado = await llamar("delete_task", { board: "QA", task: "Revisar HU-25" });
+
+    // Nunca se pide confirmar una tarea que no esta identificada de forma
+    // unica: confirmar "Revisar HU-25" cuando hay dos es confirmar cual de las
+    // dos, y la herramienta no elige.
+    expect(error(resultado)["code"]).toBe("AMBIGUOUS_MATCH");
+    const candidatos = detalles(resultado)["candidates"] as Array<Record<string, unknown>>;
+    expect(candidatos).toHaveLength(2);
+    expect(candidatos.map((candidato) => candidato["column_key"]).sort()).toEqual(["DONE", "TODO"]);
+
+    // Y con confirm: true tampoco borra ninguna.
+    const forzado = await llamar("delete_task", {
+      board: "QA",
+      task: "Revisar HU-25",
+      confirm: true,
+    });
+    expect(error(forzado)["code"]).toBe("AMBIGUOUS_MATCH");
+
+    const quedan = await llamar("list_tasks", { board: "QA" });
+    expect((quedan.json["tasks"] as unknown[]).length).toBe(2);
+  });
+
+  it("un titulo sin board no se resuelve y se dice por que", async () => {
+    await sembrarTablero("QA");
+    await crear("QA", "TODO", "Revisar HU-25");
+
+    const resultado = await llamar("delete_task", { task: "Revisar HU-25", confirm: true });
+
+    expect(error(resultado)["code"]).toBe("VALIDATION_ERROR");
+    expect(detalles(resultado)["field"]).toBe("board");
+  });
+
+  it("borrar dos veces la misma tarea falla la segunda", async () => {
+    await sembrarTablero("QA");
+    const creada = await crear("QA", "TODO", "Revisar HU-25");
+    const id = (creada.json["task"] as Record<string, unknown>)["id"] as string;
+
+    expect((await llamar("delete_task", { task: id, confirm: true })).isError).toBe(false);
+
+    // Por esto la herramienta no se anuncia idempotente: repetirla no deja el
+    // mismo resultado observable.
+    const segunda = await llamar("delete_task", { task: id, confirm: true });
+    expect(error(segunda)["code"]).toBe("TASK_NOT_FOUND");
+  });
+});
+
+// --- MCP_DESTRUCTIVE_POLICY (8.3.2) ------------------------------------------
+
+describe("MCP_DESTRUCTIVE_POLICY", () => {
+  const clientes = new Map<PoliticaDestructiva, McpClient>();
+
+  /** Un cliente por politica, reusado: cada uno levanta su propio servidor. */
+  async function con(politicaDestructiva: PoliticaDestructiva): Promise<McpClient> {
+    const existente = clientes.get(politicaDestructiva);
+    if (existente !== undefined) {
+      return existente;
+    }
+    const nuevo = await conectar({ politicaDestructiva });
+    clientes.set(politicaDestructiva, nuevo);
+    return nuevo;
+  }
+
+  afterAll(async () => {
+    await Promise.all([...clientes.values()].map(async (abierto) => abierto.close()));
+  });
+
+  it("allow borra sin confirm", async () => {
+    await sembrarTablero("QA");
+    await crear("QA", "TODO", "Revisar HU-25");
+
+    const resultado = await llamarCon(await con("allow"), "delete_task", {
+      board: "QA",
+      task: "Revisar HU-25",
+    });
+
+    expect(resultado.isError, resultado.texto).toBe(false);
+    expect(resultado.texto).toContain("Tarea eliminada");
+
+    const quedan = await llamar("list_tasks", { board: "QA" });
+    expect(quedan.json["tasks"]).toEqual([]);
+  });
+
+  it("allow lo dice en la descripcion en vez de dejar que el agente lo descubra borrando", async () => {
+    const { tools } = await (await con("allow")).listTools();
+    const deleteTask = tools.find((tool) => tool.name === "delete_task");
+
+    expect(deleteTask?.description ?? "").toContain("allow");
+    expect(deleteTask?.description ?? "").toContain("de inmediato");
+  });
+
+  it("deny no anuncia la herramienta", async () => {
+    const { tools } = await (await con("deny")).listTools();
+
+    // El filtrado va en el LISTADO y no solo en la ejecucion (8.1): si el
+    // agente la ve, planifica un borrado que despues no puede completar.
+    expect(tools.map((tool) => tool.name)).not.toContain("delete_task");
+    // Y no se lleva puesto el resto del catalogo.
+    expect(tools).toHaveLength(10);
+  });
+
+  it("deny falla si se la invoca igual, y no borra", async () => {
+    await sembrarTablero("QA");
+    const creada = await crear("QA", "TODO", "Revisar HU-25");
+    const id = (creada.json["task"] as Record<string, unknown>)["id"] as string;
+
+    const denegado = await con("deny");
+
+    // Un cliente puede llamar una herramienta que no figura en el listado. La
+    // rechaza el SDK, por deshabilitada, antes de llegar al handler del nucleo:
+    // el precio de que el filtrado tambien valga en la ejecucion es que el
+    // mensaje lo redacta el SDK y no nosotros. Llega igual como resultado de
+    // herramienta y no como excepcion, asi que el agente lo lee.
+    const salida = await denegado.callTool({
+      name: "delete_task",
+      arguments: { task: id, confirm: true },
+    });
+    const bloques = salida.content as Array<{ type: string; text?: string }>;
+
+    expect(salida.isError).toBe(true);
+    // "disabled", no "not found": no niega que la herramienta exista, que es la
+    // razon por la que la definicion se registra en vez de omitirse.
+    expect(bloques[0]?.text ?? "").toContain("delete_task");
+    expect(bloques[0]?.text ?? "").toContain("disabled");
+
+    // Y lo que de verdad importa: no borro nada.
+    const despues = await llamar("get_task", { task: id });
+    expect(despues.isError, despues.texto).toBe(false);
+  });
+
+  it("deny explica por que en el handler, que es lo que ve cualquier otro llamador", async () => {
+    await sembrarTablero("QA");
+    const creada = await crear("QA", "TODO", "Revisar HU-25");
+    const id = (creada.json["task"] as Record<string, unknown>)["id"] as string;
+
+    const deleteTask = crearHerramientas(crearCorePort(), { politicaDestructiva: "deny" }).find(
+      (herramienta) => herramienta.name === "delete_task",
+    );
+
+    // Sigue estando en el registro: omitirla daria "herramienta desconocida",
+    // que no distingue una politica de un error.
+    expect(deleteTask?.anunciada).toBe(false);
+
+    const salida = await deleteTask?.handler({ task: id, confirm: true });
+    const cuerpo = extraerJson(salida?.content[0]?.text ?? "")["error"] as Record<string, unknown>;
+
+    expect(salida?.isError).toBe(true);
+    expect(cuerpo["code"]).toBe("DESTRUCTIVE_POLICY_DENIED");
+    expect(cuerpo["message"]).toContain("MCP_DESTRUCTIVE_POLICY");
+    // El hint tiene que cerrar la puerta, no sugerir un reintento: un agente
+    // que lea "volve a intentar con confirm" va a insistir para siempre.
+    expect(cuerpo["hint"]).toContain("sigue existiendo");
+
+    const despues = await llamar("get_task", { task: id });
+    expect(despues.isError, despues.texto).toBe(false);
+  });
+
+  it("un valor invalido impide el arranque del proceso (11.2)", async () => {
+    const entrada = fileURLToPath(new URL("../dist/index.js", import.meta.url));
+    expect(
+      existsSync(entrada),
+      `No existe ${entrada}. Corre pnpm run build antes de la suite.`,
+    ).toBe(true);
+
+    const salida = await new Promise<{ code: number | null; stderr: string }>((resolver) => {
+      const hijo = spawn(process.execPath, [entrada], {
+        env: { ...process.env, MCP_PORT_MODE: "core", MCP_DESTRUCTIVE_POLICY: "denyy" },
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+
+      let stderr = "";
+      hijo.stderr.on("data", (trozo: Buffer) => {
+        stderr += trozo.toString();
+      });
+      hijo.on("close", (code) => resolver({ code, stderr }));
+    });
+
+    // La 11.2 es explicita. Arrancar con el valor por defecto seria peor que no
+    // arrancar: quien escribio "denyy" cree tener el borrado apagado.
+    expect(salida.code).toBe(1);
+    expect(salida.stderr).toContain("MCP_DESTRUCTIVE_POLICY");
+    expect(salida.stderr).toContain("confirm, allow, deny");
   });
 });

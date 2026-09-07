@@ -1,5 +1,9 @@
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { crearCorePort } from "@taskman/core";
+import {
+  crearCorePort,
+  leerPoliticaDestructiva,
+  type PoliticaDestructiva,
+} from "@taskman/core";
 
 import { crearServidorMcp } from "./server.js";
 
@@ -32,7 +36,26 @@ if ((process.env["DATABASE_URL"] ?? "").trim() === "") {
   fallar("Falta DATABASE_URL. Definila en el bloque env del .mcp.json o en el entorno.");
 }
 
-const servidor = crearServidorMcp(crearCorePort());
+/**
+ * MCP_DESTRUCTIVE_POLICY (11.2). Se valida ANTES de tocar la base: una variable
+ * invalida tiene que impedir el arranque con un mensaje explicito y no producir
+ * un fallo posterior. Arrancar con el valor por defecto ante un valor mal
+ * escrito seria peor que no arrancar: quien puso "denyy" cree tener el borrado
+ * apagado y lo tendria encendido, solo que preguntando primero.
+ */
+function leerPolitica(): PoliticaDestructiva {
+  try {
+    return leerPoliticaDestructiva(process.env["MCP_DESTRUCTIVE_POLICY"]);
+  } catch (error: unknown) {
+    return fallar(error instanceof Error ? error.message : String(error));
+  }
+}
+
+const politicaDestructiva = leerPolitica();
+
+const servidor = crearServidorMcp(crearCorePort(), { politicaDestructiva });
 await servidor.connect(new StdioServerTransport());
 
-process.stderr.write("[taskman-mcp] servidor listo (modo core, transporte stdio)\n");
+process.stderr.write(
+  `[taskman-mcp] servidor listo (modo core, transporte stdio, borrado: ${politicaDestructiva})\n`,
+);

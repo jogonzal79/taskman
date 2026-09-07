@@ -60,9 +60,18 @@ export function serializarDominio(error: DomainError): ErrorSerializado {
  * `isError: true` en vez de una excepcion porque el agente TIENE que leerlo:
  * un AMBIGUOUS_MATCH no es un fallo del sistema, es una pregunta al llamador, y
  * el `hint` es la respuesta que se espera que ejecute.
+ *
+ * `lineasExtra` va entre el mensaje y el hint, que es el orden en que se lee:
+ * que paso, sobre que, y que hacer. Existe para CONFIRMATION_REQUIRED (8.3.2),
+ * donde el detalle de la tarea que se borraria tiene que estar en el TEXTO y no
+ * solo en `details`: el texto es lo que el agente le muestra al usuario, y una
+ * confirmacion que solo se puede leer parseando JSON no es una confirmacion.
  */
-export function respuestaError(error: ErrorSerializado): McpToolResult {
-  const lineas = [`Error ${error.code}: ${error.message}`];
+export function respuestaError(
+  error: ErrorSerializado,
+  lineasExtra: readonly string[] = [],
+): McpToolResult {
+  const lineas = [`Error ${error.code}: ${error.message}`, ...lineasExtra];
   if (error.hint !== undefined) {
     lineas.push(`Que hacer: ${error.hint}`);
   }

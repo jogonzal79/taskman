@@ -39,6 +39,21 @@ export interface McpToolDefinition {
     openWorldHint: boolean;
   };
   /**
+   * Si la herramienta se ANUNCIA en el listado. Ausente es `true`.
+   *
+   * No es un campo del protocolo: es como el nucleo le dice al transporte que
+   * una herramienta existe pero no se ofrece. Lo pide la 8.1 —"el filtrado
+   * ocurre en el listado de herramientas, no solo en la ejecucion, para que el
+   * agente no planifique acciones que no puede completar"— y hoy lo usa
+   * MCP_DESTRUCTIVE_POLICY=deny; cuando lleguen los scopes de la 7.2 al
+   * transporte HTTP, un cliente sin scope `delete` va a apagarla igual.
+   *
+   * La definicion no se omite del registro: sigue existiendo, con su handler,
+   * que responde por que no se puede. Omitirla dejaria al llamador con un
+   * "herramienta desconocida", que no distingue una politica de un error.
+   */
+  anunciada?: boolean;
+  /**
    * Recibe los argumentos SIN validar y los valida contra `inputSchema`.
    *
    * El SDK tambien valida antes de llamar, asi que en produccion la segunda
