@@ -79,6 +79,19 @@ Fase en curso: F1b.2 — resto del CRUD de tareas sobre packages/core.
   restriccion diferida las separa recien en el COMMIT. La lista va por nombre
   explicito: `board_column_board_id_key_key` tambien es una UNIQUE, y
   reintentarla seria reintentar para siempre un error real del llamador.
+- Limite conocido de contencion, aceptable para uso personal. Cada create de
+  columna reescribe TODAS las filas de `board_column` del tablero, y cada
+  create de tarea toma FOR KEY SHARE sobre la fila de su columna al validar
+  la FK. Varios create de columna concurrentes sobre un mismo tablero se
+  serializan entre si y forman una cadena de invalidacion que dura mas de una
+  transaccion, asi que un create de tarea simultaneo puede ser abortado por
+  cada eslabon, agotar sus dos reintentos y fallar. Medido con 4 operaciones
+  concurrentes: falla 3 de cada 15 corridas. El backoff con jitter NO lo
+  resuelve (mismas 3 de 15 con el y sin el): hay que saltear la cadena
+  entera, no desfasarse dentro de ella. Si algun dia importa, la salida es un
+  backoff del orden de la duracion de la cadena —con 40 ms de base pasa 10 de
+  10— y no mas reintentos. Por eso la prueba de compatibilidad de modos de
+  bloqueo en `packages/core` usa una operacion de cada tipo y no cuatro.
 - No se reintenta NUNCA ante 40P01. Un interbloqueo significa que el orden de
   bloqueo esta mal, y reintentarlo esconde el bug que detecta la prueba C2 de
   `packages/core` en vez de arreglarlo.

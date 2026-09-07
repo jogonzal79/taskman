@@ -1,6 +1,42 @@
+import { setTimeout as esperar } from "node:timers/promises";
+
 import { Prisma, type PrismaClient } from "@taskman/db";
 
 import { isRetryableConflict } from "./db-error.js";
+
+/**
+ * Espera entre reintentos: exponencial con jitter completo.
+ *
+ * QUE RESUELVE. El caso de dos transacciones que chocan UNA vez: sin jitter las
+ * dos reintentan sincronizadas y el reintento hereda la misma carrera que lo
+ * causo. Con jitter completo (uniforme en [0, techo), no un retraso fijo ni
+ * fijo-mas-ruido) se desfasan y una encuentra la fila libre.
+ *
+ * QUE NO RESUELVE, y conviene decirlo porque es facil leerlo al reves: esto NO
+ * arregla el fallo intermitente de varios create de columna concurrentes que
+ * documenta CLAUDE.md. Medido: con estos valores ese caso sigue fallando 3 de
+ * 15 veces, igual que sin backoff. Ahi hay que saltear una cadena de
+ * invalidacion que dura varias transacciones, y dispersar unos milisegundos
+ * dentro de la ventana no sirve. Subir estos numeros hasta taparlo (con 40 ms
+ * de base el caso pasa 10 de 10) seria tunear un parametro global para una
+ * contencion que no es nuestro escenario.
+ *
+ * Los numeros salen de cuanto dura una transaccion aca: la suite de integracion
+ * de packages/core corre mas de cien casos contra PostgreSQL real en ~11 s, asi
+ * que una transaccion esta en el orden de unos pocos milisegundos. Con el tope
+ * de dos reintentos que fija CLAUDE.md, la espera acumulada en el peor caso es
+ * 5 + 10 = 15 ms, y ~7 ms en promedio: despreciable frente a lo que ya cuesta
+ * la operacion. El techo de 50 ms nunca se alcanza con dos reintentos; esta
+ * para que subir el presupuesto algun dia no genere esperas largas por
+ * descuido.
+ */
+const BACKOFF_BASE_MS = 5;
+const BACKOFF_TECHO_MS = 50;
+
+function esperaAntesDelSiguienteIntento(intento: number): number {
+  const techo = Math.min(BACKOFF_BASE_MS * 2 ** intento, BACKOFF_TECHO_MS);
+  return Math.random() * techo;
+}
 
 /**
  * Corre trabajo en UNA transaccion interactiva con aislamiento REPEATABLE READ
@@ -29,6 +65,10 @@ export class TransactionRunner {
    * las UNIQUE diferidas de orden. Ver `isRetryableConflict`, que explica por
    * que 40P01 queda afuera. Cualquier otro error, incluidos los de dominio,
    * sube sin tocar.
+   *
+   * Entre intento e intento espera con jitter: ver
+   * `esperaAntesDelSiguienteIntento`. Cambia CUANDO se dispara cada reintento,
+   * no cuantos son.
    */
   async run<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
     let ultimoFallo: unknown;
@@ -45,6 +85,11 @@ export class TransactionRunner {
           throw error;
         }
         ultimoFallo = error;
+      }
+
+      // Solo si queda otro intento: no tiene sentido esperar para fallar.
+      if (intento < this.#maxRetries) {
+        await esperar(esperaAntesDelSiguienteIntento(intento));
       }
     }
 

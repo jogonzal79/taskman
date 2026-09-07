@@ -9,6 +9,7 @@ import type {
 import { DomainError } from "../domain/errors.js";
 import { assertValidPosition, computeMoveOrder } from "../domain/order.js";
 import { normalizarTitulo } from "../domain/title.js";
+import { resolverColumna } from "./column-reference.js";
 import type {
   ColumnOrder,
   CreateTaskInput,
@@ -17,6 +18,7 @@ import type {
   MoveTarget,
   Page,
   SearchScope,
+  TargetPosition,
   Task,
   TaskMatch,
   UpdateTaskInput,
@@ -63,6 +65,40 @@ function sinCambioEfectivo(actual: Task, siguiente: TaskFields): boolean {
   );
 }
 
+/**
+ * La columna pertenece al tablero. Es una asercion con nombre y no un `if`
+ * suelto porque es LA autoridad sobre la pertenencia.
+ *
+ * Importa cuando la columna se resolvio por `columnKey`: esa resolucion ocurre
+ * fuera de la transaccion, en otro snapshot, y es una conveniencia para el
+ * llamador, no una garantia. Entre la resolucion y el COMMIT la tarea pudo
+ * cambiar de tablero. Lo que vale es lo que se lee bloqueado adentro, asi que
+ * esta comprobacion se hace siempre, venga la columna de un id o de una key.
+ *
+ * NO es redundante con la FK compuesta `task_column_same_board`, aunque lo
+ * parezca. Verificado sacandola: la FK igual protege el dato, pero el llamador
+ * recibe un `23503` crudo de PostgreSQL. Esta asercion es lo que lo convierte
+ * en COLUMN_NOT_IN_BOARD, que es un error que un agente puede accionar.
+ */
+function assertColumnaDelTablero(
+  columna: { id: string; boardId: string },
+  boardId: string,
+  details: Readonly<Record<string, unknown>>,
+): void {
+  if (columna.boardId === boardId) {
+    return;
+  }
+
+  throw new DomainError(
+    "COLUMN_NOT_IN_BOARD",
+    `La columna ${columna.id} pertenece a otro tablero.`,
+    {
+      details: { ...details, columnId: columna.id, columnBoardId: columna.boardId },
+      hint: "Una tarea solo vive en columnas de su propio tablero.",
+    },
+  );
+}
+
 function tareaNoEncontrada(taskId: string): DomainError {
   return new DomainError("TASK_NOT_FOUND", `No existe la tarea ${taskId}.`, {
     details: { taskId },
@@ -84,7 +120,11 @@ export class TaskService {
    * transaccion, que es lo que garantiza que no queden huecos.
    */
   async create(input: CreateTaskInput): Promise<Task> {
-    const detalle = { boardId: input.boardId, columnId: input.columnId };
+    const detalle: Record<string, unknown> = {
+      boardId: input.boardId,
+      ...(input.columnId === undefined ? {} : { columnId: input.columnId }),
+      ...(input.columnKey === undefined ? {} : { columnKey: input.columnKey }),
+    };
     // El titulo se normaliza antes de abrir la transaccion: si esta mal, no
     // hace falta ni tocar la base.
     const title = normalizarTitulo(input.title, detalle);
@@ -99,24 +139,12 @@ export class TaskService {
         });
       }
 
-      const columna = await tx.findColumn(input.columnId);
-      if (columna === undefined) {
-        throw new DomainError("COLUMN_NOT_FOUND", `No existe la columna ${input.columnId}.`, {
-          details: { columnId: input.columnId },
-        });
-      }
-      if (columna.boardId !== input.boardId) {
-        throw new DomainError(
-          "COLUMN_NOT_IN_BOARD",
-          `La columna ${input.columnId} pertenece a otro tablero.`,
-          {
-            details: { ...detalle, columnBoardId: columna.boardId },
-            hint: "Una tarea solo puede crearse en una columna de su propio tablero.",
-          },
-        );
-      }
+      // Por id o por key, dentro del tablero. La resolucion vive en un solo
+      // lugar; el ambito es siempre `input.boardId`, nunca global.
+      const columna = await resolverColumna(tx, input.boardId, input);
+      assertColumnaDelTablero(columna, input.boardId, detalle);
 
-      const existentes = ordenarPorPosicion(await tx.lockColumnTasks(input.columnId));
+      const existentes = ordenarPorPosicion(await tx.lockColumnTasks(columna.id));
       // Una posicion mayor que el tamano de la columna se ajusta al final, igual
       // que en `move`: quien calcula mal el indice obtiene un resultado util.
       const indice = position === "end" ? existentes.length : Math.min(position, existentes.length);
@@ -128,14 +156,14 @@ export class TaskService {
       await tx.insertTask({
         id,
         boardId: input.boardId,
-        columnId: input.columnId,
+        columnId: columna.id,
         title,
         description: input.description ?? null,
         priority: input.priority ?? "MEDIUM",
         dueDate: input.dueDate ?? null,
         position: indice,
       });
-      await tx.rewriteColumn(input.columnId, orden);
+      await tx.rewriteColumn(columna.id, orden);
 
       const creada = await tx.readTask(id);
       if (creada === undefined) {
@@ -154,7 +182,29 @@ export class TaskService {
   }
 
   async list(query: ListTasksQuery = {}): Promise<Page<Task>> {
-    return this.#tasks.listTasks(query);
+    return this.#tasks.listTasks(await this.#resolverFiltro(query));
+  }
+
+  /** Traduce `columnKey` a `columnId` antes de consultar. Sin transaccion: es
+   * una lectura, y el filtro no tiene invariante que proteger. */
+  async #resolverFiltro(query: ListTasksQuery): Promise<ListTasksQuery> {
+    if (query.columnKey === undefined || query.columnId !== undefined) {
+      return query;
+    }
+
+    if (query.boardId === undefined) {
+      throw new DomainError(
+        "COLUMN_NOT_FOUND",
+        "Una columnKey solo se resuelve dentro de un tablero.",
+        {
+          details: { columnKey: query.columnKey },
+          hint: "Indica boardId junto a columnKey, o filtra directamente por columnId.",
+        },
+      );
+    }
+
+    const columna = await resolverColumna(this.#tasks, query.boardId, query);
+    return { ...query, columnId: columna.id };
   }
 
   async search(text: string, scope: SearchScope = {}): Promise<Page<TaskMatch>> {
@@ -224,14 +274,47 @@ export class TaskService {
    * no es una rama aparte: es el mismo calculo con origen igual a destino.
    */
   async move(taskId: string, target: MoveTarget): Promise<MoveResult> {
-    return this.#tasks.inTransaction(async (tx) => this.#move(tx, taskId, target));
+    const toColumnId = await this.#resolverDestino(taskId, target);
+    return this.#tasks.inTransaction(async (tx) =>
+      this.#move(tx, taskId, toColumnId, target.position),
+    );
   }
 
-  async #move(tx: MoveTransaction, taskId: string, target: MoveTarget): Promise<MoveResult> {
+  /**
+   * Resuelve la columna destino ANTES de abrir la transaccion, porque la
+   * sentencia que bloquea recibe el `columnId` como parametro y no puede
+   * esperar a resolverlo adentro.
+   *
+   * Con `columnId` no hay nada que resolver y no se lee nada. Con `columnKey`
+   * hace falta el tablero de la tarea, asi que se la lee por id SIN bloqueo:
+   * leer no toma locks, asi que esto no reintroduce la inversion de orden de
+   * F1b.1. El resultado es orientativo; la autoridad es
+   * `assertColumnaDelTablero` dentro de la transaccion.
+   */
+  async #resolverDestino(taskId: string, target: MoveTarget): Promise<string> {
+    if (target.columnId !== undefined) {
+      return target.columnId;
+    }
+
+    const tarea = await this.#tasks.findTask(taskId);
+    if (tarea === undefined) {
+      throw tareaNoEncontrada(taskId);
+    }
+
+    const columna = await resolverColumna(this.#tasks, tarea.boardId, target);
+    return columna.id;
+  }
+
+  async #move(
+    tx: MoveTransaction,
+    taskId: string,
+    toColumnId: string,
+    position: TargetPosition,
+  ): Promise<MoveResult> {
     // Pasos 1 y 3 del algoritmo, en una sola sentencia y en orden canonico.
     // Ver el comentario de `lockTaskAndColumns`: separarlos reintroduce el
     // interbloqueo que el orden de bloqueo existe para evitar.
-    const bloqueadas = await tx.lockTaskAndColumns(taskId, target.columnId);
+    const bloqueadas = await tx.lockTaskAndColumns(taskId, toColumnId);
 
     const actual = bloqueadas.find((fila) => fila.id === taskId);
     if (actual === undefined) {
@@ -240,37 +323,25 @@ export class TaskService {
 
     // Paso 2. La FK compuesta ya impide cruzar tableros, pero un error de
     // dominio explicito le dice al llamador que hizo mal.
-    const destino = await tx.findColumn(target.columnId);
+    const destino = await tx.findColumn(toColumnId);
     if (destino === undefined) {
-      throw new DomainError("COLUMN_NOT_FOUND", `No existe la columna ${target.columnId}.`, {
-        details: { columnId: target.columnId },
+      throw new DomainError("COLUMN_NOT_FOUND", `No existe la columna ${toColumnId}.`, {
+        details: { columnId: toColumnId },
       });
     }
-    if (destino.boardId !== actual.boardId) {
-      throw new DomainError(
-        "COLUMN_NOT_IN_BOARD",
-        `La columna ${target.columnId} pertenece a otro tablero que la tarea ${taskId}.`,
-        {
-          details: {
-            taskId,
-            columnId: target.columnId,
-            taskBoardId: actual.boardId,
-            columnBoardId: destino.boardId,
-          },
-          hint: "Una tarea solo se mueve entre columnas de su propio tablero.",
-        },
-      );
-    }
+    // Autoridad sobre cualquier resolucion previa de `columnKey`: el tablero
+    // de la tarea es el que se leyo bloqueado aca, no el del snapshot anterior.
+    assertColumnaDelTablero(destino, actual.boardId, { taskId, taskBoardId: actual.boardId });
 
     // Paso 4.
-    assertValidPosition(target.position, { taskId });
+    assertValidPosition(position, { taskId });
 
     const ordenNuevo = computeMoveOrder({
       taskId,
       fromColumnId: actual.columnId,
-      toColumnId: target.columnId,
+      toColumnId: toColumnId,
       currentOrder: agruparPorColumna(bloqueadas),
-      position: target.position,
+      position: position,
     });
 
     // Paso 5: secuencia completa de cada columna afectada, nunca diferencias.
@@ -286,7 +357,7 @@ export class TaskService {
 
     // El orden que devolvemos se relee de la base, no se asume del calculo.
     const columnasAfectadas =
-      actual.columnId === target.columnId ? [target.columnId] : [actual.columnId, target.columnId];
+      actual.columnId === toColumnId ? [toColumnId] : [actual.columnId, toColumnId];
 
     const affectedColumns: ColumnOrder[] = [];
     for (const columnId of columnasAfectadas) {
@@ -296,7 +367,7 @@ export class TaskService {
     return {
       task: tarea,
       fromColumnId: actual.columnId,
-      toColumnId: target.columnId,
+      toColumnId: toColumnId,
       affectedColumns,
     };
   }
