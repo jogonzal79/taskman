@@ -7,6 +7,8 @@ import {
   crearHerramientas,
   TransactionRunner,
   type BoardDetail,
+  type CamposDeLog,
+  type Logger,
   type OpcionesRegistro,
   type PoliticaDestructiva,
 } from "@taskman/core";
@@ -1437,5 +1439,103 @@ describe("auditoria", () => {
     expect(fallida.isError).toBe(true);
 
     expect(await auditoria()).toEqual(antes);
+  });
+});
+
+// --- Trazabilidad (11.1) -----------------------------------------------------
+
+/**
+ * El log visto desde el borde, con un logger espia en lugar de pino.
+ *
+ * Lo que se prueba aca es lo unico que no se puede probar dentro del nucleo: que
+ * el `requestId` de la linea `mcp.tool` es EL MISMO que termina en la columna
+ * `request_id` de `audit_log`. Son dos caminos distintos —uno va al logger, el
+ * otro entra en la transaccion de la escritura— y que coincidan es todo el
+ * objetivo de la 11.1: sin eso hay dos identificadores que no se pueden cruzar.
+ */
+describe("trazabilidad", () => {
+  interface Linea {
+    campos: CamposDeLog;
+  }
+
+  function loggerEspia(): { logger: Logger; lineas: Linea[] } {
+    const lineas: Linea[] = [];
+    const anotar = (campos: CamposDeLog): void => {
+      lineas.push({ campos });
+    };
+    return {
+      lineas,
+      logger: {
+        debug: anotar,
+        info: anotar,
+        warn: anotar,
+        error: anotar,
+      },
+    };
+  }
+
+  it("el requestId de la linea mcp.tool es el request_id de audit_log", async () => {
+    const espia = loggerEspia();
+    const conLog = await conectar({ logger: espia.logger });
+
+    try {
+      const creado = await llamarCon(conLog, "create_board", { name: "Trazado" });
+      expect(creado.isError, creado.texto).toBe(false);
+
+      const filas = await auditoria();
+      expect(filas).toHaveLength(1);
+
+      const linea = espia.lineas.find((actual) => actual.campos["evt"] === "mcp.tool");
+      expect(linea?.campos).toMatchObject({
+        tool: "create_board",
+        outcome: "ok",
+        actorType: "AGENT",
+        actorName: "prueba",
+      });
+
+      // La afirmacion entera de la 11.1 en una linea: el log y la auditoria
+      // hablan de la misma peticion, no de dos que pasaron cerca.
+      expect(linea?.campos["requestId"]).toBe(filas[0]?.request_id);
+    } finally {
+      await conLog.close();
+    }
+  });
+
+  it("una resolucion por nombre queda correlacionada con la escritura que la uso", async () => {
+    const espia = loggerEspia();
+    const conLog = await conectar({ logger: espia.logger });
+
+    try {
+      expect((await llamarCon(conLog, "create_board", { name: "Trazado" })).isError).toBe(false);
+      espia.lineas.length = 0;
+
+      // El tablero y la columna se nombran por texto: dos resoluciones, una
+      // escritura, un solo requestId para las tres cosas.
+      const creada = await llamarCon(conLog, "create_task", {
+        board: "Trazado",
+        column: "TODO",
+        title: "Revisar HU-25",
+      });
+      expect(creada.isError, creada.texto).toBe(false);
+
+      const resoluciones = espia.lineas.filter(
+        (linea) => linea.campos["evt"] === "mcp.resolve",
+      );
+      expect(resoluciones.map((linea) => linea.campos["entity"])).toEqual(["board", "column"]);
+      expect(resoluciones.map((linea) => linea.campos["strategy"])).toEqual(["exact", "exact"]);
+
+      const filas = await auditoria();
+      const creacion = filas.find((fila) => fila.entity_type === "task");
+      const ids = new Set(
+        [...resoluciones, ...espia.lineas.filter((l) => l.campos["evt"] === "mcp.tool")].map(
+          (linea) => linea.campos["requestId"],
+        ),
+      );
+
+      expect(ids.size).toBe(1);
+      expect([...ids][0]).toBe(creacion?.request_id);
+    } finally {
+      await conLog.close();
+    }
   });
 });

@@ -3,7 +3,7 @@ import { z } from "zod";
 import { DomainError } from "../../domain/errors.js";
 import type { BoardDetail, Column, Task } from "../../domain/types.js";
 import { ordenDeColumna, ubicarTarea } from "../lookup.js";
-import type { FabricaDeContexto } from "../contexto.js";
+import type { EntornoMcp } from "../llamada.js";
 import type { PoliticaDestructiva } from "../politica.js";
 import type { TaskManagerPort } from "../port.js";
 import { definirHandler, fechaIso, respuesta, respuestaError } from "../respuesta.js";
@@ -75,8 +75,8 @@ function detalleDeTarea(tarea: Task, tablero: BoardDetail, columna: Column | und
 
 export function definirDeleteTask(
   port: TaskManagerPort,
+  entorno: EntornoMcp,
   politica: PoliticaDestructiva,
-  contexto: FabricaDeContexto,
 ): McpToolDefinition {
   const shape = {
     task: campoTask("a eliminar"),
@@ -103,7 +103,7 @@ export function definirDeleteTask(
     // en el listado y no solo en la ejecucion, para que el agente no planifique
     // un borrado que no puede completar.
     anunciada: politica !== "deny",
-    handler: definirHandler("delete_task", shape, async (args) => {
+    handler: definirHandler(entorno, "delete_task", shape, async (args, llamada) => {
       if (politica === "deny") {
         // Antes de resolver nada: si no se puede borrar, leer la base para
         // averiguar QUE no se puede borrar no le sirve a nadie.
@@ -117,7 +117,7 @@ export function definirDeleteTask(
         );
       }
 
-      const { tablero, taskId } = await ubicarTarea(port, args.task, args.board);
+      const { tablero, taskId } = await ubicarTarea(port, args.task, args.board, llamada);
       const tarea = await port.getTask(taskId);
 
       // `ubicarTarea` no comprueba que un id de tarea pertenezca al `board` que
@@ -148,9 +148,11 @@ export function definirDeleteTask(
         );
       }
 
-      // Recien aca hay contexto: la primera llamada de la 8.3.2 no borra nada,
-      // y una confirmacion pendiente no es una escritura que auditar.
-      await port.deleteTask(taskId, contexto());
+      // El contexto existe desde el principio de la invocacion, pero recien aca
+      // se USA: la primera llamada de la 8.3.2 no borra nada, y una
+      // confirmacion pendiente no es una escritura que auditar. En el log si
+      // aparece, con su outcome CONFIRMATION_REQUIRED y el mismo requestId.
+      await port.deleteTask(taskId, llamada.ctx);
 
       // El orden final de la columna, leido despues del borrado: es lo que le
       // permite al agente encadenar sin volver a listar, y de paso es la unica

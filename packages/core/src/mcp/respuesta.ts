@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { DomainError, isDomainError } from "../domain/errors.js";
+import type { EntornoMcp, Llamada } from "./llamada.js";
 import type { EsquemaEntrada, McpToolResult } from "./tool.js";
 
 /**
@@ -40,11 +41,13 @@ export function fechaIso(fecha: Date | null): string | null {
 /**
  * La envoltura de error de la 6.4, sin `request_id`.
  *
- * Desde F3 hay requestId, pero vive en el `ActorContext` de las ESCRITURAS
- * (7.4: las lecturas no se auditan), y un error puede venir de cualquiera de
- * las once herramientas. Ponerlo aca obligaria a fabricar un contexto en las
- * cinco de lectura solo para nombrar una correlacion que ademas todavia no
- * apunta a nada: no hay log correlacionado hasta la 11.1.
+ * Desde la 11.1 el requestId existe en TODAS las invocaciones —lo arma el
+ * ejecutor, no cada herramienta— asi que la razon vieja para no ponerlo aca
+ * (que las lecturas no tenian contexto) ya no vale. Sigue afuera por otra: el
+ * `request_id` en la respuesta es del modelo de errores REST de la 6.4, que
+ * pide "la respuesta solo expone el codigo y el request_id" para NO exponer la
+ * causa. Aca la causa se expone a proposito (ver `deErrorInesperado`), y
+ * agregar el id sin ese recorte seria media 6.4. Entra con el borde HTTP.
  */
 export interface ErrorSerializado {
   code: string;
@@ -60,6 +63,29 @@ export function serializarDominio(error: DomainError): ErrorSerializado {
     ...(error.details === undefined ? {} : { details: error.details }),
     ...(error.hint === undefined ? {} : { hint: error.hint }),
   };
+}
+
+/**
+ * El codigo de un error que se DEVUELVE en vez de lanzarse.
+ *
+ * Existe por delete_task: la confirmacion de la 8.3.2 no es una excepcion, es
+ * una respuesta —la herramienta ya leyo la tarea y la esta mostrando— asi que
+ * vuelve por `return` y el ejecutor no la ve pasar por su `catch`. Sin esto,
+ * un CONFIRMATION_REQUIRED se registraria como `outcome: "ok"`, que es
+ * exactamente el caso que la 11.1 quiere poder diagnosticar.
+ *
+ * Es un Symbol y no un campo mas porque el resultado viaja al SDK tal cual:
+ * `JSON.stringify` ignora las claves Symbol, asi que esto no puede filtrarse al
+ * protocolo ni obliga a ningun adaptador a acordarse de recortarlo.
+ */
+const CODIGO_DE_ERROR = Symbol("taskman.codigoDeError");
+
+interface ResultadoConCodigo extends McpToolResult {
+  readonly [CODIGO_DE_ERROR]?: string;
+}
+
+export function codigoDeError(resultado: McpToolResult): string | undefined {
+  return (resultado as ResultadoConCodigo)[CODIGO_DE_ERROR];
 }
 
 /**
@@ -84,10 +110,12 @@ export function respuestaError(
     lineas.push(`Que hacer: ${error.hint}`);
   }
 
-  return {
+  const resultado: ResultadoConCodigo = {
     content: [{ type: "text", text: texto(lineas, { error }) }],
     isError: true,
+    [CODIGO_DE_ERROR]: error.code,
   };
+  return resultado;
 }
 
 /** Un fallo de validacion de Zod, con la lista de campos y el motivo (6.4). */
@@ -109,10 +137,11 @@ function deZodError(error: z.ZodError): ErrorSerializado {
  * Fallo no controlado (6.4).
  *
  * La 6.4 pide que el mensaje no exponga detalles internos, pensando en una API
- * publica. Aca el transporte es stdio contra la maquina del propio usuario, y
- * todavia no hay log ni `request_id` con el que correlacionar, asi que la causa
- * va en `details.reason`: sin ella un fallo inesperado seria completamente
- * opaco. Cuando exista el transporte HTTP, ese borde tendra que recortarla.
+ * publica. Aca el transporte es stdio contra la maquina del propio usuario, asi
+ * que la causa va en `details.reason`: sin ella un fallo inesperado seria
+ * completamente opaco para el agente, que es quien tiene que decidir si
+ * reintenta. Cuando exista el transporte HTTP, ese borde tendra que recortarla
+ * y dejar solo el codigo y el request_id.
  */
 function deErrorInesperado(error: unknown, herramienta: string): ErrorSerializado {
   return {
@@ -123,29 +152,90 @@ function deErrorInesperado(error: unknown, herramienta: string): ErrorSerializad
   };
 }
 
+/** Como termino una invocacion, en el vocabulario de la linea `mcp.tool`. */
+type Desenlace = "ok" | "domain_error" | "error";
+
 /**
- * Envuelve el cuerpo de una herramienta: valida la entrada y traduce cualquier
- * fallo a una respuesta accionable.
+ * El punto UNICO de ejecucion de herramientas: valida la entrada, arma el
+ * contexto de la invocacion, traduce cualquier fallo a una respuesta
+ * accionable y deja la linea `mcp.tool` de la 11.1.
+ *
+ * Que sea uno solo es lo que hace que la instrumentacion no se pueda olvidar:
+ * las once herramientas de la 8.2 se declaran a traves de aca, asi que no hay
+ * ninguna que pueda ejecutarse sin registrarse, y no hay una sola linea de log
+ * dentro de las herramientas. Si manana se agrega la doce, ya esta instrumentada.
+ *
+ * El `ActorContext` se arma ACA, una vez por invocacion, y baja por `Llamada`
+ * tanto a la escritura que audita como a la resolucion por nombre. Antes lo
+ * armaba cada herramienta de escritura en el momento del write: alcanzaba para
+ * la 7.4 pero no para la 11.1, porque la resolucion ocurre antes del write y
+ * las lecturas no tenian contexto ninguno. Ahora el `request_id` de `audit_log`
+ * y el `requestId` de las lineas de log son el mismo valor por construccion, no
+ * por coincidencia.
  */
 export function definirHandler<Shape extends EsquemaEntrada>(
+  entorno: EntornoMcp,
   herramienta: string,
   shape: Shape,
-  cuerpo: (args: z.output<z.ZodObject<Shape>>) => Promise<McpToolResult>,
+  cuerpo: (args: z.output<z.ZodObject<Shape>>, llamada: Llamada) => Promise<McpToolResult>,
 ): (args: unknown) => Promise<McpToolResult> {
   const esquema = z.object(shape);
 
   return async (args: unknown): Promise<McpToolResult> => {
+    const llamada: Llamada = { ctx: entorno.contexto(), logger: entorno.logger };
+    const comienzo = performance.now();
+
+    let salida: McpToolResult;
+    let desenlace: Desenlace;
+    let code: string | undefined;
+
     const validado = esquema.safeParse(args ?? {});
     if (!validado.success) {
-      return respuestaError(deZodError(validado.error));
+      salida = respuestaError(deZodError(validado.error));
+      desenlace = "domain_error";
+      code = "VALIDATION_ERROR";
+    } else {
+      try {
+        salida = await cuerpo(validado.data, llamada);
+        // Una herramienta puede DEVOLVER un error en vez de lanzarlo: es lo que
+        // hace delete_task con CONFIRMATION_REQUIRED. Sin mirar el resultado,
+        // esa llamada quedaria registrada como exitosa.
+        code = codigoDeError(salida);
+        desenlace = code === undefined ? "ok" : "domain_error";
+      } catch (error: unknown) {
+        const dominio = isDomainError(error);
+        salida = respuestaError(
+          dominio ? serializarDominio(error) : deErrorInesperado(error, herramienta),
+        );
+        desenlace = dominio ? "domain_error" : "error";
+        // Sin `code` cuando el fallo es inesperado: el INTERNAL_ERROR de la
+        // respuesta es una etiqueta del borde, no un codigo de dominio, y
+        // ponerlo aca lo haria indistinguible de uno que si lo es al filtrar.
+        code = dominio ? error.code : undefined;
+      }
     }
 
-    try {
-      return await cuerpo(validado.data);
-    } catch (error: unknown) {
-      return respuestaError(
-        isDomainError(error) ? serializarDominio(error) : deErrorInesperado(error, herramienta),
-      );
+    const campos = {
+      evt: "mcp.tool",
+      tool: herramienta,
+      requestId: llamada.ctx.requestId,
+      actorType: llamada.ctx.actorType,
+      actorName: llamada.ctx.actorName,
+      durationMs: Math.round(performance.now() - comienzo),
+      outcome: desenlace,
+      ...(code === undefined ? {} : { code }),
+    };
+    const mensaje = `${herramienta}: ${desenlace}`;
+
+    // Un error de dominio es trafico normal —un AMBIGUOUS_MATCH es una pregunta
+    // al agente, no una falla— asi que va en info. `error` queda para lo que de
+    // verdad no se esperaba, que es lo que se busca cuando algo anda mal.
+    if (desenlace === "error") {
+      llamada.logger.error(campos, mensaje);
+    } else {
+      llamada.logger.info(campos, mensaje);
     }
+
+    return salida;
   };
 }

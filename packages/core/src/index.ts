@@ -28,6 +28,8 @@ export type {
 export { LIMITE_PAGINA_DEFECTO, LIMITE_PAGINA_MAXIMO } from "./domain/types.js";
 
 export type { ActorContext, ActorType } from "./domain/actor.js";
+export { LOGGER_NULO } from "./domain/logger.js";
+export type { CamposDeLog, Logger } from "./domain/logger.js";
 export {
   actualizacion,
   borrado,
@@ -114,6 +116,7 @@ export {
   CONTEXTO_MCP_POR_DEFECTO,
 } from "./mcp/contexto.js";
 export type { FabricaDeContexto } from "./mcp/contexto.js";
+export type { EntornoMcp, Llamada } from "./mcp/llamada.js";
 export type { TaskManagerPort } from "./mcp/port.js";
 export { CorePort, crearCorePort } from "./mcp/core-port.js";
 export type {
@@ -123,4 +126,9 @@ export type {
   McpToolResult,
 } from "./mcp/tool.js";
 export { esUuid, resolverReferencia, MAXIMO_SUGERENCIAS } from "./mcp/resolve.js";
-export type { AmbitoResolucion, Candidato } from "./mcp/resolve.js";
+export type {
+  AmbitoResolucion,
+  Candidato,
+  EntidadResuelta,
+  EstrategiaResolucion,
+} from "./mcp/resolve.js";

@@ -1,5 +1,6 @@
 import type { DomainErrorCode } from "../domain/errors.js";
 import { DomainError } from "../domain/errors.js";
+import type { Llamada } from "./llamada.js";
 
 /**
  * Resolucion por nombre (8.3.1). UN solo modulo para las tres entidades:
@@ -45,9 +46,26 @@ export interface Candidato {
   extra?: Readonly<Record<string, unknown>>;
 }
 
+/** Las tres entidades que se resuelven por nombre (8.3.1). */
+export type EntidadResuelta = "board" | "column" | "task";
+
+/**
+ * Como se llego al candidato. Es el campo mas util de la linea `mcp.resolve`:
+ * dice si el agente esta trabajando con ids o adivinando nombres, que es la
+ * diferencia entre un cliente que encadena bien y uno que va a tropezar.
+ */
+export type EstrategiaResolucion = "uuid" | "exact" | "partial";
+
 export interface AmbitoResolucion {
   /** "tarea", "tablero", "columna": aparece en los mensajes de error. */
   entidad: string;
+  /**
+   * La misma entidad en el vocabulario del log (11.1), que es ingles y estable.
+   * Va como DATO del ambito y no como una traduccion de `entidad` dentro del
+   * modulo: la regla de resolucion es una sola y no puede empezar a tener un
+   * `if` por entidad, ni siquiera para nombrarla.
+   */
+  entity: EntidadResuelta;
   /** El plural del anterior. Castellano: no siempre es agregar una "s". */
   plural: string;
   /**
@@ -160,20 +178,83 @@ function noEncontrada(
 }
 
 /**
+ * La linea `mcp.resolve` de la 11.1: como se resolvio una referencia.
+ *
+ * Se emite SIEMPRE, salga bien o mal, porque el caso que hay que diagnosticar
+ * es justamente el que falla: un AMBIGUOUS_MATCH con `matches: 3` dice que el
+ * agente eligio un nombre que empata con tres tareas, y eso no se deduce de la
+ * respuesta que ve el usuario.
+ *
+ * `resolvedId` solo cuando hubo exactamente una coincidencia: con cero o con
+ * varias no hay id resuelto, y poner el primero seria escribir en el log
+ * justamente la eleccion que la 8.3.1 prohibe hacer.
+ *
+ * La referencia CRUDA —que para una tarea es su titulo— va aparte, en `debug`.
+ * En `info` no entra: el nivel por defecto no tiene por que llevarse el
+ * contenido de las tareas a un archivo de log. Con LOG_LEVEL=debug si, porque
+ * ahi es donde hace falta reconstruir que escribio el agente.
+ */
+function registrarResolucion(
+  llamada: Llamada,
+  ambito: AmbitoResolucion,
+  referencia: string,
+  strategy: EstrategiaResolucion,
+  coincidencias: readonly Candidato[],
+): void {
+  const unica = coincidencias.length === 1 ? coincidencias[0] : undefined;
+
+  llamada.logger.info(
+    {
+      evt: "mcp.resolve",
+      requestId: llamada.ctx.requestId,
+      entity: ambito.entity,
+      strategy,
+      matches: coincidencias.length,
+      ...(unica === undefined ? {} : { resolvedId: unica.id }),
+    },
+    `resolucion de ${ambito.entity} por ${strategy}: ${coincidencias.length}`,
+  );
+
+  llamada.logger.debug(
+    {
+      evt: "mcp.resolve.ref",
+      requestId: llamada.ctx.requestId,
+      entity: ambito.entity,
+      field: ambito.campo,
+      reference: referencia,
+    },
+    `referencia de ${ambito.entity}`,
+  );
+}
+
+/**
  * Devuelve el candidato que corresponde a la referencia, o lanza el
  * `DomainError` que el agente necesita para corregirse.
  *
  * Un UUID no se busca contra la lista: se devuelve un candidato sintetico con
  * ese id. Es lo que dice la 8.3.1 ("se usa directamente") y ademas es lo que
  * hace que resolver por id no dependa de haber enumerado el ambito entero.
+ *
+ * `llamada` es obligatoria y no opcional a proposito. Este es el UNICO punto
+ * por el que pasa una resolucion, asi que es el unico lugar donde el log puede
+ * estar completo; un parametro opcional convertiria "esta resolucion no se
+ * registro" en algo que se olvida en una llamada y no se nota nunca.
+ *
+ * El unico camino que NO deja linea es la referencia vacia: ahi no hubo
+ * resolucion que registrar, y anotarla como "exact con 0 coincidencias" seria
+ * inventar una busqueda que nunca se hizo. Ese caso se ve igual, en la linea
+ * `mcp.tool` de la invocacion, como VALIDATION_ERROR.
  */
 export function resolverReferencia(
   referencia: string,
   candidatos: readonly Candidato[],
   ambito: AmbitoResolucion,
+  llamada: Llamada,
 ): Candidato {
   if (esUuid(referencia)) {
-    return { id: referencia.trim(), label: referencia.trim() };
+    const sintetico: Candidato = { id: referencia.trim(), label: referencia.trim() };
+    registrarResolucion(llamada, ambito, referencia, "uuid", [sintetico]);
+    return sintetico;
   }
 
   const aguja = normalizar(referencia);
@@ -189,10 +270,11 @@ export function resolverReferencia(
       normalizar(candidato.label) === aguja ||
       (candidato.alias ?? []).some((alias) => normalizar(alias) === aguja),
   );
-  if (exactas.length === 1) {
-    return exactas[0] as Candidato;
-  }
-  if (exactas.length > 1) {
+  if (exactas.length !== 0) {
+    registrarResolucion(llamada, ambito, referencia, "exact", exactas);
+    if (exactas.length === 1) {
+      return exactas[0] as Candidato;
+    }
     throw ambiguo(referencia, exactas, ambito);
   }
 
@@ -203,6 +285,10 @@ export function resolverReferencia(
       normalizar(candidato.label).includes(aguja) ||
       (candidato.alias ?? []).some((alias) => normalizar(alias).includes(aguja)),
   );
+  // Cero exactas ya es informacion: la busqueda que cuenta es la parcial, y es
+  // la que se registra. Emitir tambien "exact con 0" duplicaria cada linea de
+  // este camino sin decir nada que "partial" no diga.
+  registrarResolucion(llamada, ambito, referencia, "partial", parciales);
   if (parciales.length === 1) {
     return parciales[0] as Candidato;
   }

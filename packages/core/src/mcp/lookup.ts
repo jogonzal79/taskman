@@ -2,7 +2,8 @@ import { DomainError } from "../domain/errors.js";
 import type { BoardDetail, Column, ListTasksQuery, Page, Task } from "../domain/types.js";
 import { LIMITE_PAGINA_MAXIMO } from "../domain/types.js";
 import type { TaskManagerPort } from "./port.js";
-import type { Candidato } from "./resolve.js";
+import type { Llamada } from "./llamada.js";
+import type { AmbitoResolucion, Candidato } from "./resolve.js";
 import { esUuid, resolverReferencia } from "./resolve.js";
 
 /**
@@ -39,6 +40,16 @@ export async function recolectar<T>(
   return items;
 }
 
+const AMBITO_TABLERO: AmbitoResolucion = {
+  entidad: "tablero",
+  plural: "tableros",
+  genero: "m",
+  campo: "board",
+  etiqueta: "name",
+  entity: "board",
+  notFound: "BOARD_NOT_FOUND",
+};
+
 /**
  * Resuelve el tablero y lo devuelve CON sus columnas.
  *
@@ -50,27 +61,23 @@ export async function recolectar<T>(
 export async function cargarTablero(
   port: TaskManagerPort,
   referencia: string,
+  llamada: Llamada,
 ): Promise<BoardDetail> {
-  if (esUuid(referencia)) {
-    return port.getBoard(referencia.trim());
-  }
+  // Con un UUID no hace falta enumerar el ambito: la 8.3.1 dice que se usa
+  // directamente. Se sigue llamando a `resolverReferencia` igual, con la lista
+  // vacia —que en ese camino ni se mira— para que TODA resolucion pase por el
+  // mismo punto y deje su linea. Cortar aca ahorraria una llamada y perderia
+  // justo el dato que distingue a un agente que encadena por id de uno que
+  // adivina nombres.
+  const candidatos = esUuid(referencia)
+    ? []
+    : (
+        await recolectar((cursor) =>
+          port.listBoards(cursor === undefined ? { limit: LIMITE_PAGINA_MAXIMO } : { limit: LIMITE_PAGINA_MAXIMO, cursor }),
+        )
+      ).map((tablero) => ({ id: tablero.id, label: tablero.name }));
 
-  const tableros = await recolectar((cursor) =>
-    port.listBoards(cursor === undefined ? { limit: LIMITE_PAGINA_MAXIMO } : { limit: LIMITE_PAGINA_MAXIMO, cursor }),
-  );
-
-  const elegido = resolverReferencia(
-    referencia,
-    tableros.map((tablero) => ({ id: tablero.id, label: tablero.name })),
-    {
-      entidad: "tablero",
-      plural: "tableros",
-      genero: "m",
-      campo: "board",
-      etiqueta: "name",
-      notFound: "BOARD_NOT_FOUND",
-    },
-  );
+  const elegido = resolverReferencia(referencia, candidatos, AMBITO_TABLERO, llamada);
 
   return port.getBoard(elegido.id);
 }
@@ -84,7 +91,11 @@ export async function cargarTablero(
  * key con espacios en lugar de guiones bajos: "IN PROGRESS" es lo que escribe
  * un humano y lo que aparece en los ejemplos de la 8.5.
  */
-export function resolverColumnaDelTablero(tablero: BoardDetail, referencia: string): Column {
+export function resolverColumnaDelTablero(
+  tablero: BoardDetail,
+  referencia: string,
+  llamada: Llamada,
+): Column {
   const candidatos: Candidato[] = tablero.columns.map((columna) => ({
     id: columna.id,
     label: columna.name,
@@ -92,15 +103,21 @@ export function resolverColumnaDelTablero(tablero: BoardDetail, referencia: stri
     extra: { key: columna.key },
   }));
 
-  const elegida = resolverReferencia(referencia, candidatos, {
-    entidad: "columna",
-    plural: "columnas",
-    genero: "f",
-    campo: "column",
-    etiqueta: "name",
-    notFound: "COLUMN_NOT_FOUND",
-    scope: { board_id: tablero.id, board_name: tablero.name },
-  });
+  const elegida = resolverReferencia(
+    referencia,
+    candidatos,
+    {
+      entidad: "columna",
+      plural: "columnas",
+      genero: "f",
+      campo: "column",
+      etiqueta: "name",
+      entity: "column",
+      notFound: "COLUMN_NOT_FOUND",
+      scope: { board_id: tablero.id, board_name: tablero.name },
+    },
+    llamada,
+  );
 
   const columna = tablero.columns.find((candidata) => candidata.id === elegida.id);
   if (columna !== undefined) {
@@ -120,6 +137,31 @@ export function resolverColumnaDelTablero(tablero: BoardDetail, referencia: stri
   );
 }
 
+/** Las tareas del ambito como candidatos de resolucion. */
+async function candidatosDeTareas(
+  port: TaskManagerPort,
+  tablero: BoardDetail,
+  columnId: string | undefined,
+): Promise<Candidato[]> {
+  const base: ListTasksQuery = {
+    boardId: tablero.id,
+    limit: LIMITE_PAGINA_MAXIMO,
+    ...(columnId === undefined ? {} : { columnId }),
+  };
+  const tareas = await recolectar((cursor) =>
+    port.listTasks(cursor === undefined ? base : { ...base, cursor }),
+  );
+
+  const keyDeColumna = new Map(tablero.columns.map((columna) => [columna.id, columna.key]));
+  return tareas.map((tarea: Task) => ({
+    id: tarea.id,
+    label: tarea.title,
+    // La 6.4 fija esta forma para `details.candidates`: id, titulo y columna.
+    // Sin la columna, dos tareas homonimas son indistinguibles para el agente.
+    extra: { column_id: tarea.columnId, column_key: keyDeColumna.get(tarea.columnId) ?? null },
+  }));
+}
+
 /**
  * Resuelve una tarea por titulo dentro del tablero, opcionalmente acotada a una
  * columna.
@@ -133,43 +175,34 @@ export async function resolverTareaDelTablero(
   port: TaskManagerPort,
   tablero: BoardDetail,
   referencia: string,
+  llamada: Llamada,
   columnId?: string,
 ): Promise<string> {
-  if (esUuid(referencia)) {
-    return referencia.trim();
-  }
+  // Mismo criterio que en `cargarTablero`: con un UUID no se enumera el ambito,
+  // pero la resolucion pasa igual por el unico punto que la registra.
+  const candidatos = esUuid(referencia)
+    ? []
+    : await candidatosDeTareas(port, tablero, columnId);
 
-  const base: ListTasksQuery = {
-    boardId: tablero.id,
-    limit: LIMITE_PAGINA_MAXIMO,
-    ...(columnId === undefined ? {} : { columnId }),
-  };
-  const tareas = await recolectar((cursor) =>
-    port.listTasks(cursor === undefined ? base : { ...base, cursor }),
-  );
-
-  const keyDeColumna = new Map(tablero.columns.map((columna) => [columna.id, columna.key]));
-  const candidatos: Candidato[] = tareas.map((tarea: Task) => ({
-    id: tarea.id,
-    label: tarea.title,
-    // La 6.4 fija esta forma para `details.candidates`: id, titulo y columna.
-    // Sin la columna, dos tareas homonimas son indistinguibles para el agente.
-    extra: { column_id: tarea.columnId, column_key: keyDeColumna.get(tarea.columnId) ?? null },
-  }));
-
-  const elegida = resolverReferencia(referencia, candidatos, {
-    entidad: "tarea",
-    plural: "tareas",
-    genero: "f",
-    campo: "task",
-    etiqueta: "title",
-    notFound: "TASK_NOT_FOUND",
-    scope: {
-      board_id: tablero.id,
-      board_name: tablero.name,
-      ...(columnId === undefined ? {} : { column_id: columnId }),
+  const elegida = resolverReferencia(
+    referencia,
+    candidatos,
+    {
+      entidad: "tarea",
+      plural: "tareas",
+      genero: "f",
+      campo: "task",
+      etiqueta: "title",
+      entity: "task",
+      notFound: "TASK_NOT_FOUND",
+      scope: {
+        board_id: tablero.id,
+        board_name: tablero.name,
+        ...(columnId === undefined ? {} : { column_id: columnId }),
+      },
     },
-  });
+    llamada,
+  );
 
   return elegida.id;
 }
@@ -209,10 +242,14 @@ export async function ubicarTarea(
   port: TaskManagerPort,
   referenciaTarea: string,
   referenciaTablero: string | undefined,
+  llamada: Llamada,
 ): Promise<{ tablero: BoardDetail; taskId: string }> {
   if (referenciaTablero !== undefined) {
-    const tablero = await cargarTablero(port, referenciaTablero);
-    return { tablero, taskId: await resolverTareaDelTablero(port, tablero, referenciaTarea) };
+    const tablero = await cargarTablero(port, referenciaTablero, llamada);
+    return {
+      tablero,
+      taskId: await resolverTareaDelTablero(port, tablero, referenciaTarea, llamada),
+    };
   }
 
   if (!esUuid(referenciaTarea)) {

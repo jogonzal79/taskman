@@ -93,17 +93,59 @@ lo que espera el resto de las herramientas.
 ### Diagnóstico
 
 El servidor escribe en stderr y nunca en stdout, que es el canal del protocolo.
-Para ejecutarlo a mano y ver por qué no arranca:
+Lo que escribe es log estructurado en JSON, una línea por evento (sección 11.1):
+
+| `evt` | Cuándo | Campos propios |
+| --- | --- | --- |
+| `mcp.ready` | Al arrancar | `mode`, `transport`, `destructivePolicy`, `logLevel` |
+| `mcp.tool` | Una por invocación de herramienta | `tool`, `durationMs`, `outcome` (`ok`, `domain_error`, `error`) y `code` solo si hubo error de dominio |
+| `mcp.resolve` | Una por resolución por nombre (sección 8.3.1) | `entity`, `strategy` (`uuid`, `exact`, `partial`), `matches` y `resolvedId` solo si hubo exactamente una |
+| `mcp.resolve.ref` | Igual que la anterior, pero solo en `debug` | `reference`: el texto crudo que mandó el agente, que para una tarea es su título |
+
+Todas llevan `requestId`, y es **el mismo** que queda en la columna `request_id`
+de `audit_log`: con él se cruza lo que pidió un agente, cómo se resolvió y qué
+escribió. Las de `mcp.tool` llevan además `actorType` y `actorName`.
+
+`LOG_LEVEL` controla el detalle: `debug`, `info` (por defecto), `warn` o
+`error`. Un valor fuera de esos cuatro impide el arranque, igual que
+`MCP_DESTRUCTIVE_POLICY`: quien escribió `LOG_LEVEL=verbose` está buscando un
+problema, y arrancar en `info` le daría menos líneas de las que cree tener.
+
+Para ejecutarlo a mano, con cada canal en su archivo y una llamada real:
 
 ```powershell
+$raiz = "C:\Users\Jonathan Gonzalez\Documents\taskman"
+$tmp  = Join-Path $env:TEMP "taskman-mcp"
+New-Item -ItemType Directory -Force $tmp | Out-Null
+
+# initialize, initialized y una llamada a list_boards.
+$mensajes = @(
+  '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"powershell","version":"0.0.0"}}}',
+  '{"jsonrpc":"2.0","method":"notifications/initialized"}',
+  '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"list_boards","arguments":{}}}'
+)
+[IO.File]::WriteAllLines((Join-Path $tmp "entrada.jsonl"), $mensajes)
+
 $env:MCP_PORT_MODE = "core"
-$env:DATABASE_URL = "postgresql://taskman:taskman@127.0.0.1:5432/taskman?schema=public"
+$env:DATABASE_URL  = "postgresql://taskman:taskman@127.0.0.1:5432/taskman?schema=public"
 $env:MCP_DESTRUCTIVE_POLICY = "confirm"
-node .\apps\mcp-stdio\dist\index.js
+$env:LOG_LEVEL = "debug"
+
+Start-Process -FilePath "node" -ArgumentList "`"$raiz\apps\mcp-stdio\dist\index.js`"" `
+  -RedirectStandardInput  (Join-Path $tmp "entrada.jsonl") `
+  -RedirectStandardOutput (Join-Path $tmp "stdout.jsonl") `
+  -RedirectStandardError  (Join-Path $tmp "stderr.jsonl") `
+  -NoNewWindow -Wait
+
+Get-Content (Join-Path $tmp "stdout.jsonl")   # solo JSON-RPC
+Get-Content (Join-Path $tmp "stderr.jsonl")   # solo log
 ```
 
-Se queda esperando mensajes MCP por stdin; `Ctrl+C` lo corta. La línea que
-escribe al arrancar dice con qué política de borrado quedó.
+`stdout.jsonl` tiene que traer únicamente respuestas JSON-RPC. Si aparece ahí
+una línea de log, el canal del protocolo está contaminado y el cliente la recibe
+como si fuera un mensaje: es exactamente lo que verifica `test/log.test.ts`.
+Sin el archivo de entrada, el servidor se queda esperando mensajes por stdin y
+`Ctrl+C` lo corta.
 
 ## Estructura
 
