@@ -8,8 +8,9 @@ import type {
   TaskMatch,
   TaskOrderBy,
 } from "../domain/types.js";
-import { LIMITE_PAGINA_DEFECTO, LIMITE_PAGINA_MAXIMO } from "../domain/types.js";
-import { isRetryableConflict } from "./db-error.js";
+import type { OrdenSql } from "./pagination.js";
+import { clausulaOrden, condicionCursor, decodificarCursor, normalizarLimite, paginar } from "./pagination.js";
+import type { TransactionRunner } from "./transaction-runner.js";
 
 /**
  * Unica capa del nucleo que ve Prisma. Todo lo de arriba trabaja contra
@@ -129,6 +130,66 @@ function aTask(fila: {
   };
 }
 
+/**
+ * Bloquea con FOR UPDATE las filas de tarea de varias columnas, en orden
+ * canonico `(column_id, id)`. Lo usa `move` y tambien el reassignTo de
+ * ColumnService: si dos operaciones bloquearan estas filas en ordenes
+ * distintos volveria el interbloqueo que el orden canonico existe para evitar.
+ */
+export async function lockTasksOfColumns(
+  tx: Prisma.TransactionClient,
+  columnIds: readonly string[],
+): Promise<LockedTask[]> {
+  if (columnIds.length === 0) {
+    return [];
+  }
+
+  const filas = await tx.$queryRaw<FilaBloqueada[]>`
+    SELECT id, board_id, column_id, position
+      FROM task
+     WHERE column_id = ANY (ARRAY(
+             SELECT elem::uuid
+               FROM jsonb_array_elements_text(${JSON.stringify(columnIds)}::jsonb) AS a(elem)
+           ))
+     ORDER BY column_id, id
+       FOR UPDATE
+  `;
+  return filas.map(aLockedTask);
+}
+
+/** Reescribe la secuencia completa 0..n-1 de tareas de una columna. */
+export async function rewriteTaskPositions(
+  tx: Prisma.TransactionClient,
+  columnId: string,
+  orderedTaskIds: readonly string[],
+): Promise<void> {
+  if (orderedTaskIds.length === 0) {
+    return;
+  }
+
+  // Una sola sentencia reescribe la columna entera. `updated_at` solo se toca
+  // en las filas que de verdad cambian: reescribimos la secuencia completa,
+  // pero no queremos ensuciar la marca de tiempo de tareas que se quedaron
+  // donde estaban.
+  await tx.$executeRaw`
+    UPDATE task AS t
+       SET column_id  = ${columnId}::uuid,
+           position   = v.pos,
+           updated_at = CASE
+                          WHEN t.column_id IS DISTINCT FROM ${columnId}::uuid
+                            OR t.position  IS DISTINCT FROM v.pos
+                          THEN now()
+                          ELSE t.updated_at
+                        END
+      FROM (
+            SELECT elem::uuid AS id, (ord - 1)::int AS pos
+              FROM jsonb_array_elements_text(${JSON.stringify(orderedTaskIds)}::jsonb)
+                   WITH ORDINALITY AS a(elem, ord)
+           ) AS v
+     WHERE t.id = v.id
+  `;
+}
+
 function crearTaskTransaction(tx: Prisma.TransactionClient): TaskTransaction {
   // Los parametros UUID van casteados en todo el SQL crudo: el adapter los
   // bindea como texto y PostgreSQL no compara uuid = text (ver CLAUDE.md).
@@ -216,31 +277,7 @@ function crearTaskTransaction(tx: Prisma.TransactionClient): TaskTransaction {
     },
 
     async rewriteColumn(columnId, orderedTaskIds) {
-      if (orderedTaskIds.length === 0) {
-        return;
-      }
-
-      // Una sola sentencia reescribe la columna entera. `updated_at` solo se
-      // toca en las filas que de verdad cambian: reescribimos la secuencia
-      // completa, pero no queremos ensuciar la marca de tiempo de tareas que
-      // se quedaron donde estaban.
-      await tx.$executeRaw`
-        UPDATE task AS t
-           SET column_id  = ${columnId}::uuid,
-               position   = v.pos,
-               updated_at = CASE
-                              WHEN t.column_id IS DISTINCT FROM ${columnId}::uuid
-                                OR t.position  IS DISTINCT FROM v.pos
-                              THEN now()
-                              ELSE t.updated_at
-                            END
-          FROM (
-                SELECT elem::uuid AS id, (ord - 1)::int AS pos
-                  FROM jsonb_array_elements_text(${JSON.stringify(orderedTaskIds)}::jsonb)
-                       WITH ORDINALITY AS a(elem, ord)
-               ) AS v
-         WHERE t.id = v.id
-      `;
+      await rewriteTaskPositions(tx, columnId, orderedTaskIds);
     },
 
     async readColumnOrder(columnId) {
@@ -266,15 +303,6 @@ function crearTaskTransaction(tx: Prisma.TransactionClient): TaskTransaction {
 // de `list` es identico al que sale de `get`, sin depender de como el driver
 // mapea DATE, timestamptz o el enum en una consulta cruda.
 
-interface OrdenSql {
-  columna: string;
-  direccion: "ASC" | "DESC";
-  /** `due_date` admite NULL; el resto de las columnas ordenables no. */
-  admiteNulos: boolean;
-  /** Casteo del valor del cursor al comparar. */
-  cast: string;
-}
-
 const ORDEN: Record<TaskOrderBy, OrdenSql> = {
   position: { columna: "position", direccion: "ASC", admiteNulos: false, cast: "::int" },
   dueDate: { columna: "due_date", direccion: "ASC", admiteNulos: true, cast: "::date" },
@@ -287,100 +315,20 @@ const ORDEN: Record<TaskOrderBy, OrdenSql> = {
   },
 };
 
-interface Cursor {
-  /** Valor de la columna de orden, ya en texto. `null` solo para `due_date`. */
-  v: string | null;
-  id: string;
-}
-
-function codificarCursor(cursor: Cursor): string {
-  return Buffer.from(JSON.stringify(cursor), "utf8").toString("base64url");
-}
-
-function decodificarCursor(cursor: string): Cursor | undefined {
-  try {
-    const crudo: unknown = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8"));
-    if (typeof crudo !== "object" || crudo === null) {
-      return undefined;
-    }
-    const { v, id } = crudo as { v?: unknown; id?: unknown };
-    if (typeof id !== "string" || !(typeof v === "string" || v === null)) {
-      return undefined;
-    }
-    return { v, id };
-  } catch {
-    return undefined;
-  }
-}
-
-/** Predicado keyset: "estrictamente despues del cursor" en el orden pedido. */
-function condicionCursor(orden: OrdenSql, cursor: Cursor): Prisma.Sql {
-  const columna = Prisma.raw(orden.columna);
-  const valor = Prisma.raw(orden.cast);
-
-  if (cursor.v === null) {
-    // Solo pasa con NULLS LAST: ya estamos en el bloque final de nulos.
-    return Prisma.sql`(${columna} IS NULL AND id > ${cursor.id}::uuid)`;
-  }
-
-  const comparador = orden.direccion === "ASC" ? Prisma.raw(">") : Prisma.raw("<");
-  const avanza = Prisma.sql`(
-    ${columna} ${comparador} ${cursor.v}${valor}
-    OR (${columna} = ${cursor.v}${valor} AND id > ${cursor.id}::uuid)
-  )`;
-
-  // Con NULLS LAST los nulos van despues de cualquier valor no nulo.
-  return orden.admiteNulos ? Prisma.sql`(${avanza} OR ${columna} IS NULL)` : avanza;
-}
-
-function normalizarLimite(limite: number | undefined): number {
-  if (limite === undefined) {
-    return LIMITE_PAGINA_DEFECTO;
-  }
-  return Math.max(1, Math.min(Math.trunc(limite), LIMITE_PAGINA_MAXIMO));
-}
-
 export class TaskRepository {
-  readonly #prisma: PrismaClient;
-  readonly #maxRetries: number;
+  readonly #runner: TransactionRunner;
 
-  constructor(prisma: PrismaClient, options: { maxRetries?: number } = {}) {
-    this.#prisma = prisma;
-    this.#maxRetries = options.maxRetries ?? 2;
+  constructor(runner: TransactionRunner) {
+    this.#runner = runner;
   }
 
-  /**
-   * Corre `fn` en UNA transaccion interactiva con aislamiento REPEATABLE READ.
-   *
-   * Reintenta hasta dos veces ante contencion legitima: 40001, y la violacion
-   * de `task_column_position_uniq` que aparece cuando dos operaciones sobre una
-   * columna vacia no tienen filas que bloquear y calculan la misma position.
-   * Ver `isRetryableConflict`, que explica por que 40P01 queda afuera.
-   *
-   * Cualquier otro error, incluidos los de dominio, sube sin tocar.
-   */
+  get #prisma(): PrismaClient {
+    return this.#runner.prisma;
+  }
+
+  /** Ver `TransactionRunner`: REPEATABLE READ y reintentos ante contencion. */
   async inTransaction<T>(fn: (tx: TaskTransaction) => Promise<T>): Promise<T> {
-    let ultimoFallo: unknown;
-
-    for (let intento = 0; intento <= this.#maxRetries; intento += 1) {
-      try {
-        return await this.#prisma.$transaction(
-          async (tx) => fn(crearTaskTransaction(tx)),
-          {
-            isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
-            timeout: 15_000,
-            maxWait: 15_000,
-          },
-        );
-      } catch (error: unknown) {
-        if (!isRetryableConflict(error)) {
-          throw error;
-        }
-        ultimoFallo = error;
-      }
-    }
-
-    throw ultimoFallo;
+    return this.#runner.run(async (tx) => fn(crearTaskTransaction(tx)));
   }
 
   /** Lectura suelta: `get` no necesita transaccion. */
@@ -439,9 +387,7 @@ export class TaskRepository {
 
     const where =
       condiciones.length === 0 ? Prisma.empty : Prisma.sql`WHERE ${Prisma.join(condiciones, " AND ")}`;
-    const orderBy = Prisma.raw(
-      `${orden.columna} ${orden.direccion}${orden.admiteNulos ? " NULLS LAST" : ""}, id ASC`,
-    );
+    const orderBy = clausulaOrden(orden);
     const columnaOrden = Prisma.raw(orden.columna);
 
     // Se pide una fila de mas para saber si hay pagina siguiente.
@@ -453,7 +399,7 @@ export class TaskRepository {
        LIMIT ${limite + 1}
     `;
 
-    return this.#paginar(filas, limite);
+    return paginar(filas, limite, (ids) => this.#hidratar(ids));
   }
 
   async searchTasks(
@@ -490,27 +436,12 @@ export class TaskRepository {
        LIMIT ${limite + 1}
     `;
 
-    const pagina = await this.#paginar(filas, limite);
+    const pagina = await paginar(filas, limite, (ids) => this.#hidratar(ids));
     const rangos = new Map(filas.map((fila) => [fila.id, Number(fila.orden ?? "0")]));
 
     return {
       items: pagina.items.map((task) => ({ task, rank: rangos.get(task.id) ?? 0 })),
       nextCursor: pagina.nextCursor,
-    };
-  }
-
-  async #paginar(
-    filas: ReadonlyArray<{ id: string; orden: string | null }>,
-    limite: number,
-  ): Promise<{ items: Task[]; nextCursor: string | null }> {
-    const hayMas = filas.length > limite;
-    const pagina = hayMas ? filas.slice(0, limite) : [...filas];
-    const ultima = pagina.at(-1);
-
-    return {
-      items: await this.#hidratar(pagina.map((fila) => fila.id)),
-      nextCursor:
-        hayMas && ultima !== undefined ? codificarCursor({ v: ultima.orden, id: ultima.id }) : null,
     };
   }
 }

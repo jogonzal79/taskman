@@ -2,8 +2,17 @@ export { DomainError, isDomainError } from "./domain/errors.js";
 export type { DomainErrorCode, DomainErrorOptions } from "./domain/errors.js";
 
 export type {
+  Board,
+  BoardDetail,
+  Column,
   ColumnOrder,
+  CreateBoardInput,
+  CreateColumnInput,
   CreateTaskInput,
+  DeleteColumnOptions,
+  ListBoardsQuery,
+  UpdateBoardInput,
+  UpdateColumnInput,
   ListTasksQuery,
   MoveResult,
   MoveTarget,
@@ -26,6 +35,8 @@ export {
   isRetryableConflict,
   isSerializationFailure,
   violatesConstraint,
+  COLUMN_KEY_CONSTRAINT,
+  COLUMN_POSITION_CONSTRAINT,
   DEADLOCK_DETECTED,
   SERIALIZATION_FAILURE,
   TASK_POSITION_CONSTRAINT,
@@ -43,3 +54,15 @@ export type {
 } from "./db/task-repository.js";
 
 export { TaskService } from "./services/task-service.js";
+export { BoardService, COLUMNAS_POR_DEFECTO, LIMITE_BOARD_DESCRIPTION, LIMITE_BOARD_NAME } from "./services/board-service.js";
+export { ColumnService } from "./services/column-service.js";
+export { resolverColumna } from "./services/column-reference.js";
+export type { BuscadorDeColumnas } from "./services/column-reference.js";
+
+export { BoardRepository } from "./db/board-repository.js";
+export type { BoardTransaction, LockedColumn, NewBoardRow, NewColumnRow } from "./db/board-repository.js";
+export { TransactionRunner } from "./db/transaction-runner.js";
+
+export { LIMITE_COLUMN_KEY, LIMITE_COLUMN_NAME, normalizarColumnKey } from "./domain/column-key.js";
+export type { ColumnReference } from "./domain/column-key.js";
+export { normalizarTexto, recortarBlancos } from "./domain/text.js";
