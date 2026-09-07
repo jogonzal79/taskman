@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import type { Column, ListTasksQuery, Task } from "../../domain/types.js";
 import { cargarTablero, resolverColumnaDelTablero } from "../lookup.js";
+import type { EntornoMcp } from "../llamada.js";
 import type { TaskManagerPort } from "../port.js";
 import { definirHandler, respuesta } from "../respuesta.js";
 import type { McpToolDefinition } from "../tool.js";
@@ -71,7 +72,7 @@ function agrupar(tareas: readonly Task[], columnas: readonly Column[]): Map<stri
   return porColumna;
 }
 
-export function definirListTasks(port: TaskManagerPort): McpToolDefinition {
+export function definirListTasks(port: TaskManagerPort, entorno: EntornoMcp): McpToolDefinition {
   return {
     name: "list_tasks",
     title: "Listar tareas",
@@ -86,10 +87,12 @@ export function definirListTasks(port: TaskManagerPort): McpToolDefinition {
       idempotentHint: true,
       openWorldHint: false,
     },
-    handler: definirHandler("list_tasks", shape, async (args) => {
-      const tablero = await cargarTablero(port, args.board);
+    handler: definirHandler(entorno, "list_tasks", shape, async (args, llamada) => {
+      const tablero = await cargarTablero(port, args.board, llamada);
       const columna =
-        args.column === undefined ? undefined : resolverColumnaDelTablero(tablero, args.column);
+        args.column === undefined
+          ? undefined
+          : resolverColumnaDelTablero(tablero, args.column, llamada);
 
       const query: ListTasksQuery = {
         boardId: tablero.id,

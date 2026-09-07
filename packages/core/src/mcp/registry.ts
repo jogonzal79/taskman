@@ -1,4 +1,6 @@
+import { LOGGER_NULO, type Logger } from "../domain/logger.js";
 import { CONTEXTO_MCP_POR_DEFECTO, type FabricaDeContexto } from "./contexto.js";
+import type { EntornoMcp } from "./llamada.js";
 import { POLITICA_DESTRUCTIVA_POR_DEFECTO, type PoliticaDestructiva } from "./politica.js";
 import type { TaskManagerPort } from "./port.js";
 import type { McpToolDefinition } from "./tool.js";
@@ -23,6 +25,12 @@ export interface OpcionesRegistro {
    * quien se conecto pasa el suyo (ver `contextoDeAgente`).
    */
   contexto?: FabricaDeContexto;
+  /**
+   * Donde se escribe el log estructurado de la 11.1. Ausente, no se escribe
+   * nada: instrumentar no puede obligar a configurar, y una prueba que no mira
+   * el log no tiene por que inyectar uno.
+   */
+  logger?: Logger;
 }
 
 /**
@@ -47,22 +55,29 @@ export function crearHerramientas(
   opciones: OpcionesRegistro = {},
 ): McpToolDefinition[] {
   const politica = opciones.politicaDestructiva ?? POLITICA_DESTRUCTIVA_POR_DEFECTO;
-  const contexto = opciones.contexto ?? CONTEXTO_MCP_POR_DEFECTO;
+  const entorno: EntornoMcp = {
+    contexto: opciones.contexto ?? CONTEXTO_MCP_POR_DEFECTO,
+    logger: opciones.logger ?? LOGGER_NULO,
+  };
 
-  // Solo las seis que escriben reciben `contexto`. Las cinco de lectura no lo
-  // necesitan porque no se auditan (7.4), y darselo igual repetiria el error
-  // que hizo diferir `ctx` en F1b.2: un parametro que nadie lee.
+  // Las ONCE reciben el entorno, tambien las cinco de lectura. Antes solo lo
+  // recibian las seis que escriben, porque `contexto` servia unicamente para
+  // auditar y las lecturas no se auditan (7.4). Con la 11.1 la asimetria se
+  // termina: una lectura tambien se registra, y una resolucion por nombre —que
+  // ocurre igual en list_tasks que en move_task— tiene que quedar correlacionada
+  // con la invocacion que la pidio. Es el "motivo para recibirlo" que
+  // `domain/actor.ts` dejaba anotado.
   return [
-    definirListBoards(port),
-    definirGetBoard(port),
-    definirCreateBoard(port, contexto),
-    definirCreateColumn(port, contexto),
-    definirListTasks(port),
-    definirSearchTasks(port),
-    definirGetTask(port),
-    definirCreateTask(port, contexto),
-    definirUpdateTask(port, contexto),
-    definirMoveTask(port, contexto),
-    definirDeleteTask(port, politica, contexto),
+    definirListBoards(port, entorno),
+    definirGetBoard(port, entorno),
+    definirCreateBoard(port, entorno),
+    definirCreateColumn(port, entorno),
+    definirListTasks(port, entorno),
+    definirSearchTasks(port, entorno),
+    definirGetTask(port, entorno),
+    definirCreateTask(port, entorno),
+    definirUpdateTask(port, entorno),
+    definirMoveTask(port, entorno),
+    definirDeleteTask(port, entorno, politica),
   ];
 }

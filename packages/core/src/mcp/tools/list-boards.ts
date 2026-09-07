@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import type { EntornoMcp } from "../llamada.js";
 import type { TaskManagerPort } from "../port.js";
 import { definirHandler, respuesta } from "../respuesta.js";
 import type { McpToolDefinition } from "../tool.js";
@@ -22,7 +23,7 @@ function cuenta(cantidad: number): string {
   return cantidad === 1 ? "1 tablero" : `${cantidad} tableros`;
 }
 
-export function definirListBoards(port: TaskManagerPort): McpToolDefinition {
+export function definirListBoards(port: TaskManagerPort, entorno: EntornoMcp): McpToolDefinition {
   return {
     name: "list_boards",
     title: "Listar tableros",
@@ -37,7 +38,7 @@ export function definirListBoards(port: TaskManagerPort): McpToolDefinition {
       idempotentHint: true,
       openWorldHint: false,
     },
-    handler: definirHandler("list_boards", shape, async (args) => {
+    handler: definirHandler(entorno, "list_boards", shape, async (args) => {
       const pagina = await port.listBoards({ limit: args.limit });
 
       const lineas = [`${cuenta(pagina.items.length)}.`];

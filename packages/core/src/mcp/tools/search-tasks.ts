@@ -3,6 +3,7 @@ import { z } from "zod";
 import { DomainError } from "../../domain/errors.js";
 import type { BoardDetail, Column, SearchScope } from "../../domain/types.js";
 import { cargarTablero, contextoDeTableros, resolverColumnaDelTablero } from "../lookup.js";
+import type { EntornoMcp } from "../llamada.js";
 import type { TaskManagerPort } from "../port.js";
 import { definirHandler, respuesta } from "../respuesta.js";
 import type { McpToolDefinition } from "../tool.js";
@@ -63,7 +64,7 @@ async function ubicaciones(
   return { tableros, columnas };
 }
 
-export function definirSearchTasks(port: TaskManagerPort): McpToolDefinition {
+export function definirSearchTasks(port: TaskManagerPort, entorno: EntornoMcp): McpToolDefinition {
   return {
     name: "search_tasks",
     title: "Buscar tareas",
@@ -78,7 +79,7 @@ export function definirSearchTasks(port: TaskManagerPort): McpToolDefinition {
       idempotentHint: true,
       openWorldHint: false,
     },
-    handler: definirHandler("search_tasks", shape, async (args) => {
+    handler: definirHandler(entorno, "search_tasks", shape, async (args, llamada) => {
       if (args.column !== undefined && args.board === undefined) {
         throw new DomainError(
           "VALIDATION_ERROR",
@@ -90,11 +91,12 @@ export function definirSearchTasks(port: TaskManagerPort): McpToolDefinition {
         );
       }
 
-      const tablero = args.board === undefined ? undefined : await cargarTablero(port, args.board);
+      const tablero =
+        args.board === undefined ? undefined : await cargarTablero(port, args.board, llamada);
       const columna =
         tablero === undefined || args.column === undefined
           ? undefined
-          : resolverColumnaDelTablero(tablero, args.column);
+          : resolverColumnaDelTablero(tablero, args.column, llamada);
 
       const scope: SearchScope = {
         limit: args.limit,

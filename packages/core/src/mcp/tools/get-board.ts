@@ -1,4 +1,5 @@
 import { cargarTablero, tareasDelTablero } from "../lookup.js";
+import type { EntornoMcp } from "../llamada.js";
 import type { TaskManagerPort } from "../port.js";
 import { definirHandler, respuesta } from "../respuesta.js";
 import type { McpToolDefinition } from "../tool.js";
@@ -8,7 +9,7 @@ const shape = {
   board: campoBoard,
 };
 
-export function definirGetBoard(port: TaskManagerPort): McpToolDefinition {
+export function definirGetBoard(port: TaskManagerPort, entorno: EntornoMcp): McpToolDefinition {
   return {
     name: "get_board",
     title: "Consultar tablero",
@@ -23,8 +24,8 @@ export function definirGetBoard(port: TaskManagerPort): McpToolDefinition {
       idempotentHint: true,
       openWorldHint: false,
     },
-    handler: definirHandler("get_board", shape, async (args) => {
-      const tablero = await cargarTablero(port, args.board);
+    handler: definirHandler(entorno, "get_board", shape, async (args, llamada) => {
+      const tablero = await cargarTablero(port, args.board, llamada);
       const tareas = await tareasDelTablero(port, tablero.id);
 
       const cuentaPorColumna = new Map(tablero.columns.map((columna) => [columna.id, 0]));

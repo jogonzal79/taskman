@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import { cargarTablero } from "../lookup.js";
-import type { FabricaDeContexto } from "../contexto.js";
+import type { EntornoMcp } from "../llamada.js";
 import type { TaskManagerPort } from "../port.js";
 import { definirHandler, respuesta } from "../respuesta.js";
 import type { McpToolDefinition } from "../tool.js";
@@ -32,7 +32,7 @@ const shape = {
 
 export function definirCreateColumn(
   port: TaskManagerPort,
-  contexto: FabricaDeContexto,
+  entorno: EntornoMcp,
 ): McpToolDefinition {
   return {
     name: "create_column",
@@ -50,8 +50,8 @@ export function definirCreateColumn(
       idempotentHint: false,
       openWorldHint: false,
     },
-    handler: definirHandler("create_column", shape, async (args) => {
-      const tablero = await cargarTablero(port, args.board);
+    handler: definirHandler(entorno, "create_column", shape, async (args, llamada) => {
+      const tablero = await cargarTablero(port, args.board, llamada);
 
       const columna = await port.createColumn(
         {
@@ -60,7 +60,7 @@ export function definirCreateColumn(
           key: args.key,
           position: args.position,
         },
-        contexto(),
+        llamada.ctx,
       );
 
       // Se relee el tablero porque insertar en el medio reescribe la position

@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import type { CreateBoardInput } from "../../domain/types.js";
-import type { FabricaDeContexto } from "../contexto.js";
+import type { EntornoMcp } from "../llamada.js";
 import type { TaskManagerPort } from "../port.js";
 import { definirHandler, respuesta } from "../respuesta.js";
 import type { McpToolDefinition } from "../tool.js";
@@ -41,7 +41,7 @@ const shape = {
 
 export function definirCreateBoard(
   port: TaskManagerPort,
-  contexto: FabricaDeContexto,
+  entorno: EntornoMcp,
 ): McpToolDefinition {
   return {
     name: "create_board",
@@ -59,7 +59,7 @@ export function definirCreateBoard(
       idempotentHint: false,
       openWorldHint: false,
     },
-    handler: definirHandler("create_board", shape, async (args) => {
+    handler: definirHandler(entorno, "create_board", shape, async (args, llamada) => {
       const input: CreateBoardInput = {
         name: args.name,
         ...(args.description === undefined ? {} : { description: args.description }),
@@ -68,7 +68,7 @@ export function definirCreateBoard(
 
       // Un contexto por llamada: el requestId correlaciona ESTA invocacion con
       // el registro de auditoria que deja (5.1).
-      const tablero = await port.createBoard(input, contexto());
+      const tablero = await port.createBoard(input, llamada.ctx);
 
       return respuesta(
         [

@@ -3,7 +3,7 @@ import { z } from "zod";
 import { DomainError } from "../../domain/errors.js";
 import type { UpdateTaskInput } from "../../domain/types.js";
 import { ubicarTarea } from "../lookup.js";
-import type { FabricaDeContexto } from "../contexto.js";
+import type { EntornoMcp } from "../llamada.js";
 import type { TaskManagerPort } from "../port.js";
 import { definirHandler, respuesta } from "../respuesta.js";
 import type { McpToolDefinition } from "../tool.js";
@@ -74,7 +74,7 @@ const MODIFICABLES = ["title", "description", "priority", "due_date"] as const;
 
 export function definirUpdateTask(
   port: TaskManagerPort,
-  contexto: FabricaDeContexto,
+  entorno: EntornoMcp,
 ): McpToolDefinition {
   return {
     name: "update_task",
@@ -91,7 +91,7 @@ export function definirUpdateTask(
       idempotentHint: true,
       openWorldHint: false,
     },
-    handler: definirHandler("update_task", shape, async (args) => {
+    handler: definirHandler(entorno, "update_task", shape, async (args, llamada) => {
       const entrada = args as Record<string, unknown>;
 
       const redirigidos = Object.keys(REDIRIGIDOS).filter(
@@ -124,7 +124,7 @@ export function definirUpdateTask(
         });
       }
 
-      const { tablero, taskId } = await ubicarTarea(port, args.task, args.board);
+      const { tablero, taskId } = await ubicarTarea(port, args.task, args.board, llamada);
 
       // `null` explicito borra, ausente deja como esta: son casos distintos y
       // el tipo del nucleo los distingue, asi que el borde no puede aplanarlos.
@@ -138,7 +138,7 @@ export function definirUpdateTask(
         ...(dueDate === undefined ? {} : { dueDate }),
       };
 
-      const tarea = await port.updateTask(taskId, patch, contexto());
+      const tarea = await port.updateTask(taskId, patch, llamada.ctx);
       const columna = tablero.columns.find((candidata) => candidata.id === tarea.columnId);
 
       return respuesta(

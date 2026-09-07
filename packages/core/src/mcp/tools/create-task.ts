@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import type { CreateTaskInput } from "../../domain/types.js";
 import { cargarTablero, ordenDeColumna, resolverColumnaDelTablero } from "../lookup.js";
-import type { FabricaDeContexto } from "../contexto.js";
+import type { EntornoMcp } from "../llamada.js";
 import type { TaskManagerPort } from "../port.js";
 import { definirHandler, respuesta } from "../respuesta.js";
 import type { McpToolDefinition } from "../tool.js";
@@ -46,7 +46,7 @@ const shape = {
 
 export function definirCreateTask(
   port: TaskManagerPort,
-  contexto: FabricaDeContexto,
+  entorno: EntornoMcp,
 ): McpToolDefinition {
   return {
     name: "create_task",
@@ -64,9 +64,9 @@ export function definirCreateTask(
       idempotentHint: false,
       openWorldHint: false,
     },
-    handler: definirHandler("create_task", shape, async (args) => {
-      const tablero = await cargarTablero(port, args.board);
-      const columna = resolverColumnaDelTablero(tablero, args.column);
+    handler: definirHandler(entorno, "create_task", shape, async (args, llamada) => {
+      const tablero = await cargarTablero(port, args.board, llamada);
+      const columna = resolverColumnaDelTablero(tablero, args.column, llamada);
 
       const input: CreateTaskInput = {
         boardId: tablero.id,
@@ -78,7 +78,7 @@ export function definirCreateTask(
         ...(args.due_date === undefined ? {} : { dueDate: aFecha(args.due_date) }),
       };
 
-      const tarea = await port.createTask(input, contexto());
+      const tarea = await port.createTask(input, llamada.ctx);
       const orden = await ordenDeColumna(port, tablero.id, columna.id);
 
       return respuesta(

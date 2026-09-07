@@ -5,6 +5,7 @@ import {
   type PoliticaDestructiva,
 } from "@taskman/core";
 
+import { crearLogger, leerNivelLog, type NivelLog } from "./log.js";
 import { crearServidorMcp } from "./server.js";
 
 /**
@@ -53,9 +54,33 @@ function leerPolitica(): PoliticaDestructiva {
 
 const politicaDestructiva = leerPolitica();
 
-const servidor = crearServidorMcp(crearCorePort(), { politicaDestructiva });
+/**
+ * LOG_LEVEL (11.2), con el mismo trato que la politica destructiva: se valida
+ * antes de tocar la base y un valor invalido impide el arranque.
+ */
+function leerNivel(): NivelLog {
+  try {
+    return leerNivelLog(process.env["LOG_LEVEL"]);
+  } catch (error: unknown) {
+    return fallar(error instanceof Error ? error.message : String(error));
+  }
+}
+
+const nivelLog = leerNivel();
+// Escribe a fd 2 con destino sincrono: ver el porque en ./log.ts. Una linea de
+// log en stdout no es un log mal ubicado, es un mensaje corrupto del protocolo.
+const logger = crearLogger(nivelLog);
+
+const servidor = crearServidorMcp(crearCorePort(), { politicaDestructiva, logger });
 await servidor.connect(new StdioServerTransport());
 
-process.stderr.write(
-  `[taskman-mcp] servidor listo (modo core, transporte stdio, borrado: ${politicaDestructiva})\n`,
+logger.info(
+  {
+    evt: "mcp.ready",
+    mode: modo,
+    transport: "stdio",
+    destructivePolicy: politicaDestructiva,
+    logLevel: nivelLog,
+  },
+  "servidor listo",
 );

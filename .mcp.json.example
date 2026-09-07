@@ -6,7 +6,8 @@
       "env": {
         "MCP_PORT_MODE": "core",
         "DATABASE_URL": "postgresql://USUARIO:CONTRASENA@127.0.0.1:5432/BASE?schema=public",
-        "MCP_DESTRUCTIVE_POLICY": "confirm"
+        "MCP_DESTRUCTIVE_POLICY": "confirm",
+        "LOG_LEVEL": "info"
       }
     }
   }

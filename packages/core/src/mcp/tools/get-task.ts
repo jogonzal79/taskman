@@ -1,4 +1,5 @@
 import { ubicarTarea } from "../lookup.js";
+import type { EntornoMcp } from "../llamada.js";
 import type { TaskManagerPort } from "../port.js";
 import { definirHandler, respuesta } from "../respuesta.js";
 import { fechaIso } from "../respuesta.js";
@@ -10,7 +11,7 @@ const shape = {
   board: campoBoardDeTarea,
 };
 
-export function definirGetTask(port: TaskManagerPort): McpToolDefinition {
+export function definirGetTask(port: TaskManagerPort, entorno: EntornoMcp): McpToolDefinition {
   return {
     name: "get_task",
     title: "Consultar tarea",
@@ -24,8 +25,8 @@ export function definirGetTask(port: TaskManagerPort): McpToolDefinition {
       idempotentHint: true,
       openWorldHint: false,
     },
-    handler: definirHandler("get_task", shape, async (args) => {
-      const { tablero, taskId } = await ubicarTarea(port, args.task, args.board);
+    handler: definirHandler(entorno, "get_task", shape, async (args, llamada) => {
+      const { tablero, taskId } = await ubicarTarea(port, args.task, args.board, llamada);
       const tarea = await port.getTask(taskId);
       const columna = tablero.columns.find((candidata) => candidata.id === tarea.columnId);
 
