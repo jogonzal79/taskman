@@ -1,12 +1,12 @@
 import { z } from "zod";
 
-import { DomainError } from "../../domain/errors.js";
 import type { CreateTaskInput } from "../../domain/types.js";
 import { cargarTablero, ordenDeColumna, resolverColumnaDelTablero } from "../lookup.js";
 import type { TaskManagerPort } from "../port.js";
 import { definirHandler, respuesta } from "../respuesta.js";
 import type { McpToolDefinition } from "../tool.js";
 import {
+  aFecha,
   campoBoard,
   campoColumn,
   campoPosition,
@@ -14,8 +14,6 @@ import {
   prioridad,
   tareaJson,
 } from "./campos.js";
-
-const FECHA = /^\d{4}-\d{2}-\d{2}$/;
 
 const shape = {
   board: campoBoard,
@@ -44,30 +42,6 @@ const shape = {
     "Posicion 0-based dentro de la columna, o 'end' (por defecto) para agregarla al final. Con un indice concreto las tareas siguientes se desplazan.",
   ),
 };
-
-/**
- * `due_date` llega como fecha sin hora y la columna es DATE: se ancla a
- * medianoche UTC para que no la corra la zona horaria del proceso. Sin la `Z`,
- * `new Date("2026-09-11")` y `new Date("2026-09-11T00:00")` dan dias distintos
- * segun donde corra el servidor.
- */
-function aFecha(valor: string): Date {
-  if (!FECHA.test(valor)) {
-    throw new DomainError("VALIDATION_ERROR", `"${valor}" no es una fecha AAAA-MM-DD.`, {
-      details: { field: "due_date", value: valor },
-      hint: "Usa el formato AAAA-MM-DD, por ejemplo 2026-09-11.",
-    });
-  }
-
-  const fecha = new Date(`${valor}T00:00:00.000Z`);
-  if (Number.isNaN(fecha.getTime())) {
-    throw new DomainError("VALIDATION_ERROR", `"${valor}" no es una fecha existente.`, {
-      details: { field: "due_date", value: valor },
-      hint: "Revisa el mes y el dia: el formato es AAAA-MM-DD.",
-    });
-  }
-  return fecha;
-}
 
 export function definirCreateTask(port: TaskManagerPort): McpToolDefinition {
   return {

@@ -1,6 +1,7 @@
 import { z } from "zod";
 
-import type { Column, Task } from "../../domain/types.js";
+import { DomainError } from "../../domain/errors.js";
+import type { Board, Column, Task } from "../../domain/types.js";
 import { fechaIso } from "../respuesta.js";
 
 /**
@@ -31,6 +32,28 @@ export const campoColumn = z
       "La key admite espacios en lugar de guiones bajos: 'IN PROGRESS' resuelve a IN_PROGRESS.",
   );
 
+/**
+ * La referencia a una tarea, con la accion de cada herramienta metida en la
+ * frase. La parte que importa —que un titulo ambiguo NO se resuelve solo— se
+ * escribe una vez para las tres herramientas que aceptan una tarea.
+ */
+export function campoTask(accion: string): z.ZodString {
+  return z
+    .string()
+    .describe(
+      `Tarea ${accion}, por id (UUID) o por titulo exacto sin distinguir mayusculas. ` +
+        "Si el titulo coincide con varias tareas del tablero, la herramienta responde AMBIGUOUS_MATCH con los candidatos, sus ids y su columna, y no elige por vos.",
+    );
+}
+
+/** El ambito de una tarea referida por titulo. Ver `ubicarTarea` en lookup.ts. */
+export const campoBoardDeTarea = campoBoard
+  .optional()
+  .describe(
+    "Tablero donde buscar la tarea, por id o por nombre. OBLIGATORIO si `task` es un titulo: la busqueda por titulo nunca es global. " +
+      "Innecesario si `task` ya es un id.",
+  );
+
 export const campoPosition = z
   .union([z.number().int().min(0), z.literal("end")])
   .default("end")
@@ -38,6 +61,32 @@ export const campoPosition = z
     "Posicion 0-based dentro de la columna destino, o 'end' para el final. " +
       "Un indice mayor que el numero de tareas de la columna se ajusta al final en vez de fallar.",
   );
+
+const FECHA = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * `due_date` llega como fecha sin hora y la columna es DATE: se ancla a
+ * medianoche UTC para que no la corra la zona horaria del proceso. Sin la `Z`,
+ * `new Date("2026-09-11")` y `new Date("2026-09-11T00:00")` dan dias distintos
+ * segun donde corra el servidor.
+ */
+export function aFecha(valor: string): Date {
+  if (!FECHA.test(valor)) {
+    throw new DomainError("VALIDATION_ERROR", `"${valor}" no es una fecha AAAA-MM-DD.`, {
+      details: { field: "due_date", value: valor },
+      hint: "Usa el formato AAAA-MM-DD, por ejemplo 2026-09-11.",
+    });
+  }
+
+  const fecha = new Date(`${valor}T00:00:00.000Z`);
+  if (Number.isNaN(fecha.getTime())) {
+    throw new DomainError("VALIDATION_ERROR", `"${valor}" no es una fecha existente.`, {
+      details: { field: "due_date", value: valor },
+      hint: "Revisa el mes y el dia: el formato es AAAA-MM-DD.",
+    });
+  }
+  return fecha;
+}
 
 // --- Proyecciones de salida --------------------------------------------------
 
@@ -65,9 +114,21 @@ export function columnaJson(columna: Column): Record<string, unknown> {
   };
 }
 
+export function tableroJson(tablero: Board): Record<string, unknown> {
+  return {
+    id: tablero.id,
+    name: tablero.name,
+    description: tablero.description,
+  };
+}
+
 /** "1 tarea" / "3 tareas". El texto lo lee un modelo que despues lo repite. */
 export function cuentaTareas(cantidad: number): string {
   return cantidad === 1 ? "1 tarea" : `${cantidad} tareas`;
+}
+
+export function cuentaColumnas(cantidad: number): string {
+  return cantidad === 1 ? "1 columna" : `${cantidad} columnas`;
 }
 
 /** Una linea de tarea legible: lo que el agente parafrasea al usuario. */

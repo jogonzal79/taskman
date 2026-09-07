@@ -191,3 +191,71 @@ export async function ordenDeColumna(
   );
   return tareas.map((tarea) => tarea.id);
 }
+
+/**
+ * Resuelve a la vez la tarea y su tablero, porque una cosa depende de la otra.
+ *
+ * Con `board` el ambito es ese tablero. Sin `board`, `task` tiene que ser un id
+ * y el tablero sale de la propia tarea: hace falta igual, porque toda columna
+ * que la herramienta nombre —la destino de un move, la actual de un get— se
+ * resuelve CONTRA las columnas del tablero, y sin cargarlas la resolucion
+ * dejaria de ser la misma en los dos caminos.
+ *
+ * Lo comparten move_task, get_task y update_task: es la unica forma de que
+ * "un titulo solo se resuelve dentro de un tablero" signifique lo mismo en las
+ * tres.
+ */
+export async function ubicarTarea(
+  port: TaskManagerPort,
+  referenciaTarea: string,
+  referenciaTablero: string | undefined,
+): Promise<{ tablero: BoardDetail; taskId: string }> {
+  if (referenciaTablero !== undefined) {
+    const tablero = await cargarTablero(port, referenciaTablero);
+    return { tablero, taskId: await resolverTareaDelTablero(port, tablero, referenciaTarea) };
+  }
+
+  if (!esUuid(referenciaTarea)) {
+    throw new DomainError(
+      "VALIDATION_ERROR",
+      "Falta `board`: un titulo solo se resuelve dentro de un tablero.",
+      {
+        details: { field: "board", task: referenciaTarea },
+        hint: "Volve a llamar indicando board con el nombre o el id del tablero, o pasa el id de la tarea en task.",
+      },
+    );
+  }
+
+  const tarea = await port.getTask(referenciaTarea.trim());
+  return { tablero: await port.getBoard(tarea.boardId), taskId: tarea.id };
+}
+
+/**
+ * Todas las tareas del tablero, sin filtrar. Es lo que necesita get_board para
+ * decir cuantas tareas tiene cada columna sin una consulta por columna.
+ */
+export async function tareasDelTablero(port: TaskManagerPort, boardId: string): Promise<Task[]> {
+  const base: ListTasksQuery = { boardId, orderBy: "position", limit: LIMITE_PAGINA_MAXIMO };
+  return recolectar((cursor) =>
+    port.listTasks(cursor === undefined ? base : { ...base, cursor }),
+  );
+}
+
+/**
+ * Los tableros indicados, con sus columnas, indexados por id.
+ *
+ * Lo usa search_tasks, que puede devolver coincidencias de varios tableros a la
+ * vez: sin el nombre del tablero y la key de la columna, una busqueda global
+ * devuelve titulos que el agente no puede ubicar ni encadenar. Son tantas
+ * lecturas como tableros distintos aparezcan, no como coincidencias haya.
+ */
+export async function contextoDeTableros(
+  port: TaskManagerPort,
+  boardIds: Iterable<string>,
+): Promise<Map<string, BoardDetail>> {
+  const contexto = new Map<string, BoardDetail>();
+  for (const boardId of new Set(boardIds)) {
+    contexto.set(boardId, await port.getBoard(boardId));
+  }
+  return contexto;
+}

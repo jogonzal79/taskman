@@ -6,15 +6,22 @@ import { TransactionRunner } from "../db/transaction-runner.js";
 import type {
   Board,
   BoardDetail,
+  Column,
+  CreateBoardInput,
+  CreateColumnInput,
   CreateTaskInput,
   ListBoardsQuery,
   ListTasksQuery,
   MoveResult,
   MoveTarget,
   Page,
+  SearchScope,
   Task,
+  TaskMatch,
+  UpdateTaskInput,
 } from "../domain/types.js";
 import { BoardService } from "../services/board-service.js";
+import { ColumnService } from "../services/column-service.js";
 import { TaskService } from "../services/task-service.js";
 import type { TaskManagerPort } from "./port.js";
 
@@ -27,10 +34,12 @@ import type { TaskManagerPort } from "./port.js";
  */
 export class CorePort implements TaskManagerPort {
   readonly #boards: BoardService;
+  readonly #columns: ColumnService;
   readonly #tasks: TaskService;
 
-  constructor(services: { boards: BoardService; tasks: TaskService }) {
+  constructor(services: { boards: BoardService; columns: ColumnService; tasks: TaskService }) {
     this.#boards = services.boards;
+    this.#columns = services.columns;
     this.#tasks = services.tasks;
   }
 
@@ -40,6 +49,14 @@ export class CorePort implements TaskManagerPort {
 
   async getBoard(boardId: string): Promise<BoardDetail> {
     return this.#boards.get(boardId);
+  }
+
+  async createBoard(input: CreateBoardInput): Promise<BoardDetail> {
+    return this.#boards.create(input);
+  }
+
+  async createColumn(input: CreateColumnInput): Promise<Column> {
+    return this.#columns.create(input);
   }
 
   async listTasks(query: ListTasksQuery): Promise<Page<Task>> {
@@ -54,8 +71,16 @@ export class CorePort implements TaskManagerPort {
     return this.#tasks.create(input);
   }
 
+  async updateTask(taskId: string, patch: UpdateTaskInput): Promise<Task> {
+    return this.#tasks.update(taskId, patch);
+  }
+
   async moveTask(taskId: string, target: MoveTarget): Promise<MoveResult> {
     return this.#tasks.move(taskId, target);
+  }
+
+  async searchTasks(text: string, scope: SearchScope): Promise<Page<TaskMatch>> {
+    return this.#tasks.search(text, scope);
   }
 }
 
@@ -68,8 +93,10 @@ export class CorePort implements TaskManagerPort {
  */
 export function crearCorePort(): CorePort {
   const runner = new TransactionRunner(prisma);
+  const boards = new BoardRepository(runner);
   return new CorePort({
-    boards: new BoardService(new BoardRepository(runner)),
+    boards: new BoardService(boards),
+    columns: new ColumnService(boards),
     tasks: new TaskService(new TaskRepository(runner)),
   });
 }
