@@ -3,6 +3,7 @@ import { prisma } from "@taskman/db";
 import { BoardRepository } from "../db/board-repository.js";
 import { TaskRepository } from "../db/task-repository.js";
 import { TransactionRunner } from "../db/transaction-runner.js";
+import type { ActorContext } from "../domain/actor.js";
 import type {
   Board,
   BoardDetail,
@@ -20,6 +21,7 @@ import type {
   TaskMatch,
   UpdateTaskInput,
 } from "../domain/types.js";
+import { AuditService } from "../services/audit-service.js";
 import { BoardService } from "../services/board-service.js";
 import { ColumnService } from "../services/column-service.js";
 import { TaskService } from "../services/task-service.js";
@@ -51,12 +53,12 @@ export class CorePort implements TaskManagerPort {
     return this.#boards.get(boardId);
   }
 
-  async createBoard(input: CreateBoardInput): Promise<BoardDetail> {
-    return this.#boards.create(input);
+  async createBoard(input: CreateBoardInput, ctx: ActorContext): Promise<BoardDetail> {
+    return this.#boards.create(input, ctx);
   }
 
-  async createColumn(input: CreateColumnInput): Promise<Column> {
-    return this.#columns.create(input);
+  async createColumn(input: CreateColumnInput, ctx: ActorContext): Promise<Column> {
+    return this.#columns.create(input, ctx);
   }
 
   async listTasks(query: ListTasksQuery): Promise<Page<Task>> {
@@ -67,20 +69,20 @@ export class CorePort implements TaskManagerPort {
     return this.#tasks.get(taskId);
   }
 
-  async createTask(input: CreateTaskInput): Promise<Task> {
-    return this.#tasks.create(input);
+  async createTask(input: CreateTaskInput, ctx: ActorContext): Promise<Task> {
+    return this.#tasks.create(input, ctx);
   }
 
-  async updateTask(taskId: string, patch: UpdateTaskInput): Promise<Task> {
-    return this.#tasks.update(taskId, patch);
+  async updateTask(taskId: string, patch: UpdateTaskInput, ctx: ActorContext): Promise<Task> {
+    return this.#tasks.update(taskId, patch, ctx);
   }
 
-  async moveTask(taskId: string, target: MoveTarget): Promise<MoveResult> {
-    return this.#tasks.move(taskId, target);
+  async moveTask(taskId: string, target: MoveTarget, ctx: ActorContext): Promise<MoveResult> {
+    return this.#tasks.move(taskId, target, ctx);
   }
 
-  async deleteTask(taskId: string): Promise<void> {
-    return this.#tasks.delete(taskId);
+  async deleteTask(taskId: string, ctx: ActorContext): Promise<void> {
+    return this.#tasks.delete(taskId, ctx);
   }
 
   async searchTasks(text: string, scope: SearchScope): Promise<Page<TaskMatch>> {
@@ -98,9 +100,12 @@ export class CorePort implements TaskManagerPort {
 export function crearCorePort(): CorePort {
   const runner = new TransactionRunner(prisma);
   const boards = new BoardRepository(runner);
+  // Un solo AuditService para los tres: no tiene estado, y compartirlo deja
+  // claro que la auditoria es una sola politica y no tres.
+  const audit = new AuditService();
   return new CorePort({
-    boards: new BoardService(boards),
-    columns: new ColumnService(boards),
-    tasks: new TaskService(new TaskRepository(runner)),
+    boards: new BoardService(boards, audit),
+    columns: new ColumnService(boards, audit),
+    tasks: new TaskService(new TaskRepository(runner), audit),
   });
 }

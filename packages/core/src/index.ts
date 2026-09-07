@@ -27,6 +27,32 @@ export type {
 } from "./domain/types.js";
 export { LIMITE_PAGINA_DEFECTO, LIMITE_PAGINA_MAXIMO } from "./domain/types.js";
 
+export type { ActorContext, ActorType } from "./domain/actor.js";
+export {
+  actualizacion,
+  borrado,
+  camposModificados,
+  columnaCompleta,
+  creacion,
+  movimiento,
+  tableroCompleto,
+  tableroConColumnas,
+  tareaCompleta,
+  ubicacion,
+  CAMPOS_COLUMNA,
+  CAMPOS_TABLERO,
+  CAMPOS_TAREA,
+} from "./domain/audit.js";
+export type {
+  AuditAction,
+  AuditEntityType,
+  AuditEvent,
+  AuditPayload,
+  Cambios,
+  CampoAuditado,
+  ValorJson,
+} from "./domain/audit.js";
+
 export { computeMoveOrder } from "./domain/order.js";
 export { LIMITE_TITULO, normalizarTitulo, recortarTitulo } from "./domain/title.js";
 
@@ -53,12 +79,15 @@ export type {
   TaskTransaction,
 } from "./db/task-repository.js";
 
+export { AuditService } from "./services/audit-service.js";
 export { TaskService } from "./services/task-service.js";
 export { BoardService, COLUMNAS_POR_DEFECTO, LIMITE_BOARD_DESCRIPTION, LIMITE_BOARD_NAME } from "./services/board-service.js";
 export { ColumnService } from "./services/column-service.js";
 export { resolverColumna } from "./services/column-reference.js";
 export type { BuscadorDeColumnas } from "./services/column-reference.js";
 
+export { insertAuditRow } from "./db/audit-repository.js";
+export type { AuditRow, AuditTransaction } from "./db/audit-repository.js";
 export { BoardRepository } from "./db/board-repository.js";
 export type { BoardTransaction, LockedColumn, NewBoardRow, NewColumnRow } from "./db/board-repository.js";
 export { TransactionRunner } from "./db/transaction-runner.js";
@@ -79,6 +108,12 @@ export {
   POLITICA_DESTRUCTIVA_POR_DEFECTO,
 } from "./mcp/politica.js";
 export type { PoliticaDestructiva } from "./mcp/politica.js";
+export {
+  contextoDeAgente,
+  ACTOR_MCP_DESCONOCIDO,
+  CONTEXTO_MCP_POR_DEFECTO,
+} from "./mcp/contexto.js";
+export type { FabricaDeContexto } from "./mcp/contexto.js";
 export type { TaskManagerPort } from "./mcp/port.js";
 export { CorePort, crearCorePort } from "./mcp/core-port.js";
 export type {

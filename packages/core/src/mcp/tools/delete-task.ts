@@ -3,6 +3,7 @@ import { z } from "zod";
 import { DomainError } from "../../domain/errors.js";
 import type { BoardDetail, Column, Task } from "../../domain/types.js";
 import { ordenDeColumna, ubicarTarea } from "../lookup.js";
+import type { FabricaDeContexto } from "../contexto.js";
 import type { PoliticaDestructiva } from "../politica.js";
 import type { TaskManagerPort } from "../port.js";
 import { definirHandler, fechaIso, respuesta, respuestaError } from "../respuesta.js";
@@ -75,6 +76,7 @@ function detalleDeTarea(tarea: Task, tablero: BoardDetail, columna: Column | und
 export function definirDeleteTask(
   port: TaskManagerPort,
   politica: PoliticaDestructiva,
+  contexto: FabricaDeContexto,
 ): McpToolDefinition {
   const shape = {
     task: campoTask("a eliminar"),
@@ -146,7 +148,9 @@ export function definirDeleteTask(
         );
       }
 
-      await port.deleteTask(taskId);
+      // Recien aca hay contexto: la primera llamada de la 8.3.2 no borra nada,
+      // y una confirmacion pendiente no es una escritura que auditar.
+      await port.deleteTask(taskId, contexto());
 
       // El orden final de la columna, leido despues del borrado: es lo que le
       // permite al agente encadenar sin volver a listar, y de paso es la unica

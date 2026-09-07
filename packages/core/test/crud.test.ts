@@ -5,6 +5,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { DomainError, TaskRepository, TaskService, TransactionRunner } from "../src/index.js";
 import {
   connectDb,
+  ctx,
   expectColumnaDensa,
   insertBoard,
   insertColumn,
@@ -76,7 +77,7 @@ describe("create", () => {
       boardId: t.boardId,
       columnId: t.todo,
       title: "Nueva",
-    });
+    }, ctx());
 
     expect(creada.position).toBe(3);
     expect(creada.priority).toBe("MEDIUM");
@@ -94,7 +95,7 @@ describe("create", () => {
       columnId: t.todo,
       title: "Intercalada",
       position: 1,
-    });
+    }, ctx());
 
     expect(creada.position).toBe(1);
     expect(await leerOrden(db, t.todo)).toEqual([primera, creada.id, segunda, tercera]);
@@ -109,7 +110,7 @@ describe("create", () => {
       columnId: t.todo,
       title: "Desbordada",
       position: 999,
-    });
+    }, ctx());
 
     expect(creada.position).toBe(3);
     await expectColumnaDensa(db, t.todo);
@@ -125,7 +126,7 @@ describe("create", () => {
       description: "Una descripcion",
       priority: "URGENT",
       dueDate: new Date("2026-09-11T00:00:00.000Z"),
-    });
+    }, ctx());
 
     expect(creada.description).toBe("Una descripcion");
     expect(creada.priority).toBe("URGENT");
@@ -137,7 +138,7 @@ describe("create", () => {
     const inexistente = uuid();
 
     const error = await capturarDominio(() =>
-      servicio.create({ boardId: inexistente, columnId: t.todo, title: "X" }),
+      servicio.create({ boardId: inexistente, columnId: t.todo, title: "X" }, ctx()),
     );
 
     expect(error.code).toBe("BOARD_NOT_FOUND");
@@ -148,7 +149,7 @@ describe("create", () => {
     const t = await sembrar();
 
     const error = await capturarDominio(() =>
-      servicio.create({ boardId: t.boardId, columnId: uuid(), title: "X" }),
+      servicio.create({ boardId: t.boardId, columnId: uuid(), title: "X" }, ctx()),
     );
 
     expect(error.code).toBe("COLUMN_NOT_FOUND");
@@ -160,7 +161,7 @@ describe("create", () => {
     const ajena = await insertColumn(db, { boardId: otro, key: "TODO", position: 0 });
 
     const error = await capturarDominio(() =>
-      servicio.create({ boardId: t.boardId, columnId: ajena, title: "X" }),
+      servicio.create({ boardId: t.boardId, columnId: ajena, title: "X" }, ctx()),
     );
 
     expect(error.code).toBe("COLUMN_NOT_IN_BOARD");
@@ -170,7 +171,7 @@ describe("create", () => {
     const t = await sembrar();
 
     const error = await capturarDominio(() =>
-      servicio.create({ boardId: t.boardId, columnId: t.todo, title: "X", position: -1 }),
+      servicio.create({ boardId: t.boardId, columnId: t.todo, title: "X", position: -1 }, ctx()),
     );
 
     expect(error.code).toBe("INVALID_ORDER");
@@ -186,7 +187,7 @@ describe("normalizacion del titulo", () => {
       boardId: t.boardId,
       columnId: t.todo,
       title: "  a  ",
-    });
+    }, ctx());
 
     expect(creada.title).toBe("a");
     // Y lo recortado es lo que llego a la base, no solo lo que devolvimos.
@@ -197,7 +198,7 @@ describe("normalizacion del titulo", () => {
     const t = await sembrar(0);
 
     const error = await capturarDominio(() =>
-      servicio.create({ boardId: t.boardId, columnId: t.todo, title: " " }),
+      servicio.create({ boardId: t.boardId, columnId: t.todo, title: " " }, ctx()),
     );
 
     // La restriccion de base lo aceptaria: su clase de blancos es solo ASCII.
@@ -209,7 +210,7 @@ describe("normalizacion del titulo", () => {
 
     for (const blanco of [" ", "", "　", "  \t\n"]) {
       const error = await capturarDominio(() =>
-        servicio.create({ boardId: t.boardId, columnId: t.todo, title: blanco }),
+        servicio.create({ boardId: t.boardId, columnId: t.todo, title: blanco }, ctx()),
       );
       expect(error.code).toBe("TITLE_REQUIRED");
     }
@@ -223,7 +224,7 @@ describe("normalizacion del titulo", () => {
       boardId: t.boardId,
       columnId: t.todo,
       title: limite,
-    });
+    }, ctx());
 
     expect(creada.title).toHaveLength(200);
     expect(await leerTitulo(creada.id)).toBe(limite);
@@ -233,7 +234,7 @@ describe("normalizacion del titulo", () => {
     const t = await sembrar(0);
 
     const error = await capturarDominio(() =>
-      servicio.create({ boardId: t.boardId, columnId: t.todo, title: "a".repeat(201) }),
+      servicio.create({ boardId: t.boardId, columnId: t.todo, title: "a".repeat(201) }, ctx()),
     );
 
     // capturarDominio re-lanza cualquier cosa que no sea DomainError, asi que
@@ -252,7 +253,7 @@ describe("normalizacion del titulo", () => {
       boardId: t.boardId,
       columnId: t.todo,
       title: conBlancos,
-    });
+    }, ctx());
 
     expect(creada.title).toHaveLength(200);
   });
@@ -266,7 +267,7 @@ describe("normalizacion del titulo", () => {
       boardId: t.boardId,
       columnId: t.todo,
       title: emojis,
-    });
+    }, ctx());
 
     expect([...creada.title]).toHaveLength(150);
   });
@@ -295,7 +296,7 @@ describe("update", () => {
     const [primera] = t.tareasTodo as [string, string, string];
     const antes = await servicio.get(primera);
 
-    const despues = await servicio.update(primera, { priority: "HIGH" });
+    const despues = await servicio.update(primera, { priority: "HIGH" }, ctx());
 
     expect(despues.priority).toBe("HIGH");
     expect(despues.title).toBe(antes.title);
@@ -312,9 +313,9 @@ describe("update", () => {
       columnId: t.todo,
       title: "Con descripcion",
       description: "Algo",
-    });
+    }, ctx());
 
-    const despues = await servicio.update(creada.id, { description: null });
+    const despues = await servicio.update(creada.id, { description: null }, ctx());
 
     expect(despues.description).toBeNull();
   });
@@ -327,7 +328,7 @@ describe("update", () => {
     const despues = await servicio.update(primera, {
       title: antes.title,
       priority: antes.priority,
-    });
+    }, ctx());
 
     expect(despues).toEqual(antes);
     // No escribio: la marca de tiempo quedo intacta.
@@ -338,7 +339,7 @@ describe("update", () => {
     const t = await sembrar();
     const [primera] = t.tareasTodo as [string, string, string];
 
-    const despues = await servicio.update(primera, {});
+    const despues = await servicio.update(primera, {}, ctx());
 
     expect(despues.id).toBe(primera);
   });
@@ -347,7 +348,7 @@ describe("update", () => {
     const t = await sembrar();
     const [primera] = t.tareasTodo as [string, string, string];
 
-    const despues = await servicio.update(primera, { title: "  recortado  " });
+    const despues = await servicio.update(primera, { title: "  recortado  " }, ctx());
 
     expect(despues.title).toBe("recortado");
     expect(await leerTitulo(primera)).toBe("recortado");
@@ -358,14 +359,14 @@ describe("update", () => {
     const [primera] = t.tareasTodo as [string, string, string];
 
     const error = await capturarDominio(() =>
-      servicio.update(primera, { title: "a".repeat(201) }),
+      servicio.update(primera, { title: "a".repeat(201) }, ctx()),
     );
 
     expect(error.code).toBe("TITLE_TOO_LONG");
   });
 
   it("TASK_NOT_FOUND si no existe", async () => {
-    const error = await capturarDominio(() => servicio.update(uuid(), { priority: "LOW" }));
+    const error = await capturarDominio(() => servicio.update(uuid(), { priority: "LOW" }, ctx()));
     expect(error.code).toBe("TASK_NOT_FOUND");
   });
 });
@@ -375,7 +376,7 @@ describe("delete", () => {
     const t = await sembrar();
     const [primera, segunda, tercera] = t.tareasTodo as [string, string, string];
 
-    await servicio.delete(segunda);
+    await servicio.delete(segunda, ctx());
 
     expect(await leerOrden(db, t.todo)).toEqual([primera, tercera]);
     await expectColumnaDensa(db, t.todo);
@@ -385,14 +386,14 @@ describe("delete", () => {
     const t = await sembrar(1);
     const [unica] = t.tareasTodo as [string];
 
-    await servicio.delete(unica);
+    await servicio.delete(unica, ctx());
 
     expect(await leerOrden(db, t.todo)).toEqual([]);
     await expectColumnaDensa(db, t.todo);
   });
 
   it("TASK_NOT_FOUND si no existe", async () => {
-    const error = await capturarDominio(() => servicio.delete(uuid()));
+    const error = await capturarDominio(() => servicio.delete(uuid(), ctx()));
     expect(error.code).toBe("TASK_NOT_FOUND");
   });
 });
@@ -415,14 +416,14 @@ describe("list", () => {
       columnId: t.todo,
       title: "Alta",
       priority: "HIGH",
-    });
+    }, ctx());
     const urgente = await servicio.create({
       boardId: t.boardId,
       columnId: t.todo,
       title: "Urgente",
       priority: "URGENT",
-    });
-    await servicio.create({ boardId: t.boardId, columnId: t.todo, title: "Normal" });
+    }, ctx());
+    await servicio.create({ boardId: t.boardId, columnId: t.todo, title: "Normal" }, ctx());
 
     const pagina = await servicio.list({
       boardId: t.boardId,
@@ -471,14 +472,14 @@ describe("list", () => {
       columnId: t.todo,
       title: "Vencida pendiente",
       dueDate: ayer,
-    });
+    }, ctx());
     await servicio.create({
       boardId: t.boardId,
       columnId: t.done,
       title: "Vencida terminada",
       dueDate: ayer,
-    });
-    await servicio.create({ boardId: t.boardId, columnId: t.todo, title: "Sin fecha" });
+    }, ctx());
+    await servicio.create({ boardId: t.boardId, columnId: t.todo, title: "Sin fecha" }, ctx());
 
     const pagina = await servicio.list({ boardId: t.boardId, overdue: true });
 
@@ -493,14 +494,14 @@ describe("search", () => {
       boardId: t.boardId,
       columnId: t.todo,
       title: "Revisar el contrato",
-    });
+    }, ctx());
     const porDescripcion = await servicio.create({
       boardId: t.boardId,
       columnId: t.todo,
       title: "Pendiente",
       description: "Falta firmar el contrato",
-    });
-    await servicio.create({ boardId: t.boardId, columnId: t.todo, title: "Nada que ver" });
+    }, ctx());
+    await servicio.create({ boardId: t.boardId, columnId: t.todo, title: "Nada que ver" }, ctx());
 
     const pagina = await servicio.search("contrato", { boardId: t.boardId });
 
@@ -517,8 +518,11 @@ describe("search", () => {
     const otro = await insertBoard(db, "Otro");
     const ajena = await insertColumn(db, { boardId: otro, key: "TODO", position: 0 });
 
-    await servicio.create({ boardId: t.boardId, columnId: t.todo, title: "Informe mensual" });
-    await servicio.create({ boardId: otro, columnId: ajena, title: "Informe mensual" });
+    await servicio.create(
+      { boardId: t.boardId, columnId: t.todo, title: "Informe mensual" },
+      ctx(),
+    );
+    await servicio.create({ boardId: otro, columnId: ajena, title: "Informe mensual" }, ctx());
 
     const pagina = await servicio.search("informe", { boardId: t.boardId });
 
@@ -541,8 +545,8 @@ describe("concurrencia", () => {
     const t = await sembrar();
 
     const resultados = await Promise.allSettled([
-      servicio.create({ boardId: t.boardId, columnId: t.todo, title: "A", position: 0 }),
-      servicio.create({ boardId: t.boardId, columnId: t.todo, title: "B", position: 0 }),
+      servicio.create({ boardId: t.boardId, columnId: t.todo, title: "A", position: 0 }, ctx()),
+      servicio.create({ boardId: t.boardId, columnId: t.todo, title: "B", position: 0 }, ctx()),
     ]);
 
     expect(resultados.map((r) => r.status)).toEqual(["fulfilled", "fulfilled"]);
@@ -558,8 +562,8 @@ describe("concurrencia", () => {
     const [, segunda] = t.tareasTodo as [string, string, string];
 
     const resultados = await Promise.allSettled([
-      servicio.delete(segunda),
-      servicio.create({ boardId: t.boardId, columnId: t.todo, title: "Nueva", position: 1 }),
+      servicio.delete(segunda, ctx()),
+      servicio.create({ boardId: t.boardId, columnId: t.todo, title: "Nueva", position: 1 }, ctx()),
     ]);
 
     expect(resultados.map((r) => r.status)).toEqual(["fulfilled", "fulfilled"]);
@@ -580,8 +584,8 @@ describe("concurrencia", () => {
     expect(await leerOrden(db, t.todo)).toEqual([]);
 
     const resultados = await Promise.allSettled([
-      servicio.create({ boardId: t.boardId, columnId: t.todo, title: "A" }),
-      servicio.create({ boardId: t.boardId, columnId: t.todo, title: "B" }),
+      servicio.create({ boardId: t.boardId, columnId: t.todo, title: "A" }, ctx()),
+      servicio.create({ boardId: t.boardId, columnId: t.todo, title: "B" }, ctx()),
     ]);
 
     const motivos = resultados
@@ -610,8 +614,8 @@ describe("concurrencia", () => {
     const [primera] = t.tareasTodo as [string, string, string, string];
 
     const resultados = await Promise.allSettled([
-      servicio.delete(primera),
-      servicio.create({ boardId: t.boardId, columnId: t.todo, title: "Y", position: "end" }),
+      servicio.delete(primera, ctx()),
+      servicio.create({ boardId: t.boardId, columnId: t.todo, title: "Y", position: "end" }, ctx()),
     ]);
 
     const motivos = resultados

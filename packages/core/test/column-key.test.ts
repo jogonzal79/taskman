@@ -10,7 +10,7 @@ import {
   TaskService,
   TransactionRunner,
 } from "../src/index.js";
-import { connectDb, porKey, truncateAll, uuid } from "./helpers.js";
+import { connectDb, ctx, porKey, truncateAll, uuid } from "./helpers.js";
 
 let db: Client;
 let tableros: BoardService;
@@ -52,7 +52,7 @@ interface Tablero {
 }
 
 async function sembrar(nombre = "Personal"): Promise<Tablero> {
-  const tablero = await tableros.create({ name: nombre });
+  const tablero = await tableros.create({ name: nombre }, ctx());
   return {
     id: tablero.id,
     backlog: porKey(tablero.columns, "BACKLOG"),
@@ -65,8 +65,11 @@ describe("create con columnKey", () => {
   it("resuelve a la misma columna que columnId", async () => {
     const t = await sembrar();
 
-    const porId = await tareas.create({ boardId: t.id, columnId: t.todo, title: "Por id" });
-    const porClave = await tareas.create({ boardId: t.id, columnKey: "TODO", title: "Por key" });
+    const porId = await tareas.create({ boardId: t.id, columnId: t.todo, title: "Por id" }, ctx());
+    const porClave = await tareas.create(
+      { boardId: t.id, columnKey: "TODO", title: "Por key" },
+      ctx(),
+    );
 
     expect(porClave.columnId).toBe(porId.columnId);
     expect(porClave.columnId).toBe(t.todo);
@@ -79,7 +82,7 @@ describe("create con columnKey", () => {
       boardId: t.id,
       columnKey: "  in progress  ",
       title: "Normalizada",
-    });
+    }, ctx());
 
     expect(creada.columnId).toBe(t.inProgress);
   });
@@ -92,7 +95,7 @@ describe("create con columnKey", () => {
       columnId: t.backlog,
       columnKey: "TODO",
       title: "Ambas",
-    });
+    }, ctx());
 
     expect(creada.columnId).toBe(t.backlog);
   });
@@ -101,7 +104,7 @@ describe("create con columnKey", () => {
     const t = await sembrar();
 
     const error = await capturarDominio(() =>
-      tareas.create({ boardId: t.id, columnKey: "NO_EXISTE", title: "X" }),
+      tareas.create({ boardId: t.id, columnKey: "NO_EXISTE", title: "X" }, ctx()),
     );
 
     expect(error.code).toBe("COLUMN_NOT_FOUND");
@@ -113,10 +116,10 @@ describe("create con columnKey", () => {
     const otro = await tableros.create({
       name: "Otro",
       columns: [{ name: "En revision", key: "REVIEW" }],
-    });
+    }, ctx());
 
     const error = await capturarDominio(() =>
-      tareas.create({ boardId: t.id, columnKey: "REVIEW", title: "X" }),
+      tareas.create({ boardId: t.id, columnKey: "REVIEW", title: "X" }, ctx()),
     );
 
     // La key existe, pero en otro tablero: el ambito de resolucion es el
@@ -129,11 +132,17 @@ describe("create con columnKey", () => {
 describe("move con columnKey", () => {
   it("resuelve a la misma columna que columnId", async () => {
     const t = await sembrar();
-    const unaTarea = await tareas.create({ boardId: t.id, columnId: t.backlog, title: "Una" });
-    const otraTarea = await tareas.create({ boardId: t.id, columnId: t.backlog, title: "Otra" });
+    const unaTarea = await tareas.create(
+      { boardId: t.id, columnId: t.backlog, title: "Una" },
+      ctx(),
+    );
+    const otraTarea = await tareas.create(
+      { boardId: t.id, columnId: t.backlog, title: "Otra" },
+      ctx(),
+    );
 
-    const porId = await tareas.move(unaTarea.id, { columnId: t.todo, position: 0 });
-    const porClave = await tareas.move(otraTarea.id, { columnKey: "todo", position: 0 });
+    const porId = await tareas.move(unaTarea.id, { columnId: t.todo, position: 0 }, ctx());
+    const porClave = await tareas.move(otraTarea.id, { columnKey: "todo", position: 0 }, ctx());
 
     expect(porId.toColumnId).toBe(t.todo);
     expect(porClave.toColumnId).toBe(t.todo);
@@ -142,23 +151,23 @@ describe("move con columnKey", () => {
 
   it("si vienen los dos, gana columnId", async () => {
     const t = await sembrar();
-    const tarea = await tareas.create({ boardId: t.id, columnId: t.backlog, title: "Una" });
+    const tarea = await tareas.create({ boardId: t.id, columnId: t.backlog, title: "Una" }, ctx());
 
     const movida = await tareas.move(tarea.id, {
       columnId: t.inProgress,
       columnKey: "TODO",
       position: 0,
-    });
+    }, ctx());
 
     expect(movida.toColumnId).toBe(t.inProgress);
   });
 
   it("COLUMN_NOT_FOUND si la key no existe en el tablero de la tarea", async () => {
     const t = await sembrar();
-    const tarea = await tareas.create({ boardId: t.id, columnId: t.backlog, title: "Una" });
+    const tarea = await tareas.create({ boardId: t.id, columnId: t.backlog, title: "Una" }, ctx());
 
     const error = await capturarDominio(() =>
-      tareas.move(tarea.id, { columnKey: "NO_EXISTE", position: 0 }),
+      tareas.move(tarea.id, { columnKey: "NO_EXISTE", position: 0 }, ctx()),
     );
 
     expect(error.code).toBe("COLUMN_NOT_FOUND");
@@ -171,8 +180,8 @@ describe("move con columnKey", () => {
     const otro = await sembrar("Otro");
     expect(t.todo).not.toBe(otro.todo);
 
-    const tarea = await tareas.create({ boardId: t.id, columnId: t.backlog, title: "Una" });
-    const movida = await tareas.move(tarea.id, { columnKey: "TODO", position: 0 });
+    const tarea = await tareas.create({ boardId: t.id, columnId: t.backlog, title: "Una" }, ctx());
+    const movida = await tareas.move(tarea.id, { columnKey: "TODO", position: 0 }, ctx());
 
     expect(movida.toColumnId).toBe(t.todo);
     expect(movida.task.boardId).toBe(t.id);
@@ -180,11 +189,14 @@ describe("move con columnKey", () => {
 
   it("no resuelve contra una columna que solo existe en otro tablero", async () => {
     const t = await sembrar("Personal");
-    await tableros.create({ name: "Otro", columns: [{ name: "En revision", key: "REVIEW" }] });
-    const tarea = await tareas.create({ boardId: t.id, columnId: t.backlog, title: "Una" });
+    await tableros.create(
+      { name: "Otro", columns: [{ name: "En revision", key: "REVIEW" }] },
+      ctx(),
+    );
+    const tarea = await tareas.create({ boardId: t.id, columnId: t.backlog, title: "Una" }, ctx());
 
     const error = await capturarDominio(() =>
-      tareas.move(tarea.id, { columnKey: "REVIEW", position: 0 }),
+      tareas.move(tarea.id, { columnKey: "REVIEW", position: 0 }, ctx()),
     );
 
     expect(error.code).toBe("COLUMN_NOT_FOUND");
@@ -194,7 +206,7 @@ describe("move con columnKey", () => {
     await sembrar();
 
     const error = await capturarDominio(() =>
-      tareas.move(uuid(), { columnKey: "TODO", position: 0 }),
+      tareas.move(uuid(), { columnKey: "TODO", position: 0 }, ctx()),
     );
 
     expect(error.code).toBe("TASK_NOT_FOUND");
@@ -205,10 +217,10 @@ describe("move con columnKey", () => {
     // de una key: este es el camino por id, que no cambio.
     const t = await sembrar("Personal");
     const otro = await sembrar("Otro");
-    const tarea = await tareas.create({ boardId: t.id, columnId: t.backlog, title: "Una" });
+    const tarea = await tareas.create({ boardId: t.id, columnId: t.backlog, title: "Una" }, ctx());
 
     const error = await capturarDominio(() =>
-      tareas.move(tarea.id, { columnId: otro.todo, position: 0 }),
+      tareas.move(tarea.id, { columnId: otro.todo, position: 0 }, ctx()),
     );
 
     expect(error.code).toBe("COLUMN_NOT_IN_BOARD");
@@ -224,8 +236,11 @@ describe("move con columnKey", () => {
 describe("list con columnKey", () => {
   it("filtra igual que con columnId", async () => {
     const t = await sembrar();
-    const enTodo = await tareas.create({ boardId: t.id, columnId: t.todo, title: "En todo" });
-    await tareas.create({ boardId: t.id, columnId: t.backlog, title: "En backlog" });
+    const enTodo = await tareas.create(
+      { boardId: t.id, columnId: t.todo, title: "En todo" },
+      ctx(),
+    );
+    await tareas.create({ boardId: t.id, columnId: t.backlog, title: "En backlog" }, ctx());
 
     const porId = await tareas.list({ boardId: t.id, columnId: t.todo });
     const porClave = await tareas.list({ boardId: t.id, columnKey: " todo " });
@@ -240,8 +255,8 @@ describe("list con columnKey", () => {
       boardId: t.id,
       columnId: t.backlog,
       title: "En backlog",
-    });
-    await tareas.create({ boardId: t.id, columnId: t.todo, title: "En todo" });
+    }, ctx());
+    await tareas.create({ boardId: t.id, columnId: t.todo, title: "En todo" }, ctx());
 
     const pagina = await tareas.list({ boardId: t.id, columnId: t.backlog, columnKey: "TODO" });
 

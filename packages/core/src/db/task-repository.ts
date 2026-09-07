@@ -8,6 +8,8 @@ import type {
   TaskMatch,
   TaskOrderBy,
 } from "../domain/types.js";
+import type { AuditRow, AuditTransaction } from "./audit-repository.js";
+import { insertAuditRow } from "./audit-repository.js";
 import type { OrdenSql } from "./pagination.js";
 import { clausulaOrden, condicionCursor, decodificarCursor, normalizarLimite, paginar } from "./pagination.js";
 import type { TransactionRunner } from "./transaction-runner.js";
@@ -50,7 +52,12 @@ export interface TaskFields {
   dueDate: Date | null;
 }
 
-export interface MoveTransaction {
+/**
+ * Extiende `AuditTransaction` a proposito: el registro de auditoria de un
+ * movimiento se escribe con ESTA transaccion (7.4), la misma que reescribe el
+ * orden de las columnas afectadas.
+ */
+export interface MoveTransaction extends AuditTransaction {
   /**
    * Resuelve la columna origen de la tarea y bloquea con FOR UPDATE todas las
    * filas de la columna origen y de la destino, EN UNA SOLA SENTENCIA y en
@@ -301,6 +308,10 @@ function crearTaskTransaction(tx: Prisma.TransactionClient): TaskTransaction {
     async readTask(taskId) {
       const tarea = await tx.task.findUnique({ where: { id: taskId } });
       return tarea === null ? undefined : aTask(tarea);
+    },
+
+    async insertAudit(row: AuditRow) {
+      await insertAuditRow(tx, row);
     },
   };
 }

@@ -12,16 +12,20 @@ Construido y verificado:
 - `packages/db`: esquema, migracion inicial y las restricciones por SQL crudo.
 - `packages/core`: errores de dominio, repositorios, BoardService, ColumnService
   y TaskService completos, mas el registro de herramientas MCP (`src/mcp`).
+- Auditoria (RF-10): `ActorContext`, `AuditService` y los eventos de la 7.4. El
+  registro se escribe en la MISMA transaccion que la operacion auditada, y toda
+  operacion de escritura de los tres servicios recibe `ctx`.
 - `apps/mcp-stdio`: servidor MCP por stdio en modo `core`, con las ONCE
   herramientas del catalogo de la 8.2 y la politica de operaciones destructivas
   de la 8.3.2 (MCP_DESTRUCTIVE_POLICY).
 
-184 pruebas contra PostgreSQL real.
+208 pruebas contra PostgreSQL real.
 
-Todavia NO existen: auditoria (RF-10), ActorContext, `packages/contracts`, la
-API REST, HttpPort, el transporte Streamable HTTP ni la UI.
+Todavia NO existen: scopes (7.2), herramienta MCP ni endpoint para CONSULTAR la
+auditoria, `packages/contracts`, la API REST, HttpPort, el transporte Streamable
+HTTP ni la UI.
 
-Fase en curso: F2.3 cerrada — catalogo MCP completo.
+Fase en curso: F3 cerrada — auditoria con ActorContext.
 
 ## Deuda conocida
 
@@ -64,6 +68,19 @@ aca es para que no se redescubran de cero.
 - El orden de tareas es entero denso 0..n-1 por columna, sin huecos. Toda
   operación que altere el orden reescribe la secuencia completa dentro de una
   transacción.
+- El registro de auditoría se escribe SIEMPRE dentro de la transacción de la
+  operación que audita, nunca en una propia ni después. Por eso
+  `AuditService.registrar()` recibe una transacción y no acepta un cliente
+  suelto: la firma es la que hace imposible un registro huérfano, no la
+  disciplina de quien la llama. Si la operación falla no queda registro, y si
+  falla el registro se revierte la operación entera. Corolario que sí hay que
+  sostener a mano: como las operaciones reintentan (40001 y las dos UNIQUE
+  diferidas de orden), el evento se arma y se escribe DENTRO del intento, así
+  el registro del intento abortado se va con su transacción. Nunca acumules
+  eventos fuera de la transacción para escribirlos al final: eso deja un
+  registro por intento y no se nota hasta que auditás en serio. Lo cubre la
+  prueba de reintento de `packages/core/test/audit.test.ts`, que aborta el
+  primer intento a propósito.
 - (A partir de F1b) `packages/core` no importa Next, ni el SDK de MCP, ni nada
   de HTTP. Los adaptadores (REST, MCP) no contienen reglas de negocio. Ningún
   adaptador importa Prisma directamente.

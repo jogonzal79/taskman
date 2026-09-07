@@ -1,3 +1,6 @@
+import { randomUUID } from "node:crypto";
+
+import type { ActorContext } from "@taskman/core";
 import { Client } from "pg";
 
 /**
@@ -43,4 +46,14 @@ export async function truncateAll(client: Client): Promise<void> {
   await client.query(
     `TRUNCATE TABLE ${TABLAS.map((tabla) => `"${tabla}"`).join(", ")} RESTART IDENTITY CASCADE`,
   );
+}
+
+/**
+ * Contexto para la siembra que estas pruebas hacen por los servicios. Es API a
+ * proposito: lo que tiene que registrar AGENT es lo que pasa por las
+ * herramientas, y si la siembra tambien lo hiciera, un test que verifica el
+ * actor del borde pasaria por el motivo equivocado.
+ */
+export function ctx(): ActorContext {
+  return { actorType: "API", actorName: "siembra", requestId: randomUUID() };
 }

@@ -1,6 +1,8 @@
 import { Prisma, type PrismaClient } from "@taskman/db";
 
 import type { Board, Column, ListBoardsQuery } from "../domain/types.js";
+import type { AuditRow, AuditTransaction } from "./audit-repository.js";
+import { insertAuditRow } from "./audit-repository.js";
 import type { OrdenSql } from "./pagination.js";
 import { clausulaOrden, condicionCursor, decodificarCursor, normalizarLimite, paginar } from "./pagination.js";
 import type { LockedTask } from "./task-repository.js";
@@ -28,7 +30,11 @@ export interface NewColumnRow {
   position: number;
 }
 
-export interface BoardTransaction {
+/**
+ * Extiende `AuditTransaction` a proposito: el registro de auditoria de una
+ * operacion sobre tableros o columnas se escribe con ESTA transaccion (7.4).
+ */
+export interface BoardTransaction extends AuditTransaction {
   findBoard(boardId: string): Promise<Board | undefined>;
   insertBoard(row: NewBoardRow): Promise<void>;
   updateBoardFields(
@@ -59,6 +65,8 @@ export interface BoardTransaction {
   rewriteBoardColumns(boardId: string, orderedColumnIds: readonly string[]): Promise<void>;
   readBoardColumns(boardId: string): Promise<Column[]>;
   countTasksInColumn(columnId: string): Promise<number>;
+  /** Para el recuento de entidades eliminadas que la 5.2 pide al borrar un tablero. */
+  countTasksInBoard(boardId: string): Promise<number>;
 
   // Para el reassignTo de `ColumnService.delete`, que mueve tareas entre
   // columnas dentro de la misma transaccion que borra la columna.
@@ -215,12 +223,20 @@ function crearBoardTransaction(tx: Prisma.TransactionClient): BoardTransaction {
       return tx.task.count({ where: { columnId } });
     },
 
+    async countTasksInBoard(boardId) {
+      return tx.task.count({ where: { boardId } });
+    },
+
     async lockTasksOfColumns(columnIds) {
       return lockTasksOfColumns(tx, columnIds);
     },
 
     async rewriteTaskColumn(columnId, orderedTaskIds) {
       await rewriteTaskPositions(tx, columnId, orderedTaskIds);
+    },
+
+    async insertAudit(row: AuditRow) {
+      await insertAuditRow(tx, row);
     },
   };
 }
