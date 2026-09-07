@@ -66,3 +66,19 @@ export { TransactionRunner } from "./db/transaction-runner.js";
 export { LIMITE_COLUMN_KEY, LIMITE_COLUMN_NAME, normalizarColumnKey } from "./domain/column-key.js";
 export type { ColumnReference } from "./domain/column-key.js";
 export { normalizarTexto, recortarBlancos } from "./domain/text.js";
+
+// --- MCP: registro unico de herramientas y puerto (8.1) ----------------------
+// El nucleo declara las herramientas como dato y NO importa el SDK de MCP: cada
+// app las monta sobre su propio transporte (ver src/mcp/tool.ts).
+
+export { crearHerramientas } from "./mcp/registry.js";
+export type { TaskManagerPort } from "./mcp/port.js";
+export { CorePort, crearCorePort } from "./mcp/core-port.js";
+export type {
+  EsquemaEntrada,
+  McpTextContent,
+  McpToolDefinition,
+  McpToolResult,
+} from "./mcp/tool.js";
+export { esUuid, resolverReferencia, MAXIMO_SUGERENCIAS } from "./mcp/resolve.js";
+export type { AmbitoResolucion, Candidato } from "./mcp/resolve.js";
