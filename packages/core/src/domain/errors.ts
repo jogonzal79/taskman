@@ -10,6 +10,14 @@ export type DomainErrorCode =
   | "COLUMN_NOT_FOUND"
   | "COLUMN_NOT_IN_BOARD"
   | "INVALID_ORDER"
+  // Una resolucion por nombre encontro mas de un candidato (8.3.1). El nucleo
+  // NUNCA elige: devuelve la lista entera en `details` para que el llamador
+  // reintente con un id concreto.
+  | "AMBIGUOUS_MATCH"
+  // La entrada no supera el esquema de la herramienta, o falta un dato que
+  // solo es obligatorio en combinacion con otro (un titulo sin tablero donde
+  // buscarlo). Es del contrato del borde, no de la base.
+  | "VALIDATION_ERROR"
   // Una columna con tareas no se borra sin decir que hacer con ellas.
   | "COLUMN_NOT_EMPTY"
   | "INVALID_REASSIGN_TARGET"

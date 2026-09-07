@@ -7,14 +7,15 @@ directorio son ese original binario; no intentes leerlos.
 
 ## Estado
 
-Construido y verificado: packages/db (esquema, migracion inicial, restricciones)
-y packages/core (errores de dominio, normalizador de errores de base, repositorio
-de tareas y TaskService.move). 24 pruebas de integracion contra PostgreSQL real.
+Construido y verificado: packages/db (esquema, migracion inicial, restricciones),
+packages/core (errores de dominio, repositorios, BoardService, ColumnService y
+TaskService completo) y apps/mcp-stdio (servidor MCP por stdio con list_tasks,
+create_task y move_task). 139 pruebas de integracion contra PostgreSQL real.
 
-Todavia NO existen: el resto del CRUD de tareas, boards, columnas, auditoria,
-packages/contracts, la API REST, el servidor MCP ni la UI.
+Todavia NO existen: auditoria, packages/contracts, la API REST, HttpPort, el
+transporte Streamable HTTP, las otras ocho herramientas de la 8.2 ni la UI.
 
-Fase en curso: F1b.2 — resto del CRUD de tareas sobre packages/core.
+Fase en curso: F2.1 cerrada — servidor MCP por stdio con tres herramientas.
 
 ## Entorno
 
@@ -95,6 +96,30 @@ Fase en curso: F1b.2 — resto del CRUD de tareas sobre packages/core.
 - No se reintenta NUNCA ante 40P01. Un interbloqueo significa que el orden de
   bloqueo esta mal, y reintentarlo esconde el bug que detecta la prueba C2 de
   `packages/core` en vez de arreglarlo.
+
+## Servidor MCP
+
+- El registro de herramientas y `TaskManagerPort` viven en `packages/core/mcp`,
+  pero el nucleo NO importa el SDK de MCP: las herramientas se declaran como
+  dato (`McpToolDefinition`) y cada app las monta sobre su `McpServer`. Es lo
+  que hace compatibles la regla de dependencias de arriba con el "registro
+  unico" de la 8.1.
+- La resolucion por nombre de la 8.3.1 esta en `packages/core/src/mcp/resolve.ts`
+  y es UNA sola para tablero, columna y tarea. Si hace falta una regla distinta
+  para alguna entidad, va como dato en el ambito, no como un `if` en el modulo.
+- El ambito de una resolucion por titulo es SIEMPRE un tablero, nunca global.
+  Por eso `board` es obligatorio en `move_task` cuando la tarea viene por
+  titulo.
+- Una coincidencia ambigua NUNCA se resuelve eligiendo la primera. Devuelve
+  AMBIGUOUS_MATCH con todos los candidatos y un `hint` que dice que hacer.
+- stdout es el canal del protocolo: en `apps/mcp-stdio` todo diagnostico va a
+  stderr. Un `console.log` suelto rompe la sesion MCP entera.
+- `apps/mcp-stdio` se empaqueta con esbuild porque `@taskman/core` y
+  `@taskman/db` publican TypeScript crudo y `.mcp.json` arranca el servidor con
+  `node dist/index.js`. Por eso ese paquete declara `@prisma/client`,
+  `@prisma/adapter-pg`, `pg` y `zod` aunque su codigo no los importe: son las
+  dependencias de lo que se empaqueta, y con pnpm cada paquete solo ve las
+  suyas.
 
 ## Cómo trabajamos
 
