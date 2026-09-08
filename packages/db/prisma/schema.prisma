@@ -37,6 +37,14 @@ enum ActorType {
   API
 }
 
+/// Scopes de la 7.2. En mayusculas como Priority y ActorType; la forma en
+/// minuscula (read/write/delete) es la del borde HTTP y la traduce el adaptador.
+enum Scope {
+  READ
+  WRITE
+  DELETE
+}
+
 model Board {
   id          String   @id @db.Uuid
   name        String   @db.VarChar(120)
@@ -104,4 +112,17 @@ model AuditLog {
   @@index([entityType, entityId, createdAt])
   @@index([createdAt])
   @@map("audit_log")
+}
+
+model ApiKey {
+  id        String    @id @db.Uuid
+  label     String    @db.VarChar(80)
+  prefix    String    @unique @db.VarChar(24)
+  keyHash   String    @unique @map("key_hash") @db.VarChar(64)
+  scopes    Scope[]
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("api_key")
 }

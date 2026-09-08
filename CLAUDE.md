@@ -93,6 +93,21 @@ aca es para que no se redescubran de cero.
 - Las restricciones `UNIQUE ... DEFERRABLE` sobre `position` se declaran SOLO en
   SQL crudo dentro de la migración. No las declares como `@@unique` en
   `schema.prisma`: Prisma generaría una versión no diferible.
+- NUNCA apliques lo que genera `prisma migrate dev` sin leerlo entero. Los
+  invariantes que viven solo en SQL crudo —la FK compuesta
+  `task_column_same_board`, la UNIQUE `column_board_pair` que esa FK
+  referencia, y las UNIQUE DEFERRABLE `task_column_position_uniq` y
+  `column_board_position_uniq`— no están en `schema.prisma`, así que Prisma
+  los toma por drift y propone un DROP de cada uno en CADA migración nueva, sin
+  que la migración tenga nada que ver con ellos. Aplicarlos se lleva puestos el
+  orden denso 0..n-1 (ADR-004) y la garantía de que una tarea no apunte a la
+  columna de otro tablero (4.2). El procedimiento es: generar SIEMPRE con
+  `--create-only`, borrar a mano todo DROP que toque esas cuatro, y verificar
+  con una consulta a `pg_constraint` / `pg_indexes` que las cuatro siguen
+  presentes DESPUÉS de aplicar, con `condeferrable = t` en las dos de
+  `position`. Que la migración corra sin error no prueba nada: los DROP se
+  aplican limpiamente, y lo que se pierde no se nota hasta que falla un
+  reordenamiento o entra una tarea en la columna de otro tablero.
 - La FK `task → board_column` es `ON DELETE NO ACTION`, no `RESTRICT`. RESTRICT
   se evalúa fila a fila y rompe el borrado en cascada de un tablero.
 - Los UUID los genera la aplicación, no la base.
