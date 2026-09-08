@@ -16,6 +16,7 @@ import { normalizarTexto } from "../domain/text.js";
 import type {
   Board,
   BoardDetail,
+  BoardWithTaskCounts,
   CreateBoardInput,
   ListBoardsQuery,
   Page,
@@ -159,6 +160,34 @@ export class BoardService {
       throw tableroNoEncontrado(boardId);
     }
     return { ...tablero, columns: await this.#boards.readBoardColumns(boardId) };
+  }
+
+  /**
+   * El tablero con sus columnas y el recuento de tareas de cada una (6.2).
+   *
+   * Metodo aparte y no un parametro de `get`: los llamadores que ya existen no
+   * necesitan el recuento, y pagarlo siempre seria una consulta de mas en el
+   * camino que mas se usa —resolver una columna por key— por un dato que ahi
+   * nadie mira.
+   */
+  async getWithTaskCounts(boardId: string): Promise<BoardWithTaskCounts> {
+    const tablero = await this.get(boardId);
+    const cuentas = await this.#boards.countTasksByColumn(boardId);
+
+    const columns = tablero.columns.map((columna) => ({
+      ...columna,
+      // Una columna vacia no sale del GROUP BY: la ausencia es cero.
+      taskCount: cuentas.get(columna.id) ?? 0,
+    }));
+
+    return {
+      ...tablero,
+      columns,
+      // Se suma lo ya contado en vez de pedir un total aparte: dos consultas
+      // distintas podrian ver estados distintos y devolver un total que no
+      // cuadra con la suma de las columnas que se muestran al lado.
+      taskCount: columns.reduce((total, columna) => total + columna.taskCount, 0),
+    };
   }
 
   async list(query: ListBoardsQuery = {}): Promise<Page<Board>> {

@@ -32,6 +32,25 @@ export interface BoardDetail extends Board {
   columns: Column[];
 }
 
+/** Una columna con cuantas tareas tiene. Ver `BoardWithTaskCounts`. */
+export interface ColumnWithTaskCount extends Column {
+  taskCount: number;
+}
+
+/**
+ * Lo que devuelve GET /api/boards/{id} (6.2): el tablero, sus columnas en
+ * orden y el recuento de tareas de cada una, mas el total.
+ *
+ * Es un tipo aparte y no un campo agregado a `Column` porque el recuento no es
+ * un atributo de la columna: es una agregacion que solo esta vista pide. Meterlo
+ * en `Column` obligaria a calcularlo (o a mentir con un cero) en cada uno de los
+ * caminos que hoy devuelven columnas sin contar nada.
+ */
+export interface BoardWithTaskCounts extends Board {
+  columns: ColumnWithTaskCount[];
+  taskCount: number;
+}
+
 export interface CreateBoardInput {
   name: string;
   description?: string | null;

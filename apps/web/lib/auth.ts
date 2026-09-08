@@ -1,5 +1,12 @@
 import { ApiKeyService, type ClaveAutenticada, type Scope } from "@taskman/core";
 
+import {
+  nuevoRequestId,
+  respuestaDeError,
+  respuestaDeFallo,
+  type ContextoPeticion,
+} from "./http.js";
+
 /**
  * Autenticacion por API key en el borde HTTP (ADR-005, 7.1 y 7.2).
  *
@@ -78,90 +85,95 @@ function leerBearer(request: Request): string | undefined {
   return valor;
 }
 
-function json(cuerpo: unknown, status: number): Response {
-  return Response.json(cuerpo, { status, headers: { "Cache-Control": "no-store" } });
-}
-
-function noAutenticado(): Response {
-  // 6.4: la envoltura es siempre la misma. Todavia sin `request_id`, que llega
-  // con la cabecera X-Request-Id.
-  return json(
-    {
-      error: {
-        code: "UNAUTHENTICATED",
-        message: "Falta la cabecera Authorization o la clave no es valida.",
-        hint: "Envia la clave como 'Authorization: Bearer tmk_live_...'.",
-      },
-    },
+function noAutenticado(ctx: ContextoPeticion): Response {
+  return respuestaDeError(
+    "UNAUTHENTICATED",
+    "Falta la cabecera Authorization o la clave no es valida.",
     401,
+    ctx,
+    { hint: "Envia la clave como 'Authorization: Bearer tmk_live_...'." },
   );
 }
 
-function scopeInsuficiente(requerido: ScopeHttp, tiene: readonly Scope[]): Response {
-  return json(
-    {
-      error: {
-        code: "FORBIDDEN_SCOPE",
-        message: `La clave no tiene el scope '${requerido}', necesario para esta operacion.`,
-        // 6.4: details indica el scope necesario. Va tambien lo que la clave SI
-        // tiene, porque es lo que convierte el error en accionable sin tener
-        // que ir a consultar la clave por otro lado.
-        details: { required_scope: requerido, granted_scopes: tiene.map(aScopeHttp) },
-        hint: "Emiti una clave nueva con ese scope; los scopes no se amplian sobre una existente.",
-      },
-    },
+function scopeInsuficiente(
+  requerido: ScopeHttp,
+  tiene: readonly Scope[],
+  ctx: ContextoPeticion,
+): Response {
+  return respuestaDeError(
+    "FORBIDDEN_SCOPE",
+    `La clave no tiene el scope '${requerido}', necesario para esta operacion.`,
     403,
+    ctx,
+    {
+      // 6.4: details indica el scope necesario. Va tambien lo que la clave SI
+      // tiene, porque es lo que convierte el error en accionable sin tener que
+      // ir a consultar la clave por otro lado.
+      details: { required_scope: requerido, granted_scopes: tiene.map(aScopeHttp) },
+      hint: "Emiti una clave nueva con ese scope; los scopes no se amplian sobre una existente.",
+    },
   );
 }
 
-/** Lo que el handler recibe ya autenticado. */
-export interface Autenticacion {
+/** Lo que el handler recibe ya autenticado, mas el contexto de la peticion. */
+export interface Autenticacion extends ContextoPeticion {
   clave: ClaveAutenticada;
 }
 
-type Handler = (request: Request, auth: Autenticacion) => Promise<Response>;
+/**
+ * Los argumentos extra son los que Next le pasa al handler despues del
+ * Request: en una ruta dinamica, el contexto con los `params`. `conAuth` no
+ * los mira, solo los reenvia, asi que sirve igual para un endpoint con
+ * parametros de ruta y para uno sin ellos sin saber cual es cual.
+ */
+type Handler<Args extends unknown[]> = (
+  request: Request,
+  auth: Autenticacion,
+  ...args: Args
+) => Promise<Response>;
 
 /**
- * Envuelve un Route Handler con la autenticacion de la 7.1.
+ * Envuelve un Route Handler con la autenticacion de la 7.1 y el request_id de
+ * la 6.1.
  *
  * El scope es un argumento OBLIGATORIO y no una opcion con valor por defecto: a
  * proposito. No se puede montar un endpoint sin declarar que scope exige, asi
  * que la forma de dejar una ruta abierta por descuido —olvidarse de llamar a un
  * helper— no existe. Falla cerrado.
  *
- * El proximo endpoint lo hereda envolviendose; no hay nada que copiar.
+ * Tambien es el unico try/catch del borde: cualquier fallo que escape del
+ * handler sale por `respuestaDeFallo`, o sea con la envoltura de la 6.4 y con
+ * el mismo request_id que ya viajo en la cabecera. Ponerlo aca y no en cada
+ * handler es lo que evita que un endpoint nuevo se olvide de traducir sus
+ * errores de dominio.
  */
-export function conAuth(scope: ScopeHttp, handler: Handler) {
-  return async function (request: Request): Promise<Response> {
-    let servicio: ApiKeyService;
+export function conAuth<Args extends unknown[]>(scope: ScopeHttp, handler: Handler<Args>) {
+  return async function (request: Request, ...args: Args): Promise<Response> {
+    // Se genera antes que nada: hasta un fallo de configuracion tiene que salir
+    // con su X-Request-Id para poder correlacionarlo con el log.
+    const ctx: ContextoPeticion = { requestId: nuevoRequestId() };
 
     try {
-      servicio = crearServicio();
+      const servicio = crearServicio();
+
+      const clave = leerBearer(request);
+      if (clave === undefined) {
+        return noAutenticado(ctx);
+      }
+
+      const resultado = await servicio.autenticar(clave, aScopeDeDominio(scope));
+
+      if (resultado.ok) {
+        return await handler(request, { ...ctx, clave: resultado.clave }, ...args);
+      }
+
+      if (resultado.motivo === "SCOPE_INSUFICIENTE") {
+        return scopeInsuficiente(aScopeHttp(resultado.scopeRequerido), resultado.clave.scopes, ctx);
+      }
+
+      return noAutenticado(ctx);
     } catch (error: unknown) {
-      // Falta de configuracion del servidor: 500, y el detalle al stderr. Que
-      // el pepper no este puesto no es culpa del cliente ni se le cuenta.
-      console.error("[taskman-web] la autenticacion no esta configurada", error);
-      return json(
-        { error: { code: "INTERNAL_ERROR", message: "Fallo no controlado." } },
-        500,
-      );
+      return respuestaDeFallo(error, ctx);
     }
-
-    const clave = leerBearer(request);
-    if (clave === undefined) {
-      return noAutenticado();
-    }
-
-    const resultado = await servicio.autenticar(clave, aScopeDeDominio(scope));
-
-    if (resultado.ok) {
-      return handler(request, { clave: resultado.clave });
-    }
-
-    if (resultado.motivo === "SCOPE_INSUFICIENTE") {
-      return scopeInsuficiente(aScopeHttp(resultado.scopeRequerido), resultado.clave.scopes);
-    }
-
-    return noAutenticado();
   };
 }

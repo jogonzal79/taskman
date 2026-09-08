@@ -7,6 +7,7 @@ import type { ActorContext } from "../domain/actor.js";
 import type {
   Board,
   BoardDetail,
+  BoardWithTaskCounts,
   Column,
   CreateBoardInput,
   CreateColumnInput,
@@ -51,6 +52,16 @@ export class CorePort implements TaskManagerPort {
 
   async getBoard(boardId: string): Promise<BoardDetail> {
     return this.#boards.get(boardId);
+  }
+
+  /**
+   * Para GET /api/boards/{id} (6.2). Deliberadamente NO esta en
+   * `TaskManagerPort`: el recuento lo pide el borde REST, y la herramienta MCP
+   * get_board ya arma el suyo por su cuenta. Agregarlo a la interfaz obligaria
+   * a implementarlo tambien al HttpPort que todavia no existe, para nadie.
+   */
+  async getBoardWithTaskCounts(boardId: string): Promise<BoardWithTaskCounts> {
+    return this.#boards.getWithTaskCounts(boardId);
   }
 
   async createBoard(input: CreateBoardInput, ctx: ActorContext): Promise<BoardDetail> {

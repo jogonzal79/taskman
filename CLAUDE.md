@@ -86,6 +86,17 @@ aca es para que no se redescubran de cero.
   `Sql` que evalúa `$queryRaw`. Pendiente conocido: `@prisma/adapter-pg` y `pg`
   siguen inertes por lo mismo y se empaquetan. Hoy no rompen nada —el bug era
   específico del runtime de `@prisma/client`— y el arreglo sería idéntico.
+- Un typecheck que PASA donde esperabas que fallara puede ser un
+  `tsconfig.tsbuildinfo` viejo, no un mecanismo roto. Pasó una vez con el
+  `Record` exhaustivo de errores de `apps/web/lib/http.ts`: se agregó un código
+  de dominio sin mapear, `tsc --noEmit` dio verde, y borrando
+  `apps/web/tsconfig.tsbuildinfo` apareció el TS2741 que se esperaba. No se
+  pudo reproducir después —con la caché sana lo detecta, y el typecheck del
+  monorepo entero también—, así que es observación y no bug confirmado. El
+  reflejo igual: borrá el tsbuildinfo del paquete y repetí ANTES de concluir
+  que la salvaguarda no funciona. Vale sobre todo para las contrapruebas, que
+  son justamente las que esperan rojo y donde un verde se lee como "el
+  mecanismo no sirve" en vez de como "no se volvió a compilar".
 - No mates procesos `node` con un `Stop-Process` amplio en esta máquina: se
   llevan puestos los servidores MCP de la sesión, que también son `node`.
   Filtrá por PID o por línea de comando.

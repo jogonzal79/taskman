@@ -8,5 +8,17 @@
 export { consultaDeListado, listadoDe, LIMITE_DEFECTO, LIMITE_MAXIMO } from "./pagination.js";
 export type { ConsultaDeListado } from "./pagination.js";
 
-export { listadoDeTableros, tablero } from "./board.js";
-export type { ListadoDeTableros, Tablero } from "./board.js";
+export {
+  columnaDetallada,
+  listadoDeTableros,
+  parametrosDeTablero,
+  tablero,
+  tableroDetallado,
+} from "./board.js";
+export type {
+  ColumnaDetallada,
+  ListadoDeTableros,
+  ParametrosDeTablero,
+  Tablero,
+  TableroDetallado,
+} from "./board.js";

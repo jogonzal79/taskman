@@ -4,8 +4,10 @@ export type { DomainErrorCode, DomainErrorOptions } from "./domain/errors.js";
 export type {
   Board,
   BoardDetail,
+  BoardWithTaskCounts,
   Column,
   ColumnOrder,
+  ColumnWithTaskCount,
   CreateBoardInput,
   CreateColumnInput,
   CreateTaskInput,

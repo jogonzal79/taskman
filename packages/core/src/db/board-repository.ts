@@ -283,6 +283,28 @@ export class BoardRepository {
     return filas.map(aColumn);
   }
 
+  /**
+   * Cuantas tareas tiene cada columna del tablero, en UNA sola consulta.
+   *
+   * Con GROUP BY y no cargando las tareas para contarlas en memoria, que es lo
+   * que hace hoy la herramienta MCP get_board: para el recuento no hace falta
+   * traer ni una fila de `task`, y traerlas convierte una agregacion de coste
+   * fijo en una transferencia proporcional al tamaño del tablero.
+   *
+   * Las columnas sin tareas NO aparecen en el resultado: un GROUP BY no inventa
+   * grupos vacios. Quien lo consuma tiene que resolver la ausencia como cero,
+   * y por eso devuelve un Map y no un array: el .get() ?? 0 es explicito.
+   */
+  async countTasksByColumn(boardId: string): Promise<Map<string, number>> {
+    const filas = await this.#prisma.task.groupBy({
+      by: ["columnId"],
+      where: { boardId },
+      _count: { _all: true },
+    });
+
+    return new Map(filas.map((fila) => [fila.columnId, fila._count._all]));
+  }
+
   async listBoards(query: ListBoardsQuery): Promise<{ items: Board[]; nextCursor: string | null }> {
     const limite = normalizarLimite(query.limit);
     const cursor = query.cursor === undefined ? undefined : decodificarCursor(query.cursor);

@@ -2,6 +2,7 @@ import { consultaDeListado, listadoDeTableros, type Tablero } from "@taskman/con
 import { crearCorePort, type Board, type ListBoardsQuery } from "@taskman/core";
 
 import { conAuth } from "../../../lib/auth.js";
+import { respuestaDeError, respuestaDeFallo, responder } from "../../../lib/http.js";
 
 /**
  * GET /api/boards (6.2): lista tableros, paginado por cursor.
@@ -37,11 +38,8 @@ function aSalida(board: Board): Tablero {
   };
 }
 
-function json(cuerpo: unknown, status: number): Response {
-  return Response.json(cuerpo, { status, headers: { "Cache-Control": "no-store" } });
-}
 
-export const GET = conAuth("read", async (request: Request): Promise<Response> => {
+export const GET = conAuth("read", async (request, auth): Promise<Response> => {
   const parametros = new URL(request.url).searchParams;
 
   // `?limit=abc` no puede caer en el default: seria devolver 50 tableros a
@@ -52,17 +50,12 @@ export const GET = conAuth("read", async (request: Request): Promise<Response> =
   });
 
   if (!consulta.success) {
-    // La envoltura es la de la 6.4. Todavia sin `request_id`: llega con la
-    // cabecera X-Request-Id, que es el paso siguiente.
-    return json(
-      {
-        error: {
-          code: "VALIDATION_ERROR",
-          message: "Los parametros de la consulta no superan el esquema.",
-          details: { issues: consulta.error.issues },
-        },
-      },
+    return respuestaDeError(
+      "VALIDATION_ERROR",
+      "Los parametros de la consulta no superan el esquema.",
       400,
+      auth,
+      { details: { issues: consulta.error.issues } },
     );
   }
 
@@ -91,11 +84,8 @@ export const GET = conAuth("read", async (request: Request): Promise<Response> =
   if (!salida.success) {
     console.error("[taskman-web] la respuesta de GET /api/boards no cumple el contrato", salida.error.issues);
 
-    return json(
-      { error: { code: "INTERNAL_ERROR", message: "Fallo no controlado." } },
-      500,
-    );
+    return respuestaDeFallo(new Error("La salida no cumple el contrato."), auth);
   }
 
-  return json(salida.data, 200);
+  return responder(salida.data, 200, auth);
 });

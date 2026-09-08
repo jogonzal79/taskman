@@ -29,3 +29,50 @@ export type Tablero = z.infer<typeof tablero>;
 export const listadoDeTableros = listadoDe(tablero);
 
 export type ListadoDeTableros = z.infer<typeof listadoDeTableros>;
+
+/**
+ * Una columna en el borde HTTP, con cuantas tareas tiene.
+ *
+ * `position` es el orden denso 0..n-1 dentro del tablero y `task_count` no
+ * puede ser negativo: los dos son `int()` y no `number()` porque un decimal ahi
+ * seria un bug nuestro, y esta forma tambien valida la SALIDA.
+ */
+export const columnaDetallada = z.strictObject({
+  id: z.uuid(),
+  board_id: z.uuid(),
+  name: z.string(),
+  key: z.string(),
+  position: z.int().min(0),
+  task_count: z.int().min(0),
+  created_at: z.iso.datetime({ offset: true }),
+  updated_at: z.iso.datetime({ offset: true }),
+});
+
+export type ColumnaDetallada = z.infer<typeof columnaDetallada>;
+
+/** Respuesta de GET /api/boards/{id} (6.2): tablero, columnas y recuentos. */
+export const tableroDetallado = z.strictObject({
+  ...tablero.shape,
+  columns: z.array(columnaDetallada),
+  // El total del tablero. Va aparte y no se deja calcular al cliente porque el
+  // cliente solo puede sumar lo que ve, y esta respuesta no trae las tareas.
+  task_count: z.int().min(0),
+});
+
+export type TableroDetallado = z.infer<typeof tableroDetallado>;
+
+/**
+ * El `{id}` de las rutas /api/boards/{id}.
+ *
+ * Vive aca y no en el Route Handler por ADR-006 —los esquemas son una sola
+ * definicion— y ademas porque `apps/web` no declara zod: los contratos llegan
+ * ya construidos desde este paquete, que es lo que evita que el adaptador tenga
+ * que resolver la dependencia por su cuenta.
+ *
+ * Validar el id ANTES de consultar es lo que separa un 400 de un 500: un id que
+ * no es UUID llega a PostgreSQL como texto y vuelve como un 22P02 del driver,
+ * indistinguible de un fallo real.
+ */
+export const parametrosDeTablero = z.object({ id: z.uuid() });
+
+export type ParametrosDeTablero = z.infer<typeof parametrosDeTablero>;
