@@ -93,6 +93,7 @@ export type { AuditRow, AuditTransaction } from "./db/audit-repository.js";
 export { BoardRepository } from "./db/board-repository.js";
 export type { BoardTransaction, LockedColumn, NewBoardRow, NewColumnRow } from "./db/board-repository.js";
 export { TransactionRunner } from "./db/transaction-runner.js";
+export { comprobarConexion } from "./db/health.js";
 
 export { LIMITE_COLUMN_KEY, LIMITE_COLUMN_NAME, normalizarColumnKey } from "./domain/column-key.js";
 export type { ColumnReference } from "./domain/column-key.js";

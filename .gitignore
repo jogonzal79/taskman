@@ -16,3 +16,7 @@ coverage/
 *.tsbuildinfo
 .pnpm-store/
 packages/db/src/generated/
+
+# --- F4: apps/web (Next.js) ---
+# Lo regenera `next dev` / `next build` en cada corrida.
+next-env.d.ts
