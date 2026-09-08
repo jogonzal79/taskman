@@ -55,6 +55,17 @@ aca es para que no se redescubran de cero.
 - PostgreSQL 16 en Docker Desktop.
 - Los scripts de package.json deben ser multiplataforma: nada de `rm`, `cp`,
   `export` ni here-docs.
+- `apps/web` corre con `--webpack`, no con Turbopack, y por eso sus scripts de
+  `dev` y `build` llevan el flag. `packages/core` usa specifiers NodeNext
+  (`./domain/types.js` apunta a `types.ts`); esbuild hace esa sustitución solo
+  —por eso `apps/mcp-stdio` no necesita nada— y los bundlers de Next no. Lo
+  arregla `experimental.extensionAlias`, que Turbopack ignora explícitamente: con
+  Turbopack fallan los ~30 imports del barrel. Es deuda a saldar antes de F3
+  haciendo que `core` publique JS compilado, no dejándolo en webpack para
+  siempre.
+- No mates procesos `node` con un `Stop-Process` amplio en esta máquina: se
+  llevan puestos los servidores MCP de la sesión, que también son `node`.
+  Filtrá por PID o por línea de comando.
 
 ## Reglas que no se negocian
 

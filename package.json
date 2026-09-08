@@ -18,7 +18,7 @@
     "build": "pnpm --filter @taskman/mcp-stdio run build",
     "test": "pnpm -r --workspace-concurrency=1 run test",
     "typecheck": "pnpm -r run typecheck",
-    "verify": "pnpm run db:up && pnpm run db:generate && pnpm run db:migrate && pnpm run build && pnpm run test"
+    "verify": "pnpm run db:up && pnpm run db:generate && pnpm run db:migrate && pnpm run typecheck && pnpm run build && pnpm run test"
   },
   "devDependencies": {
     "typescript": "7.0.2"
