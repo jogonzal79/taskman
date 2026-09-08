@@ -53,6 +53,10 @@ aca es para que no se redescubran de cero.
   cualquier ruta en scripts y configuración.
 - Node 20+, pnpm workspaces, TypeScript strict con noUncheckedIndexedAccess.
 - PostgreSQL 16 en Docker Desktop.
+- `pnpm run verify` corre los tests contra la base de desarrollo y la TRUNCA:
+  cualquier dato cargado a mano ahí se pierde en el próximo verify. Los tableros
+  que aparecen —"Trazado", "Revisar HU-25"— son fixtures de
+  `apps/mcp-stdio/test/mcp.test.ts`, no datos reales.
 - Los scripts de package.json deben ser multiplataforma: nada de `rm`, `cp`,
   `export` ni here-docs.
 - `apps/web` corre con `--webpack`, no con Turbopack, y por eso sus scripts de
