@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "dotenv -e ../../.env -- next dev --webpack",
-    "build": "dotenv -e ../../.env -- next build --webpack",
+    "build": "next build --webpack",
     "start": "dotenv -e ../../.env -- next start",
     "typecheck": "tsc --noEmit"
   },

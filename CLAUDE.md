@@ -76,6 +76,20 @@ aca es para que no se redescubran de cero.
 - La FK `task → board_column` es `ON DELETE NO ACTION`, no `RESTRICT`. RESTRICT
   se evalúa fila a fila y rompe el borrado en cascada de un tablero.
 - Los UUID los genera la aplicación, no la base.
+- `packages/db/src/client.ts` exporta un Proxy, no el cliente. El `PrismaClient`
+  se construye en el PRIMER acceso a una propiedad y ahí se valida
+  `DATABASE_URL`; importar el módulo no construye nada, y de eso depende que una
+  herramienta pueda cargar un módulo del árbol sólo para inspeccionarlo sin una
+  base configurada —el caso que lo destapó fue el "Collecting page data" de
+  `next build`—. El invariante "un cliente por proceso" descansa en DOS caches y
+  las dos hacen falta: el global, que se escribe sólo fuera de producción para
+  el hot reload, y una variable de módulo. Sacar la segunda abre un pool por
+  acceso en producción. Los métodos se devuelven con `bind` al cliente real,
+  porque invocarlos con el proxy como `this` revienta en el primer campo
+  privado. Consecuencia: `prisma.$transaction` NO es idéntico entre accesos, y
+  `prisma instanceof PrismaClient` da false. Si algún día hace falta el
+  instanceof, la salida es exponer el cliente por una función, no ampliar las
+  trampas del proxy.
 - El orden de tareas es entero denso 0..n-1 por columna, sin huecos. Toda
   operación que altere el orden reescribe la secuencia completa dentro de una
   transacción.
