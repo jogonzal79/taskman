@@ -57,6 +57,9 @@ aca es para que no se redescubran de cero.
   cualquier dato cargado a mano ahí se pierde en el próximo verify. Los tableros
   que aparecen —"Trazado", "Revisar HU-25"— son fixtures de
   `apps/mcp-stdio/test/mcp.test.ts`, no datos reales.
+- Eso incluye `api_key`: verify también la vacía, así que cualquier clave
+  emitida a mano desaparece en el próximo verify y hay que reemitirla con
+  `pnpm run apikey:create`.
 - Los scripts de package.json deben ser multiplataforma: nada de `rm`, `cp`,
   `export` ni here-docs.
 - `apps/web` corre con `--webpack`, no con Turbopack, y por eso sus scripts de
@@ -144,6 +147,27 @@ aca es para que no se redescubran de cero.
 - (A partir de F1b) `packages/core` no importa Next, ni el SDK de MCP, ni nada
   de HTTP. Los adaptadores (REST, MCP) no contienen reglas de negocio. Ningún
   adaptador importa Prisma directamente.
+- `packages/core/src/domain/api-key.ts` NO puede importar nada del resto del
+  núcleo: solo `node:crypto`. El script de administración lo carga por ruta
+  directa (`../src/domain/api-key.ts`) apoyándose en el stripping de tipos
+  nativo de Node, que NO resuelve los specifiers NodeNext del proyecto
+  (`./x.js` -> `x.ts`), así que un solo import interno lo rompe. Se comparte en
+  vez de recalcular el hash en el script porque, si los dos difirieran, se
+  emitirían claves que no validan y el síntoma sería un 401 indistinguible de
+  una clave mal tipeada. Consecuencia: ese comando requiere Node 22.6+, por
+  encima del Node 20+ que declara el resto del proyecto; afecta solo al script,
+  no a la app. Si algún día hace falta importar algo ahí, la salida es
+  empaquetar el script con esbuild como `apps/mcp-stdio`, no relajar la regla.
+- El pepper llega INYECTADO al `ApiKeyService`, nunca leído de `process.env`
+  dentro del núcleo: el núcleo recibe datos ya validados (3.2), y así el
+  servicio se prueba con dos peppers distintos en un mismo test. El constructor
+  falla con un pepper vacío, y falla al construir y no en la primera petición:
+  un pepper vacío hashea sin protestar y produce claves cuyo hash no depende de
+  ningún secreto, o sea un fallo silencioso del peor tipo.
+- El `ApiKeyService` se construye POR PETICIÓN, no a nivel de módulo como
+  `crearCorePort()`. Su constructor exige el pepper, y leerlo al importar el
+  módulo rompe el "Collecting page data" de `next build`: es la misma trampa que
+  resolvió el proxy perezoso de `packages/db`.
 - Los errores de PostgreSQL llegan por dos caminos distintos segun donde
   falle la sentencia, y hay que cubrir los dos. Si la viola una sentencia
   concreta, Prisma la envuelve en un `PrismaClientKnownRequestError` y la

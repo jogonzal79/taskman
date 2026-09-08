@@ -99,6 +99,29 @@ export { LIMITE_COLUMN_KEY, LIMITE_COLUMN_NAME, normalizarColumnKey } from "./do
 export type { ColumnReference } from "./domain/column-key.js";
 export { normalizarTexto, recortarBlancos } from "./domain/text.js";
 
+// --- API keys (ADR-005, 7.1 y 7.2) ------------------------------------------
+
+export {
+  esScope,
+  generarClave,
+  hashearClave,
+  hashesIguales,
+  prefijoDe,
+  LARGO_PREFIJO_VISIBLE,
+  PREFIJO_CLAVE,
+  SCOPES,
+} from "./domain/api-key.js";
+export type { Scope } from "./domain/api-key.js";
+export { buscarClavePorPrefijo } from "./db/api-key-repository.js";
+export type { ApiKeyRow } from "./db/api-key-repository.js";
+export { ApiKeyService } from "./services/api-key-service.js";
+export type {
+  BuscadorDeClaves,
+  ClaveAutenticada,
+  OpcionesApiKeyService,
+  ResultadoAutenticacion,
+} from "./services/api-key-service.js";
+
 // --- MCP: registro unico de herramientas y puerto (8.1) ----------------------
 // El nucleo declara las herramientas como dato y NO importa el SDK de MCP: cada
 // app las monta sobre su propio transporte (ver src/mcp/tool.ts).

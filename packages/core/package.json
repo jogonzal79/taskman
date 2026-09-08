@@ -10,7 +10,8 @@
   },
   "scripts": {
     "test": "dotenv -e ../../.env -- vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "apikey:create": "dotenv -e ../../.env -- node scripts/create-api-key.mjs"
   },
   "dependencies": {
     "@taskman/db": "workspace:*",

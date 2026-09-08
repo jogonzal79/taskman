@@ -1,11 +1,14 @@
 import { consultaDeListado, listadoDeTableros, type Tablero } from "@taskman/contracts";
 import { crearCorePort, type Board, type ListBoardsQuery } from "@taskman/core";
 
+import { conAuth } from "../../../lib/auth.js";
+
 /**
  * GET /api/boards (6.2): lista tableros, paginado por cursor.
  *
- * Sin autenticacion todavia; la API key llega en el paso siguiente y cubre
- * todos los endpoints de una vez.
+ * Requiere una API key con scope read (7.2). La verificacion la aporta
+ * `conAuth`, que recibe el scope como argumento obligatorio: montar este
+ * handler sin declararlo no compila.
  *
  * El adaptador no ve Prisma (3.2): habla con el nucleo por `TaskManagerPort` y
  * su unica responsabilidad es validar la entrada, invocar el servicio y
@@ -38,7 +41,7 @@ function json(cuerpo: unknown, status: number): Response {
   return Response.json(cuerpo, { status, headers: { "Cache-Control": "no-store" } });
 }
 
-export async function GET(request: Request): Promise<Response> {
+export const GET = conAuth("read", async (request: Request): Promise<Response> => {
   const parametros = new URL(request.url).searchParams;
 
   // `?limit=abc` no puede caer en el default: seria devolver 50 tableros a
@@ -95,4 +98,4 @@ export async function GET(request: Request): Promise<Response> {
   }
 
   return json(salida.data, 200);
-}
+});
