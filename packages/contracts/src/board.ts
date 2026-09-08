@@ -50,7 +50,17 @@ export const columnaDetallada = z.strictObject({
 
 export type ColumnaDetallada = z.infer<typeof columnaDetallada>;
 
-/** Respuesta de GET /api/boards/{id} (6.2): tablero, columnas y recuentos. */
+/**
+ * Respuesta de GET /api/boards/{id} y de POST /api/boards (6.2): el tablero,
+ * sus columnas y los recuentos.
+ *
+ * Una sola forma para los dos endpoints a proposito: los dos devuelven "un
+ * tablero con sus columnas", y publicar dos formas distintas de la misma cosa
+ * obligaria al cliente a mantener dos lectores para el mismo recurso. En la
+ * respuesta de POST los recuentos son cero, y no es un relleno: el tablero se
+ * acaba de crear con sus columnas en una sola transaccion, asi que ninguna
+ * pudo recibir una tarea todavia.
+ */
 export const tableroDetallado = z.strictObject({
   ...tablero.shape,
   columns: z.array(columnaDetallada),
@@ -76,3 +86,69 @@ export type TableroDetallado = z.infer<typeof tableroDetallado>;
 export const parametrosDeTablero = z.object({ id: z.uuid() });
 
 export type ParametrosDeTablero = z.infer<typeof parametrosDeTablero>;
+
+/**
+ * Los limites del contrato publico para un tablero.
+ *
+ * Se repiten aca aunque el nucleo ya los tenga (LIMITE_BOARD_NAME y
+ * LIMITE_BOARD_DESCRIPTION) por lo mismo que los de `pagination.ts`: este
+ * paquete es una HOJA del grafo de dependencias (3.3) y no importa el nucleo.
+ * Que hoy coincidan con los suyos no los hace el mismo dato; estos son los que
+ * documenta el borde.
+ */
+export const LIMITE_NOMBRE_TABLERO = 120;
+export const LIMITE_DESCRIPCION_TABLERO = 2000;
+
+/**
+ * Los limites se cuentan en PUNTOS DE CODIGO y no con `.max()`, que cuenta
+ * unidades UTF-16.
+ *
+ * No es un detalle teorico: un nombre de 120 emoji ocupa 240 unidades UTF-16 y
+ * 120 caracteres para PostgreSQL, que es lo que mide el VARCHAR(120) de
+ * `board`, y tambien lo que mide el nucleo al normalizar. Con `.max()` el
+ * contrato devolveria un 400 por algo que el dominio y la base aceptan sin
+ * problema, y el cliente no tendria forma de saber por que.
+ */
+function puntosDeCodigo(valor: string): number {
+  return [...valor].length;
+}
+
+/**
+ * Cuerpo de POST /api/boards (6.2).
+ *
+ * NO acepta `columns`: por la 6.2 este endpoint crea el tablero "con columnas
+ * por defecto", que son las cuatro de la 4.3, y para cualquier otra hay un
+ * endpoint propio, POST /api/boards/{id}/columns. Al ser `strictObject`,
+ * mandarlas no queda ignorado en silencio: es un 400 que dice exactamente que
+ * campo sobra.
+ *
+ * El `trim()` va ANTES de las comprobaciones, asi que un nombre de solo
+ * espacios es un nombre vacio y no uno de tres caracteres. El nucleo recorta
+ * igual —esta es su regla, no la nuestra—; validarlo tambien aca es lo que
+ * convierte el caso en un VALIDATION_ERROR con la lista de campos, en vez de
+ * un NAME_REQUIRED sin decir cual fallo.
+ */
+export const crearTablero = z.strictObject({
+  name: z
+    .string()
+    .trim()
+    .min(1, { error: "El nombre no puede quedar vacio tras recortar los espacios." })
+    .refine((valor) => puntosDeCodigo(valor) <= LIMITE_NOMBRE_TABLERO, {
+      error: `El nombre no puede superar los ${LIMITE_NOMBRE_TABLERO} caracteres.`,
+    }),
+  /**
+   * `nullish`: ausente y null son lo mismo, un tablero sin descripcion. Se
+   * aceptan los dos porque un cliente que arma el cuerpo desde un formulario
+   * manda `null` y uno que lo arma a mano omite la clave, y no hay ninguna
+   * razon para que una de las dos formas sea un error.
+   */
+  description: z
+    .string()
+    .trim()
+    .refine((valor) => puntosDeCodigo(valor) <= LIMITE_DESCRIPCION_TABLERO, {
+      error: `La descripcion no puede superar los ${LIMITE_DESCRIPCION_TABLERO} caracteres.`,
+    })
+    .nullish(),
+});
+
+export type CrearTablero = z.infer<typeof crearTablero>;

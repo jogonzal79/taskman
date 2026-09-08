@@ -19,7 +19,8 @@ Construido y verificado:
   herramientas del catalogo de la 8.2 y la politica de operaciones destructivas
   de la 8.3.2 (MCP_DESTRUCTIVE_POLICY).
 
-232 pruebas contra PostgreSQL real.
+255 pruebas contra PostgreSQL real: 10 en `packages/db`, 170 en
+`packages/core` y 75 en `apps/mcp-stdio`.
 
 Todavia NO existen: scopes (7.2), herramienta MCP ni endpoint para CONSULTAR la
 auditoria, `packages/contracts`, la API REST, HttpPort, el transporte Streamable

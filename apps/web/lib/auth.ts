@@ -1,4 +1,9 @@
-import { ApiKeyService, type ClaveAutenticada, type Scope } from "@taskman/core";
+import {
+  ApiKeyService,
+  type ActorContext,
+  type ClaveAutenticada,
+  type Scope,
+} from "@taskman/core";
 
 import {
   nuevoRequestId,
@@ -118,6 +123,42 @@ function scopeInsuficiente(
 /** Lo que el handler recibe ya autenticado, mas el contexto de la peticion. */
 export interface Autenticacion extends ContextoPeticion {
   clave: ClaveAutenticada;
+}
+
+/**
+ * El `ActorContext` de una peticion REST (7.4), para las operaciones que
+ * escriben.
+ *
+ * `actorType` es API por construccion, igual que `contextoDeAgente` fija AGENT:
+ * todo lo que pasa por aca entro por HTTP con una API key, asi que un handler
+ * no puede registrarse como otra cosa ni por error ni a proposito.
+ *
+ * Va como funcion y no como un campo mas de `Autenticacion` porque solo las
+ * ESCRITURAS lo necesitan (7.4: las lecturas no se auditan). Es la misma
+ * asimetria que ya tienen los servicios y el puerto: armarlo en `conAuth`
+ * dejaria a cada endpoint de lectura cargando un contexto que nadie lee.
+ *
+ * A diferencia de `contextoDeAgente`, aca NO hay que recortar nada, y no es por
+ * descuido: los tres valores salen de columnas mas angostas que las de
+ * `audit_log`. `api_key.label` es VARCHAR(80) contra el VARCHAR(120) de
+ * `actor_name`, `api_key.prefix` es VARCHAR(24) contra el VARCHAR(120) de
+ * `client_id`, y el requestId de `nuevoRequestId()` mide 36 caracteres fijos
+ * contra el VARCHAR(64) de `request_id`. Lo que recorta el borde MCP es el
+ * nombre que declara un cliente cualquiera; esto son datos nuestros. Si alguna
+ * de esas tres columnas se ensancha por encima de la de `audit_log`, el
+ * sintoma va a ser un 500 en cada escritura —el INSERT de auditoria falla con
+ * 22001 y por la 7.4 se lleva la operacion entera—, ruidoso y no silencioso.
+ */
+export function contextoDeApi(auth: Autenticacion): ActorContext {
+  return {
+    actorType: "API",
+    // La etiqueta y no el prefijo: es el nombre que eligio una persona al
+    // emitir la clave, que es lo que hace legible el registro. Cual de las
+    // claves fue va en `clientId`, que es justo lo que pide la 5.1.
+    actorName: auth.clave.label,
+    clientId: auth.clave.prefix,
+    requestId: auth.requestId,
+  };
 }
 
 /**

@@ -10,13 +10,17 @@ export type { ConsultaDeListado } from "./pagination.js";
 
 export {
   columnaDetallada,
+  crearTablero,
   listadoDeTableros,
   parametrosDeTablero,
   tablero,
   tableroDetallado,
+  LIMITE_DESCRIPCION_TABLERO,
+  LIMITE_NOMBRE_TABLERO,
 } from "./board.js";
 export type {
   ColumnaDetallada,
+  CrearTablero,
   ListadoDeTableros,
   ParametrosDeTablero,
   Tablero,
