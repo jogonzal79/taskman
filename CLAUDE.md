@@ -19,7 +19,7 @@ Construido y verificado:
   herramientas del catalogo de la 8.2 y la politica de operaciones destructivas
   de la 8.3.2 (MCP_DESTRUCTIVE_POLICY).
 
-208 pruebas contra PostgreSQL real.
+232 pruebas contra PostgreSQL real.
 
 Todavia NO existen: scopes (7.2), herramienta MCP ni endpoint para CONSULTAR la
 auditoria, `packages/contracts`, la API REST, HttpPort, el transporte Streamable
@@ -63,6 +63,22 @@ aca es para que no se redescubran de cero.
   Turbopack fallan los ~30 imports del barrel. Es deuda a saldar antes de F3
   haciendo que `core` publique JS compilado, no dejándolo en webpack para
   siempre.
+- Un paquete listado en `serverExternalPackages` tiene que ser RESOLUBLE desde
+  `apps/web` o la entrada es inerte: Next declara externo algo que no puede
+  externalizar, lo empaqueta igual, y en dev lo empaqueta partido en
+  vendor-chunks. Con pnpm estricto no alcanza con que lo declare un paquete del
+  workspace —`packages/db` lo resolvía y `apps/web` no—, así que el paquete va
+  también en las dependencias de `apps/web`, apuntando a la MISMA copia física.
+  Comprobalo por realpath de `require.resolve("@prisma/client/runtime/client")`
+  desde los dos paquetes, nunca por número de versión: en el store puede haber
+  dos entradas de la misma versión con hashes de peers distintos, y enganchar la
+  otra deja dos copias reales en vez de una. El síntoma típico si se rompe es
+  PostgreSQL 42601 SOLO en dev, con los fragmentos `Prisma.Sql` anidados
+  bindeados como parámetros en vez de interpolados: son dos copias del runtime
+  en el proceso, y el `Sql` que construye `packages/db` no es `instanceof` el
+  `Sql` que evalúa `$queryRaw`. Pendiente conocido: `@prisma/adapter-pg` y `pg`
+  siguen inertes por lo mismo y se empaquetan. Hoy no rompen nada —el bug era
+  específico del runtime de `@prisma/client`— y el arreglo sería idéntico.
 - No mates procesos `node` con un `Stop-Process` amplio en esta máquina: se
   llevan puestos los servidores MCP de la sesión, que también son `node`.
   Filtrá por PID o por línea de comando.
