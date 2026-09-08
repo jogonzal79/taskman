@@ -17,16 +17,29 @@ Construido y verificado:
   operacion de escritura de los tres servicios recibe `ctx`.
 - `apps/mcp-stdio`: servidor MCP por stdio en modo `core`, con las ONCE
   herramientas del catalogo de la 8.2 y la politica de operaciones destructivas
-  de la 8.3.2 (MCP_DESTRUCTIVE_POLICY).
+  de la 8.3.2 (MCP_DESTRUCTIVE_POLICY), mas el log estructurado de la 11.1.
+- `packages/contracts`: los esquemas Zod del borde HTTP (ADR-006). Es una HOJA
+  del grafo de dependencias (3.3): no importa nada del proyecto, ni siquiera el
+  nucleo.
+- `apps/web`: Next.js con TRES endpoints de la 6.2 —GET /api/boards,
+  GET /api/boards/{id} y POST /api/boards— mas GET /api/health sin
+  autenticacion. Con ellos estan la autenticacion por API key con scopes
+  (ADR-005, 7.1 y 7.2), el mapeo exhaustivo de errores de dominio a HTTP de la
+  6.4 y el X-Request-Id de la 6.1, que correlaciona la respuesta con el registro
+  de auditoria. Salvedad: /api/health no pasa por `conAuth` y por eso es el
+  unico que NO lleva X-Request-Id.
 
 255 pruebas contra PostgreSQL real: 10 en `packages/db`, 170 en
 `packages/core` y 75 en `apps/mcp-stdio`.
 
-Todavia NO existen: scopes (7.2), herramienta MCP ni endpoint para CONSULTAR la
-auditoria, `packages/contracts`, la API REST, HttpPort, el transporte Streamable
-HTTP ni la UI.
+Todavia NO existen: el resto de los endpoints de la 6.2 (columnas, tareas,
+busqueda y los PATCH y DELETE de tablero), herramienta MCP ni endpoint para
+CONSULTAR la auditoria, HttpPort, el transporte Streamable HTTP, la UI, el
+openapi.json generado, la idempotencia de la 6.5 —con su tabla
+`idempotency_record`— y el limite de peticiones de la 7.3.
 
-Fase en curso: F3 cerrada — auditoria con ActorContext.
+Fase en curso: la API REST de la 6.2, en la rama `f2-api-rest`. Cerradas
+antes: F3, auditoria con ActorContext, y F4, log estructurado de la capa MCP.
 
 ## Deuda conocida
 
@@ -55,9 +68,10 @@ aca es para que no se redescubran de cero.
 - Node 20+, pnpm workspaces, TypeScript strict con noUncheckedIndexedAccess.
 - PostgreSQL 16 en Docker Desktop.
 - `pnpm run verify` corre los tests contra la base de desarrollo y la TRUNCA:
-  cualquier dato cargado a mano ahí se pierde en el próximo verify. Los tableros
-  que aparecen —"Trazado", "Revisar HU-25"— son fixtures de
-  `apps/mcp-stdio/test/mcp.test.ts`, no datos reales.
+  cualquier dato cargado a mano ahí se pierde en el próximo verify. Lo que
+  aparezca es fixture de `apps/mcp-stdio/test/mcp.test.ts` y no dato real: los
+  tableros se llaman "QA", "Trazado" o "Auditado", y "Revisar HU-25" es el
+  título de una TAREA, no de un tablero.
 - Eso incluye `api_key`: verify también la vacía, así que cualquier clave
   emitida a mano desaparece en el próximo verify y hay que reemitirla con
   `pnpm run apikey:create`.
@@ -68,9 +82,9 @@ aca es para que no se redescubran de cero.
   (`./domain/types.js` apunta a `types.ts`); esbuild hace esa sustitución solo
   —por eso `apps/mcp-stdio` no necesita nada— y los bundlers de Next no. Lo
   arregla `experimental.extensionAlias`, que Turbopack ignora explícitamente: con
-  Turbopack fallan los ~30 imports del barrel. Es deuda a saldar antes de F3
-  haciendo que `core` publique JS compilado, no dejándolo en webpack para
-  siempre.
+  Turbopack fallan los ~30 imports del barrel. La salida es que `core` publique
+  JS compilado, en vez de quedarse en webpack para siempre; el plazo que se le
+  habia puesto —antes de F3— ya paso sin saldarla.
 - Un paquete listado en `serverExternalPackages` tiene que ser RESOLUBLE desde
   `apps/web` o la entrada es inerte: Next declara externo algo que no puede
   externalizar, lo empaqueta igual, y en dev lo empaqueta partido en
