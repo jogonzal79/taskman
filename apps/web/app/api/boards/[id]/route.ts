@@ -1,22 +1,33 @@
 import {
+  actualizarTablero,
   parametrosDeTablero,
+  tablero,
   tableroDetallado,
   type ColumnaDetallada,
+  type Tablero,
   type TableroDetallado,
 } from "@taskman/contracts";
-import { crearCorePort, type BoardWithTaskCounts, type ColumnWithTaskCount } from "@taskman/core";
+import {
+  crearCorePort,
+  type Board,
+  type BoardWithTaskCounts,
+  type ColumnWithTaskCount,
+  type UpdateBoardInput,
+} from "@taskman/core";
 
-import { conAuth } from "../../../../lib/auth.js";
+import { conAuth, contextoDeApi } from "../../../../lib/auth.js";
 import { respuestaDeError, respuestaDeFallo, responder } from "../../../../lib/http.js";
 
 /**
  * GET /api/boards/{id} (6.2): el tablero con sus columnas y el recuento de
  * tareas de cada una.
+ * PATCH /api/boards/{id} (6.2): actualiza su nombre o su descripcion.
  *
- * Requiere scope read (7.2). La autenticacion, el request_id de la 6.1 y la
- * traduccion de errores de dominio a HTTP las aporta `conAuth`: este archivo no
- * arma ninguna respuesta de error a mano salvo la del id malformado, que es la
- * unica que ocurre antes de llegar al nucleo.
+ * Requieren scope read y write respectivamente (7.2). La autenticacion, el
+ * request_id de la 6.1 y la traduccion de errores de dominio a HTTP las aporta
+ * `conAuth`: este archivo no arma respuestas de error a mano salvo las que
+ * ocurren ANTES de llegar al nucleo, o sea el id malformado y el cuerpo que no
+ * es JSON.
  */
 
 // Un tablero cacheado responde por el estado de otro momento.
@@ -39,13 +50,25 @@ function aColumnaSalida(columna: ColumnWithTaskCount): ColumnaDetallada {
   };
 }
 
-function aSalida(board: BoardWithTaskCounts): TableroDetallado {
+/**
+ * Los campos propios del tablero. Sale aparte porque lo usan los DOS handlers
+ * de este archivo —el GET lo envuelve con columnas y recuentos, el PATCH lo
+ * devuelve tal cual— y tenerlo dos veces seria dejar que las dos copias se
+ * separen en el proximo campo que se le agregue a `board`.
+ */
+function aTableroSalida(board: Board): Tablero {
   return {
     id: board.id,
     name: board.name,
     description: board.description,
     created_at: board.createdAt.toISOString(),
     updated_at: board.updatedAt.toISOString(),
+  };
+}
+
+function aSalida(board: BoardWithTaskCounts): TableroDetallado {
+  return {
+    ...aTableroSalida(board),
     columns: board.columns.map(aColumnaSalida),
     task_count: board.taskCount,
   };
@@ -82,6 +105,92 @@ export const GET = conAuth<[ContextoRuta]>("read", async (request, auth, context
   if (!salida.success) {
     console.error(
       `[taskman-web] la respuesta de GET /api/boards/{id} no cumple el contrato (${auth.requestId})`,
+      salida.error.issues,
+    );
+
+    return respuestaDeFallo(new Error("La salida no cumple el contrato."), auth);
+  }
+
+  return responder(salida.data, 200, auth);
+});
+
+
+/**
+ * PATCH /api/boards/{id} (6.2). Scope write. Patch parcial de nombre y
+ * descripcion.
+ *
+ * DEVUELVE EL TABLERO SOLO, sin columnas ni recuentos, a diferencia del GET de
+ * arriba y del POST /api/boards. No es una inconsistencia: es que las tres
+ * cosas son distintas. El POST devuelve columnas porque las CREA, y son lo que
+ * hace falta para la llamada siguiente; el GET las devuelve porque la 6.2 lo
+ * define asi ("Tablero con columnas y recuento"). Un PATCH de nombre y
+ * descripcion no toca ninguna columna, y `tablero` —el esquema que ya publica
+ * GET /api/boards para cada item de su listado— es exactamente el conjunto de
+ * campos que este endpoint puede cambiar.
+ *
+ * Incluirlas ademas costaria una consulta de mas y seria peor dato: los
+ * recuentos NO se pueden dar por cero como en el POST, asi que habria que
+ * pedirlos DESPUES de la transaccion que actualizo, y la respuesta mezclaria un
+ * tablero de un instante con recuentos de otro. Quien los quiera tiene el GET,
+ * que los lee todos juntos.
+ */
+export const PATCH = conAuth<[ContextoRuta]>("write", async (request, auth, contexto) => {
+  const parametros = parametrosDeTablero.safeParse(await contexto.params);
+
+  if (!parametros.success) {
+    return respuestaDeError("VALIDATION_ERROR", "El id del tablero no es un UUID valido.", 400, auth, {
+      details: { issues: parametros.error.issues },
+      hint: "Usa el id que devuelve GET /api/boards.",
+    });
+  }
+
+  let cuerpo: unknown;
+
+  try {
+    cuerpo = await request.json();
+  } catch {
+    return respuestaDeError("VALIDATION_ERROR", "El cuerpo de la peticion no es JSON valido.", 400, auth, {
+      hint: "Envia un cuerpo JSON con 'Content-Type: application/json'.",
+    });
+  }
+
+  const entrada = actualizarTablero.safeParse(cuerpo);
+
+  if (!entrada.success) {
+    return respuestaDeError("VALIDATION_ERROR", "El cuerpo de la peticion no supera el esquema.", 400, auth, {
+      details: { issues: entrada.error.issues },
+    });
+  }
+
+  /**
+   * Aca se conservan las DOS intenciones distintas de `description`, y es el
+   * punto entero de este handler.
+   *
+   * El spread condicional no es la ceremonia de exactOptionalPropertyTypes que
+   * parece: es lo que mantiene separados "no mandaste el campo" y "lo mandaste
+   * en null". Zod omite la clave del opcional ausente, asi que `undefined`
+   * significa ausente y nada mas; el spread la deja fuera del patch, y el
+   * nucleo la conserva porque decide con `patch.description === undefined`. Un
+   * `description: entrada.data.description` liso pondria la clave en undefined
+   * en el caso ausente, las dos intenciones llegarian identicas y borrar una
+   * descripcion pasaria a ser imposible de pedir.
+   */
+  const patch: UpdateBoardInput = {
+    ...(entrada.data.name === undefined ? {} : { name: entrada.data.name }),
+    ...(entrada.data.description === undefined ? {} : { description: entrada.data.description }),
+  };
+
+  // Un patch que no cambia nada —`{}`, o el mismo valor que ya estaba— llega
+  // igual al nucleo, que lo resuelve como exito sin escribir ni auditar (5.2).
+  // El borde no lo intercepta: seria una segunda definicion de "cambio
+  // efectivo", libre de separarse de la del nucleo.
+  const actualizado = await taskman.updateBoard(parametros.data.id, patch, contextoDeApi(auth));
+
+  const salida = tablero.safeParse(aTableroSalida(actualizado));
+
+  if (!salida.success) {
+    console.error(
+      `[taskman-web] la respuesta de PATCH /api/boards/{id} no cumple el contrato (${auth.requestId})`,
       salida.error.issues,
     );
 

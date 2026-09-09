@@ -20,6 +20,7 @@ import type {
   SearchScope,
   Task,
   TaskMatch,
+  UpdateBoardInput,
   UpdateTaskInput,
 } from "../domain/types.js";
 import { AuditService } from "../services/audit-service.js";
@@ -66,6 +67,22 @@ export class CorePort implements TaskManagerPort {
 
   async createBoard(input: CreateBoardInput, ctx: ActorContext): Promise<BoardDetail> {
     return this.#boards.create(input, ctx);
+  }
+
+  /**
+   * Para PATCH /api/boards/{id} (6.2). Igual que `getBoardWithTaskCounts`, va
+   * SOLO aca y no en `TaskManagerPort`: el catalogo de la 8.2 no tiene una
+   * herramienta `update_board`, asi que sumarlo a la interfaz obligaria a
+   * implementarlo tambien al HttpPort que todavia no existe, para ningun
+   * llamador. `crearCorePort()` devuelve la clase concreta, asi que el
+   * adaptador REST lo alcanza sin ampliar el puerto.
+   */
+  async updateBoard(
+    boardId: string,
+    patch: UpdateBoardInput,
+    ctx: ActorContext,
+  ): Promise<BoardDetail> {
+    return this.#boards.update(boardId, patch, ctx);
   }
 
   async createColumn(input: CreateColumnInput, ctx: ActorContext): Promise<Column> {

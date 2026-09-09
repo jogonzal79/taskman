@@ -9,6 +9,7 @@ export { consultaDeListado, listadoDe, LIMITE_DEFECTO, LIMITE_MAXIMO } from "./p
 export type { ConsultaDeListado } from "./pagination.js";
 
 export {
+  actualizarTablero,
   columnaDetallada,
   crearTablero,
   listadoDeTableros,
@@ -19,6 +20,7 @@ export {
   LIMITE_NOMBRE_TABLERO,
 } from "./board.js";
 export type {
+  ActualizarTablero,
   ColumnaDetallada,
   CrearTablero,
   ListadoDeTableros,
