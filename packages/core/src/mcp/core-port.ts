@@ -85,6 +85,20 @@ export class CorePort implements TaskManagerPort {
     return this.#boards.update(boardId, patch, ctx);
   }
 
+  /**
+   * Para DELETE /api/boards/{id} (6.2). Va SOLO aca por lo mismo que
+   * `updateBoard` y `getBoardWithTaskCounts`: la 8.2 no tiene una herramienta
+   * `delete_board` —la unica destructiva del catalogo es `delete_task`— asi que
+   * sumarlo al puerto obligaria a implementarlo en el HttpPort que no existe.
+   *
+   * Devuelve void porque eso devuelve el servicio: lo borrado ya no esta y no
+   * hay nada que informar de vuelta. El recuento de lo que se llevo la cascada
+   * queda en el registro de auditoria, no en el valor de retorno.
+   */
+  async deleteBoard(boardId: string, ctx: ActorContext): Promise<void> {
+    return this.#boards.delete(boardId, ctx);
+  }
+
   async createColumn(input: CreateColumnInput, ctx: ActorContext): Promise<Column> {
     return this.#columns.create(input, ctx);
   }

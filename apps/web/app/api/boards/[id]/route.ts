@@ -16,14 +16,20 @@ import {
 } from "@taskman/core";
 
 import { conAuth, contextoDeApi } from "../../../../lib/auth.js";
-import { respuestaDeError, respuestaDeFallo, responder } from "../../../../lib/http.js";
+import {
+  respuestaDeError,
+  respuestaDeFallo,
+  responder,
+  responderSinCuerpo,
+} from "../../../../lib/http.js";
 
 /**
  * GET /api/boards/{id} (6.2): el tablero con sus columnas y el recuento de
  * tareas de cada una.
  * PATCH /api/boards/{id} (6.2): actualiza su nombre o su descripcion.
+ * DELETE /api/boards/{id} (6.2): lo elimina con sus columnas y tareas.
  *
- * Requieren scope read y write respectivamente (7.2). La autenticacion, el
+ * Requieren scope read, write y delete respectivamente (7.2). La autenticacion, el
  * request_id de la 6.1 y la traduccion de errores de dominio a HTTP las aporta
  * `conAuth`: este archivo no arma respuestas de error a mano salvo las que
  * ocurren ANTES de llegar al nucleo, o sea el id malformado y el cuerpo que no
@@ -198,4 +204,52 @@ export const PATCH = conAuth<[ContextoRuta]>("write", async (request, auth, cont
   }
 
   return responder(salida.data, 200, auth);
+});
+
+
+/**
+ * DELETE /api/boards/{id} (6.2). Scope delete.
+ *
+ * SIN PARAMETRO DE CONFIRMACION, y es una decision leida de la
+ * especificacion, no un olvido. La 5.2 pide confirmacion explicita para esta
+ * operacion "en la capa MCP", nombrando la capa; la 8.3.2 la desarrolla sobre
+ * `delete_task` y la controla con MCP_DESTRUCTIVE_POLICY. En todo el capitulo 6
+ * la unica mencion es la fila CONFIRMATION_REQUIRED de la 6.4, que es el
+ * catalogo de la envoltura de errores y no el contrato de ningun endpoint: ese
+ * codigo llega a HTTP por el transporte Streamable de la 8.1 montado en /mcp,
+ * igual que DESTRUCTIVE_POLICY_DENIED, que ya esta mapeado sin que REST pueda
+ * producirlo. Ni la 6.2 ni la 6.3 piden un `confirm` en el cuerpo o en la query.
+ * La contramedida que la 7.2 elige para REST es otra: un scope aparte, y una
+ * recomendacion operativa de no darselo a un agente autonomo.
+ *
+ * 204 SIN CUERPO y no 200 con algo. Lo que habria para poner en un cuerpo es el
+ * recuento de lo que se llevo la cascada, y hoy no se puede sin cambiar el
+ * nucleo: `BoardService.delete` devuelve void, y el recuento existe solo dentro
+ * del registro de auditoria que escribe. Devolver un cuerpo inventado —un `{ok:
+ * true}` o el id que el cliente ya mando— no aporta nada que el 204 no diga. Si
+ * algun dia el recuento importa en la respuesta, el cambio empieza en la firma
+ * del servicio y este endpoint pasa a 200; mientras tanto el 204 es la
+ * descripcion honesta de lo que hay.
+ *
+ * El borrado en cascada NO se arma aca ni en el servicio: lo hacen las FK
+ * `onDelete: Cascade` de `board_column.board_id` y `task.board_id`. Este handler
+ * solo traduce protocolo.
+ */
+export const DELETE = conAuth<[ContextoRuta]>("delete", async (_request, auth, contexto) => {
+  const parametros = parametrosDeTablero.safeParse(await contexto.params);
+
+  if (!parametros.success) {
+    return respuestaDeError("VALIDATION_ERROR", "El id del tablero no es un UUID valido.", 400, auth, {
+      details: { issues: parametros.error.issues },
+      hint: "Usa el id que devuelve GET /api/boards.",
+    });
+  }
+
+  // Un id que ya no existe —porque nunca existio o porque este mismo endpoint lo
+  // borro antes— sale por BOARD_NOT_FOUND y lo traduce a 404 el try/catch de
+  // `conAuth`. No se intercepta aca para que borrar dos veces no tenga una
+  // respuesta distinta de borrar algo inexistente: son el mismo estado.
+  await taskman.deleteBoard(parametros.data.id, contextoDeApi(auth));
+
+  return responderSinCuerpo(auth);
 });

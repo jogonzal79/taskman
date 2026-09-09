@@ -46,6 +46,28 @@ export function responder(cuerpo: unknown, status: number, ctx: ContextoPeticion
 }
 
 /**
+ * Respuesta SIN cuerpo, para el 204 de un DELETE.
+ *
+ * No se puede resolver con `responder(null, 204, ctx)`: 204 es uno de los
+ * estados que la especificacion de fetch declara sin cuerpo, y construir una
+ * Response con cuerpo y ese estado lanza. `Response.json` siempre escribe uno,
+ * aunque sea el literal `null`.
+ *
+ * Las cabeceras son las mismas que las de `responder`, y el X-Request-Id
+ * importa especialmente aca: es lo unico que devuelve un 204, y sin el no habria
+ * con que correlacionar un borrado con su registro de auditoria (6.1).
+ */
+export function responderSinCuerpo(ctx: ContextoPeticion): Response {
+  return new Response(null, {
+    status: 204,
+    headers: {
+      "Cache-Control": "no-store",
+      "X-Request-Id": ctx.requestId,
+    },
+  });
+}
+
+/**
  * El mapeo de la 6.4, codigo de dominio -> HTTP.
  *
  * Es un `Record<DomainErrorCode, number>` A PROPOSITO, y no un objeto suelto
