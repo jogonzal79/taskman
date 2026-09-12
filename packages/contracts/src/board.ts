@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { columnaDetallada } from "./column.js";
 import { listadoDe } from "./pagination.js";
 
 /**
@@ -29,26 +30,6 @@ export type Tablero = z.infer<typeof tablero>;
 export const listadoDeTableros = listadoDe(tablero);
 
 export type ListadoDeTableros = z.infer<typeof listadoDeTableros>;
-
-/**
- * Una columna en el borde HTTP, con cuantas tareas tiene.
- *
- * `position` es el orden denso 0..n-1 dentro del tablero y `task_count` no
- * puede ser negativo: los dos son `int()` y no `number()` porque un decimal ahi
- * seria un bug nuestro, y esta forma tambien valida la SALIDA.
- */
-export const columnaDetallada = z.strictObject({
-  id: z.uuid(),
-  board_id: z.uuid(),
-  name: z.string(),
-  key: z.string(),
-  position: z.int().min(0),
-  task_count: z.int().min(0),
-  created_at: z.iso.datetime({ offset: true }),
-  updated_at: z.iso.datetime({ offset: true }),
-});
-
-export type ColumnaDetallada = z.infer<typeof columnaDetallada>;
 
 /**
  * Respuesta de GET /api/boards/{id} y de POST /api/boards (6.2): el tablero,

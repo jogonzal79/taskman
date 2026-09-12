@@ -10,7 +10,6 @@ export type { ConsultaDeListado } from "./pagination.js";
 
 export {
   actualizarTablero,
-  columnaDetallada,
   crearTablero,
   listadoDeTableros,
   parametrosDeTablero,
@@ -21,10 +20,18 @@ export {
 } from "./board.js";
 export type {
   ActualizarTablero,
-  ColumnaDetallada,
   CrearTablero,
   ListadoDeTableros,
   ParametrosDeTablero,
   Tablero,
   TableroDetallado,
 } from "./board.js";
+
+export {
+  columna,
+  columnaCreada,
+  columnaDetallada,
+  crearColumna,
+  LIMITE_NOMBRE_COLUMNA,
+} from "./column.js";
+export type { Columna, ColumnaCreada, ColumnaDetallada, CrearColumna } from "./column.js";

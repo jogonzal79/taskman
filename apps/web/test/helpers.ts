@@ -211,15 +211,26 @@ export function port(): CorePort {
   return crearCorePort();
 }
 
-/** Un tablero con las cuatro columnas por defecto de la 4.3. */
+/**
+ * Un tablero con las cuatro columnas por defecto de la 4.3.
+ *
+ * `columns` permite sembrar otro juego de columnas, para los casos que necesitan
+ * un tablero donde una key NO exista todavia: con las cuatro por defecto, probar
+ * que " todo " normaliza a TODO solo puede dar DUPLICATE_KEY.
+ */
 export async function sembrarTablero(
   taskman: CorePort,
-  args: { name: string; description?: string | null },
+  args: {
+    name: string;
+    description?: string | null;
+    columns?: ReadonlyArray<{ name: string; key: string }>;
+  },
 ): Promise<BoardDetail> {
   return taskman.createBoard(
     {
       name: args.name,
       ...(args.description === undefined ? {} : { description: args.description }),
+      ...(args.columns === undefined ? {} : { columns: args.columns }),
     },
     ctx(),
   );
