@@ -113,19 +113,9 @@ contador de pruebas no tiene ese commit.
   arreglo es un indice por `request_id` en una migracion ADITIVA —no toca ninguna
   de las cuatro restricciones que Prisma propone dropear— y despues el filtro en
   el contrato y en `ListAuditQuery`. Es su propio paso.
-- El mecanismo de la 6.5 esta escrito para UNO de los tres POST que la
-  especificacion nombra: POST /api/boards. `POST /api/tasks` y
-  `POST /api/boards/{id}/columns` TODAVIA no leen la cabecera
-  `Idempotency-Key`, asi que repetir cualquiera de esos dos sigue creando dos
-  entidades. Lo que falta ahi es solo envolverlos: la canonicalizacion y los
-  tres caminos viven en `apps/web/lib/idempotencia.ts` y no dependen del
-  endpoint, y el gancho al nucleo es el tercer parametro OPCIONAL de
-  `BoardService.create` —un participante que recibe una interfaz de un solo
-  metodo, nunca la transaccion— que hay que replicar en `ColumnService.create` y
-  `TaskService.create`.
-- La PURGA diaria de `idempotency_record` que pide la 6.5 tampoco existe, y no
+- La PURGA diaria de `idempotency_record` que pide la 6.5 NO existe, y no
   hay scheduler en el proyecto. Hoy no molesta: la tabla crece como mucho una
-  fila por POST /api/boards con cabecera, que en uso personal son unas pocas. El
+  fila por POST con cabecera, que en uso personal son unas pocas. El
   disparador para hacerla es que la tabla crezca de verdad o que el sistema deje
   de ser personal. La opcion mas barata entonces es un script en `packages/db`
   enganchado al planificador del sistema operativo, como se hace con
@@ -212,6 +202,23 @@ contador de pruebas no tiene ese commit.
 ## Reglas que no se negocian
 
 - Nunca `prisma db push`. Solo `prisma migrate dev` / `prisma migrate deploy`.
+- Una `Idempotency-Key` identifica un INTENTO DE OPERACION, no un cuerpo. O sea
+  que reusarla en OTRO endpoint, desde el mismo cliente, devuelve 422 aunque el
+  cuerpo sea otro: la PK es `(key, client_id)` y el endpoint entra en el HASH, no
+  como columna, asi que el segundo endpoint encuentra la fila del primero, ve un
+  hash distinto y rechaza. Es DECISION TOMADA y no un efecto colateral: reusar
+  una clave para otra operacion es un error del cliente —el que se paga tras un
+  timeout, reintentando lo que no era— y el 422 se lo dice; sumar `endpoint` a la
+  PK lo dejaria mudo, porque las dos peticiones convivirian sin que nadie se
+  entere. Entre clientes DISTINTOS cada uno hace lo suyo, que es justo lo que la
+  PK compuesta separa. Cambiar esta semantica NO es tocar el hash: es migrar la
+  PK a `(key, client_id, endpoint)`.
+- El metodo y la ruta entran en el hash de la 6.5. El caso que lo justifica no es
+  el de dos cuerpos distintos —ahi los hashes difieren igual— sino el del MISMO
+  cuerpo en dos endpoints, y la idempotencia se resuelve ANTES del esquema, asi
+  que el cuerpo ni siquiera tiene que ser valido en el segundo. Medido sacandolos:
+  POST /api/tasks devuelve 201 con `Idempotency-Replayed: true` y un TABLERO con
+  sus cuatro columnas en el cuerpo, y cero tareas creadas.
 - Las restricciones `UNIQUE ... DEFERRABLE` sobre `position` se declaran SOLO en
   SQL crudo dentro de la migración. No las declares como `@@unique` en
   `schema.prisma`: Prisma generaría una versión no diferible.

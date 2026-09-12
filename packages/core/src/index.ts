@@ -7,6 +7,7 @@ export type {
   BoardWithTaskCounts,
   Column,
   ColumnOrder,
+  ColumnWithOrder,
   ColumnWithTaskCount,
   CreateBoardInput,
   CreateColumnInput,

@@ -16,12 +16,14 @@ import { assertValidPosition } from "../domain/order.js";
 import { normalizarTexto } from "../domain/text.js";
 import type {
   Column,
+  ColumnWithOrder,
   CreateColumnInput,
   DeleteColumnOptions,
   TargetPosition,
   UpdateColumnInput,
 } from "../domain/types.js";
 import { AuditService } from "./audit-service.js";
+import type { ParticipanteIdempotente } from "./participante.js";
 
 /** Saca el elemento de la lista y lo reinserta en la posicion pedida. */
 function reubicar(ids: readonly string[], id: string, position: TargetPosition): string[] {
@@ -68,8 +70,20 @@ export class ColumnService {
   /**
    * Crea una columna en el tablero. La key se normaliza a mayusculas sin
    * espacios y tiene que ser unica dentro del tablero (5.2).
+   *
+   * `participante` es el gancho OPCIONAL de la 6.5. Recibe `ColumnWithOrder` y
+   * no la columna sola, que es lo que este metodo devuelve: el cuerpo que
+   * responde POST /api/boards/{id}/columns lleva TODAS las columnas del tablero
+   * en su orden nuevo, y ese orden solo esta completo dentro de esta
+   * transaccion. Leerlo despues del commit —que es lo que hace hoy el
+   * adaptador cuando no hay cabecera— puede devolver el de otro momento si otra
+   * peticion inserto en el medio, y entonces lo guardado no seria lo devuelto.
    */
-  async create(input: CreateColumnInput, ctx: ActorContext): Promise<Column> {
+  async create(
+    input: CreateColumnInput,
+    ctx: ActorContext,
+    participante?: ParticipanteIdempotente<ColumnWithOrder>,
+  ): Promise<Column> {
     const detalle = { boardId: input.boardId };
     const name = normalizarNombre(input.name, detalle);
     const key = normalizarColumnKey(input.key, detalle);
@@ -113,6 +127,16 @@ export class ColumnService {
       // la definitiva, no la que se calculo antes de reindexar el tablero.
       const columna = await this.#leer(tx, id);
       await this.#audit.registrar(tx, ctx, creacion("column", id, columnaCompleta(columna)));
+
+      // Ultimo, y DENTRO del intento. La relectura del tablero se paga SOLO si
+      // hay participante: sin cabecera nadie mira ese orden aca.
+      if (participante !== undefined) {
+        await participante(
+          { column: columna, columns: await tx.readBoardColumns(input.boardId) },
+          tx,
+        );
+      }
+
       return columna;
     });
   }

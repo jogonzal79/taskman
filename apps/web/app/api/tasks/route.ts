@@ -8,13 +8,29 @@ import {
 } from "@taskman/contracts";
 import {
   crearCorePort,
+  violatesConstraint,
+  IDEMPOTENCY_PK_CONSTRAINT,
   type CreateTaskInput,
   type ListTasksQuery,
+  type ParticipanteIdempotente,
+  type Task,
   type TaskOrderBy,
 } from "@taskman/core";
 
 import { conAuth, contextoDeApi } from "../../../lib/auth.js";
-import { respuestaDeError, respuestaDeFallo, responder } from "../../../lib/http.js";
+import {
+  respuestaDeError,
+  respuestaDeFallo,
+  responder,
+  responderTexto,
+  type ContextoPeticion,
+} from "../../../lib/http.js";
+import {
+  cabecerasDeEjecucion,
+  canonicalizar,
+  reproducirTrasCarrera,
+  resolverIdempotencia,
+} from "../../../lib/idempotencia.js";
 import { aFechaUtc, aTareaSalida } from "../../../lib/tareas.js";
 
 /**
@@ -144,6 +160,44 @@ export const GET = conAuth("read", async (request, auth): Promise<Response> => {
   return responder(salida.data, 200, auth);
 });
 
+/**
+ * DEVUELVE LA TAREA SOLA, y es la forma que escribe la 6.3.1.
+ *
+ * Se aparta de lo que hacen POST /api/boards/{id}/columns y PATCH
+ * /api/columns/{id}, que devuelven tambien el orden resultante, y el motivo del
+ * corte es que ACA la especificacion fija el cuerpo: la 6.3.1 es el unico
+ * endpoint del capitulo 6 cuya respuesta esta escrita campo por campo. Donde la
+ * especificacion calla, elegimos; donde escribe un ejemplo, un cliente que
+ * programo contra el tiene razon y nosotros no.
+ *
+ * Lo que se pierde es real y conviene tenerlo anotado: insertar en una position
+ * intermedia desplaza a las demas tareas de la columna, y esta respuesta no lo
+ * cuenta. El `position` devuelto dice donde quedo la nueva, y la regla es total
+ * —todo lo que estaba en esa position o despues corrio uno—, asi que el orden
+ * nuevo es derivable; quien no quiera derivarlo tiene GET /api/tasks filtrando
+ * por columna.
+ *
+ * Valida la SALIDA y LANZA si no cumple el contrato, en vez de devolver un
+ * Response: el llamador puede ser el participante de la 6.5, que corre DENTRO de
+ * la transaccion, y ahi la unica forma de no guardar un cuerpo que no podemos
+ * devolver es abortarla. El try/catch de `conAuth` lo traduce al mismo 500 de
+ * antes.
+ */
+function proyectarSalida(creada: Task, ctx: ContextoPeticion): Tarea {
+  const salida = esquemaDeTarea.safeParse(aTareaSalida(creada) satisfies Tarea);
+
+  if (!salida.success) {
+    console.error(
+      `[taskman-web] la respuesta de POST /api/tasks no cumple el contrato (${ctx.requestId})`,
+      salida.error.issues,
+    );
+
+    throw new Error("La salida no cumple el contrato.");
+  }
+
+  return salida.data;
+}
+
 export const POST = conAuth("write", async (request, auth): Promise<Response> => {
   let cuerpo: unknown;
 
@@ -153,6 +207,19 @@ export const POST = conAuth("write", async (request, auth): Promise<Response> =>
     return respuestaDeError("VALIDATION_ERROR", "El cuerpo de la peticion no es JSON valido.", 400, auth, {
       hint: "Envia un cuerpo JSON con 'Content-Type: application/json'.",
     });
+  }
+
+  /**
+   * La idempotencia de la 6.5, ANTES de validar el cuerpo: ver
+   * `resolverIdempotencia`. Sin cabecera `Idempotency-Key` devuelve "sin-clave"
+   * y de aca en adelante no pasa nada distinto de lo que pasaba antes.
+   */
+  const idem = await resolverIdempotencia(request, cuerpo, auth, (key, clientId) =>
+    taskman.findIdempotencyRecord(key, clientId),
+  );
+
+  if (idem.tipo === "reproducir") {
+    return idem.respuesta;
   }
 
   const entrada = crearTarea.safeParse(cuerpo);
@@ -192,40 +259,52 @@ export const POST = conAuth("write", async (request, auth): Promise<Response> =>
       : { position: entrada.data.position }),
   };
 
-  // BOARD_NOT_FOUND (404), COLUMN_NOT_FOUND (404), COLUMN_NOT_IN_BOARD (409),
-  // TITLE_REQUIRED, TITLE_TOO_LONG, COLUMN_KEY_REQUIRED, COLUMN_KEY_TOO_LONG e
-  // INVALID_ORDER (400) salen de aca como DomainError y los traduce el try/catch
-  // de `conAuth` con el mapeo de la 6.4.
-  const creada = await taskman.createTask(input, contextoDeApi(auth));
+  // El participante de la 6.5: proyecta y guarda la fila DENTRO de la
+  // transaccion que inserta la tarea. Ver el de POST /api/boards, que es el
+  // mismo patron y esta explicado ahi.
+  let salida: Tarea | undefined;
 
-  /**
-   * DEVUELVE LA TAREA SOLA, y es la forma que escribe la 6.3.1.
-   *
-   * Se aparta de lo que hacen POST /api/boards/{id}/columns y PATCH
-   * /api/columns/{id}, que devuelven tambien el orden resultante, y el motivo del
-   * corte es que ACA la especificacion fija el cuerpo: la 6.3.1 es el unico
-   * endpoint del capitulo 6 cuya respuesta esta escrita campo por campo. Donde la
-   * especificacion calla, elegimos; donde escribe un ejemplo, un cliente que
-   * programo contra el tiene razon y nosotros no.
-   *
-   * Lo que se pierde es real y conviene tenerlo anotado: insertar en una position
-   * intermedia desplaza a las demas tareas de la columna, y esta respuesta no lo
-   * cuenta. El `position` devuelto dice donde quedo la nueva, y la regla es total
-   * —todo lo que estaba en esa position o despues corrio uno—, asi que el orden
-   * nuevo es derivable; quien no quiera derivarlo tiene GET /api/tasks filtrando
-   * por columna.
-   */
-  const salida = esquemaDeTarea.safeParse(aTareaSalida(creada) satisfies Tarea);
+  const participante: ParticipanteIdempotente<Task> | undefined =
+    idem.tipo === "ejecutar"
+      ? async (creada, escritura) => {
+          salida = proyectarSalida(creada, auth);
+          await escritura.insertIdempotency({
+            ...idem.clave,
+            statusCode: 201,
+            responseBody: salida,
+          });
+        }
+      : undefined;
 
-  if (!salida.success) {
-    console.error(
-      `[taskman-web] la respuesta de POST /api/tasks no cumple el contrato (${auth.requestId})`,
-      salida.error.issues,
-    );
+  let tarea: Task;
 
-    return respuestaDeFallo(new Error("La salida no cumple el contrato."), auth);
+  try {
+    // BOARD_NOT_FOUND (404), COLUMN_NOT_FOUND (404), COLUMN_NOT_IN_BOARD (409),
+    // TITLE_REQUIRED, TITLE_TOO_LONG, COLUMN_KEY_REQUIRED, COLUMN_KEY_TOO_LONG e
+    // INVALID_ORDER (400) salen de aca como DomainError y los traduce el try/catch
+    // de `conAuth` con el mapeo de la 6.4.
+    tarea = await taskman.createTask(input, contextoDeApi(auth), participante);
+  } catch (error: unknown) {
+    // Dos peticiones simultaneas con la misma clave: esta perdio la PK y su
+    // transaccion entera se revirtio. Ver `reproducirTrasCarrera`.
+    if (idem.tipo === "ejecutar" && violatesConstraint(error, IDEMPOTENCY_PK_CONSTRAINT)) {
+      const reproducida = await reproducirTrasCarrera(idem.clave, auth, (key, clientId) =>
+        taskman.findIdempotencyRecord(key, clientId),
+      );
+
+      if (reproducida !== undefined) {
+        return reproducida;
+      }
+    }
+
+    throw error;
   }
 
+  const cuerpoSalida = salida ?? proyectarSalida(tarea, auth);
+
+  // Serializado con `canonicalizar` siempre, mande o no la cabecera quien llama:
+  // es lo que hace que la respuesta guardada y la reproducida sean el mismo
+  // texto byte a byte. Mismo criterio que en POST /api/boards, y explicado ahi.
   // 201 y no 200: la 6.3.1 lo fija para los POST que crean un recurso.
-  return responder(salida.data, 201, auth);
+  return responderTexto(canonicalizar(cuerpoSalida), 201, auth, cabecerasDeEjecucion(idem));
 });

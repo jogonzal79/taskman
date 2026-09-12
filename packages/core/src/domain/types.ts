@@ -124,6 +124,23 @@ export interface ColumnOrder {
   taskOrder: string[];
 }
 
+/**
+ * Lo que produce crear una columna: la columna creada y TODAS las del tablero
+ * en el orden que quedo.
+ *
+ * `ColumnService.create` sigue DEVOLVIENDO solo la columna —es lo que necesitan
+ * sus llamadores, y el borde MCP no publica el orden— pero se lo pasa entero al
+ * participante de la 6.5, porque el cuerpo que POST /api/boards/{id}/columns
+ * responde son las dos cosas. El orden solo existe DESPUES de reescribir las
+ * positions, y quien lo lea fuera de la transaccion puede ver el de otro
+ * momento, asi que el registro de idempotencia tiene que guardar el que ESTA
+ * transaccion produjo.
+ */
+export interface ColumnWithOrder {
+  column: Column;
+  columns: Column[];
+}
+
 export interface MoveResult {
   task: Task;
   fromColumnId: string;

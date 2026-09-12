@@ -15,6 +15,7 @@ import type {
   BoardDetail,
   BoardWithTaskCounts,
   Column,
+  ColumnWithOrder,
   CreateBoardInput,
   CreateColumnInput,
   CreateTaskInput,
@@ -144,8 +145,18 @@ export class CorePort implements TaskManagerPort {
     return this.#boards.delete(boardId, ctx);
   }
 
-  async createColumn(input: CreateColumnInput, ctx: ActorContext): Promise<Column> {
-    return this.#columns.create(input, ctx);
+  /**
+   * El tercer parametro es el gancho de la 6.5, opcional y fuera de
+   * `TaskManagerPort` por lo mismo que en `createBoard`. Lo que ve el
+   * participante es `ColumnWithOrder` y no la columna sola: ver
+   * `ColumnService.create`.
+   */
+  async createColumn(
+    input: CreateColumnInput,
+    ctx: ActorContext,
+    participante?: ParticipanteIdempotente<ColumnWithOrder>,
+  ): Promise<Column> {
+    return this.#columns.create(input, ctx, participante);
   }
 
   /**
@@ -188,8 +199,13 @@ export class CorePort implements TaskManagerPort {
     return this.#tasks.get(taskId);
   }
 
-  async createTask(input: CreateTaskInput, ctx: ActorContext): Promise<Task> {
-    return this.#tasks.create(input, ctx);
+  /** Igual que `createBoard`: tercer parametro opcional, ausente del puerto. */
+  async createTask(
+    input: CreateTaskInput,
+    ctx: ActorContext,
+    participante?: ParticipanteIdempotente<Task>,
+  ): Promise<Task> {
+    return this.#tasks.create(input, ctx, participante);
   }
 
   async updateTask(taskId: string, patch: UpdateTaskInput, ctx: ActorContext): Promise<Task> {

@@ -22,6 +22,7 @@ import { assertValidPosition, computeMoveOrder } from "../domain/order.js";
 import { normalizarTitulo } from "../domain/title.js";
 import { AuditService } from "./audit-service.js";
 import { resolverColumna } from "./column-reference.js";
+import type { ParticipanteIdempotente } from "./participante.js";
 import type {
   ColumnOrder,
   CreateTaskInput,
@@ -117,7 +118,11 @@ export class TaskService {
    * al final. En los dos casos la columna entera se reescribe dentro de la
    * transaccion, que es lo que garantiza que no queden huecos.
    */
-  async create(input: CreateTaskInput, ctx: ActorContext): Promise<Task> {
+  async create(
+    input: CreateTaskInput,
+    ctx: ActorContext,
+    participante?: ParticipanteIdempotente<Task>,
+  ): Promise<Task> {
     const detalle: Record<string, unknown> = {
       boardId: input.boardId,
       ...(input.columnId === undefined ? {} : { columnId: input.columnId }),
@@ -169,6 +174,13 @@ export class TaskService {
       }
 
       await this.#audit.registrar(tx, ctx, creacion("task", id, tareaCompleta(creada)));
+
+      // Ultimo, y DENTRO del intento: mismo contrato que en `BoardService.create`.
+      // Ver `ParticipanteIdempotente`.
+      if (participante !== undefined) {
+        await participante(creada, tx);
+      }
+
       return creada;
     });
   }
