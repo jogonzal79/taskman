@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import type { ErrorDeApi } from "@taskman/contracts";
 import {
   crearCorePort,
   generarClave,
@@ -205,16 +206,15 @@ export function contextoDeRuta(id: string): { params: Promise<{ id: string }> } 
 
 // --- Lectura de respuestas ---------------------------------------------------
 
-/** Cuerpo de error de la 6.4. */
-export interface CuerpoDeError {
-  error: {
-    code: string;
-    message: string;
-    details?: Record<string, unknown>;
-    hint?: string;
-    request_id: string;
-  };
-}
+/**
+ * Cuerpo de error de la 6.4, derivado del esquema de `packages/contracts`.
+ *
+ * Era la TERCERA copia de la misma forma —con la de `lib/http.ts` y la del
+ * esquema— y la mas facil de olvidar, porque una prueba que lee un campo que ya no
+ * existe no falla al compilar si el tipo lo sigue declarando: lee `undefined` y la
+ * asercion pasa por otro lado. Derivada, un renombre en el esquema rompe aca.
+ */
+export type CuerpoDeError = ErrorDeApi;
 
 export async function leerJson<T>(respuesta: Response): Promise<T> {
   return (await respuesta.json()) as T;

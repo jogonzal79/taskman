@@ -124,36 +124,20 @@ contador de pruebas no tiene ese commit.
   `apikey:create`. DESCARTADA explicitamente la de un `setInterval` en el proceso
   de Next: se duplica por instancia y el hot reload la multiplica, asi que borra
   filas desde varios relojes a la vez y ninguno es observable.
-- `apps/web/lib/http.ts` mantiene su PROPIA `CuerpoError` y su
-  `HTTP_POR_CODIGO`, y HOY coinciden con `packages/contracts/src/error.ts` —los
-  compare campo por campo y codigo por codigo al escribirlo— pero NADA lo
-  comprueba. O sea que es un RT-03, la desincronizacion que la ADR-006 existe
-  para prevenir, y esta DENTRO del paso que vino a cerrarla: el generador de
-  OpenAPI necesitaba el modelo de errores de la 6.4 como esquema y ese modelo no
-  existia en ninguna parte salvo como interfaz de TypeScript en el adaptador. El
-  arreglo es que `http.ts` DERIVE de `error.ts` en vez de declararlo otra vez.
-  Sale barato y no pierde nada: `HTTP_POR_CODIGO` es `Record<DomainErrorCode,
-  number>`, o sea exhaustivo por typecheck sobre los codigos del nucleo, asi que
-  un codigo de dominio nuevo sin estado asignado seguiria fallando en `tsc`
-  despues del cambio. Lo que NO se puede hacer es al reves —mover los codigos a
-  contracts y que el nucleo los lea— porque contracts es una hoja del grafo
-  (3.3) y no puede importar `DomainErrorCode`; por eso `ESTADO_POR_CODIGO` es un
-  mapa de codigo a estado y no un enum que se crea la fuente de los codigos.
 - El ESQUEMA ZOD de configuracion que pide la 11.2 —validar el entorno entero al
   arrancar, con una variable ausente o invalida impidiendo el arranque— NO
-  existe. Lo que hay en `apps/web/instrumentation.ts` son dos comprobaciones a
-  mano, `DATABASE_URL` y `RATE_LIMIT_ENABLED`, y es facil leerlas como que la
-  11.2 ya esta cumplida: no lo esta. Las que faltan son las demas variables de
-  esa tabla, y la que mas importa es `API_KEY_PEPPER`, que hoy se valida RECIEN
-  en la primera peticion autenticada —el `ApiKeyService` se construye por
-  peticion y su constructor falla con un pepper vacio— asi que un despliegue sin
-  pepper arranca bien y devuelve 500 en la primera peticion con clave, que es
-  exactamente el 'fallo posterior en tiempo de ejecucion' que la 11.2 prohibe.
-  El arreglo es un esquema Zod en `apps/web` —no en `packages/contracts`, que es
-  una hoja y no valida entornos— consumido desde `register()`. Ojo con una cosa
-  al escribirlo: `register()` corre TAMBIEN en el runtime edge, donde no hay
-  `process.exit`, y por eso la comprobacion de hoy sale temprano si
-  `NEXT_RUNTIME` no es nodejs.
+  existe. Lo que hay en `apps/web/instrumentation.ts` son TRES comprobaciones a
+  mano: `DATABASE_URL`, `RATE_LIMIT_ENABLED` y `LOG_LEVEL`. Es facil leerlas como
+  que la 11.2 ya esta cumplida, y no lo esta: faltan las demas variables de esa
+  tabla, y la que mas importa es `API_KEY_PEPPER`, que hoy se valida RECIEN en la
+  primera peticion autenticada —el `ApiKeyService` se construye por peticion y su
+  constructor falla con un pepper vacio— asi que un despliegue sin pepper arranca
+  bien y devuelve 500 en la primera peticion con clave, que es exactamente el
+  'fallo posterior en tiempo de ejecucion' que la 11.2 prohibe. El arreglo es un
+  esquema Zod en `apps/web` —no en `packages/contracts`, que es una hoja y no
+  valida entornos— consumido desde `register()`. Ojo con una cosa al escribirlo:
+  `register()` corre TAMBIEN en el runtime edge, donde no hay `process.exit`, y
+  por eso la comprobacion de hoy sale temprano si `NEXT_RUNTIME` no es nodejs.
 
 ## Entorno
 

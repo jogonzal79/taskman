@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { ESTADO_POR_CODIGO, type CodigoDeError, type ErrorDeApi } from "@taskman/contracts";
 import { isDomainError, type DomainErrorCode } from "@taskman/core";
 
 import { registrarFallo } from "./log.js";
@@ -18,9 +19,9 @@ import { registrarFallo } from "./log.js";
  *
  * El prefijo imita el `req_...` de los ejemplos de la 6.4. El identificador es
  * un UUID v4 sin guiones y no un ULID: un ULID ordena por tiempo, que es util
- * cuando se indexa, pero aca todavia no se indexa nada —el log estructurado y
- * la auditoria REST no estan cableados— y no valia traer una dependencia para
- * eso. Si mas adelante conviene ordenar por el, se cambia aca y en un solo
+ * cuando se indexa, pero aca no se indexa: el log de la 11.1 escribe el
+ * request_id como campo y la auditoria lo guarda en su columna, y en los dos se
+ * busca por igualdad. No valia traer una dependencia para eso. Si mas adelante conviene ordenar por el, se cambia aca y en un solo
  * lugar.
  */
 export function nuevoRequestId(): string {
@@ -106,72 +107,38 @@ export function responderSinCuerpo(ctx: ContextoPeticion): Response {
 }
 
 /**
- * El mapeo de la 6.4, codigo de dominio -> HTTP.
+ * El mapeo de la 6.4, codigo de dominio -> HTTP. NO es una tabla: es la de
+ * `packages/contracts`, anotada.
  *
- * Es un `Record<DomainErrorCode, number>` A PROPOSITO, y no un objeto suelto
- * con un `?? 500` al final: asi, agregar un codigo a `DomainErrorCode` sin
- * mapearlo aca NO compila. Un `??` lo dejaria caer en un 500 silencioso, que es
- * exactamente el fallo que no se descubre hasta que un cliente reporta que algo
- * "no anda" y en el log hay un error interno que en realidad era un 404.
+ * La anotacion `Record<DomainErrorCode, number>` es lo que hace el trabajo, y es
+ * a proposito que este en el tipo y no en un `??` al final: agregar un codigo a
+ * `DomainErrorCode` sin estado en `ESTADO_POR_CODIGO` NO COMPILA. Un `?? 500` lo
+ * dejaria caer en un 500 silencioso, que es el fallo que no se descubre hasta que
+ * un cliente reporta que algo "no anda" y en el log hay un error interno que en
+ * realidad era un 404.
  *
- * Los codigos que la 6.4 no nombra estan igual, con su HTTP razonado abajo: la
- * tabla de la especificacion se escribio antes que varios de ellos.
+ * Y es aca y no en contracts porque este es el UNICO modulo que ve las dos cosas:
+ * contracts es una hoja del grafo (3.3) y no puede importar `DomainErrorCode`, asi
+ * que no puede declararse exhaustivo sobre el. La tabla vive alla —donde tambien
+ * esta la envoltura, y de donde sale openapi.json— y la comprobacion vive aca. El
+ * razonamiento de cada codigo que la 6.4 no nombra se fue con la tabla.
+ *
+ * Que `ESTADO_POR_CODIGO` tenga ADEMAS claves que no son de dominio
+ * —UNAUTHENTICATED, RATE_LIMITED, INTERNAL_ERROR— no molesta: asignar una
+ * variable, y no un literal, no dispara la comprobacion de propiedades en exceso.
  */
-const HTTP_POR_CODIGO: Record<DomainErrorCode, number> = {
-  // --- En la tabla de la 6.4, tal cual ---------------------------------------
-  VALIDATION_ERROR: 400,
-  BOARD_NOT_FOUND: 404,
-  COLUMN_NOT_FOUND: 404,
-  TASK_NOT_FOUND: 404,
-  COLUMN_NOT_IN_BOARD: 409,
-  AMBIGUOUS_MATCH: 409,
-  COLUMN_NOT_EMPTY: 409,
-  DUPLICATE_KEY: 409,
-  IDEMPOTENCY_MISMATCH: 422,
-  CONFIRMATION_REQUIRED: 428,
+const HTTP_POR_CODIGO: Record<DomainErrorCode, number> = ESTADO_POR_CODIGO;
 
-  // --- No estan en la 6.4: el razonamiento de cada uno -----------------------
-
-  // Los siete de abajo son entradas que no superan una regla de forma. La 6.4
-  // les daria VALIDATION_ERROR y 400; conservan su codigo propio porque el
-  // nucleo los distingue a proposito (ver domain/errors.ts: un agente tiene que
-  // poder saber si le falto contenido o si le sobro), pero el HTTP es el mismo.
-  TITLE_REQUIRED: 400,
-  TITLE_TOO_LONG: 400,
-  NAME_REQUIRED: 400,
-  NAME_TOO_LONG: 400,
-  DESCRIPTION_TOO_LONG: 400,
-  COLUMN_KEY_REQUIRED: 400,
-  COLUMN_KEY_TOO_LONG: 400,
-
-  // Una posicion que no es un entero >= 0. Es la forma del dato, no el estado
-  // del tablero: 400 y no 409.
-  INVALID_ORDER: 400,
-
-  // reassignTo apuntando a la columna que se esta borrando. A diferencia del
-  // anterior, el valor es sintacticamente valido y lo que falla es su relacion
-  // con el recurso: mismo caso que COLUMN_NOT_IN_BOARD, que la 6.4 pone en 409.
-  INVALID_REASSIGN_TARGET: 409,
-
-  // MCP_DESTRUCTIVE_POLICY=deny: el servidor no borra, se pida como se pida.
-  // No lo puede producir REST hoy —es del borde MCP— pero el Record obliga a
-  // decidirlo igual, que es justamente la gracia. 403 y no 405: el metodo
-  // existe, lo que falta es permiso.
-  DESTRUCTIVE_POLICY_DENIED: 403,
-};
-
-interface CuerpoError {
-  error: {
-    code: string;
-    message: string;
-    details?: Readonly<Record<string, unknown>>;
-    hint?: string;
-    request_id: string;
-  };
-}
+/**
+ * La envoltura de la 6.4, derivada del esquema Zod de `packages/contracts` por
+ * inferencia. Era una interfaz escrita aca, o sea una segunda definicion de la
+ * misma forma que nada mantenia igual: renombrar un campo en el esquema —lo que
+ * openapi.json publica— no rompia nada de este lado. Ahora si.
+ */
+type CuerpoError = ErrorDeApi;
 
 function cuerpoDeError(
-  code: string,
+  code: CodigoDeError,
   message: string,
   ctx: ContextoPeticion,
   extra: { details?: Readonly<Record<string, unknown>>; hint?: string } = {},
@@ -199,7 +166,7 @@ function cuerpoDeError(
  * el mismo camino que los demas errores y no se arme a mano.
  */
 export function respuestaDeError(
-  code: string,
+  code: CodigoDeError,
   message: string,
   status: number,
   ctx: ContextoPeticion,
@@ -216,7 +183,7 @@ export function respuestaDeError(
  * Traduce cualquier fallo de un handler a una respuesta de la 6.4.
  *
  * Lo que no es un `DomainError` es un fallo no controlado: 500 con un mensaje
- * que no dice nada del interior y el detalle al stderr. El nucleo ya distingue
+ * que no dice nada del interior y la traza completa al log de la 11.1. El nucleo ya distingue
  * lo que es error de negocio de lo que no, asi que esa frontera no se vuelve a
  * decidir aca.
  */
