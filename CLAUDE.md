@@ -113,6 +113,23 @@ contador de pruebas no tiene ese commit.
   arreglo es un indice por `request_id` en una migracion ADITIVA —no toca ninguna
   de las cuatro restricciones que Prisma propone dropear— y despues el filtro en
   el contrato y en `ListAuditQuery`. Es su propio paso.
+- La tabla `idempotency_record` EXISTE y el mecanismo de la 6.5 NO. Hoy ninguna
+  ruta lee la cabecera `Idempotency-Key`, asi que la tabla esta siempre vacia y
+  repetir un POST crea dos entidades. Lo que YA quedo decidido, para que no se
+  vuelva a discutir cuando se escriba: la PK es compuesta `(key, client_id)` —un
+  desvio declarado de la 4.1, ver el comentario del modelo— y el ENDPOINT entra
+  en el hash del cuerpo, no como columna, porque que los tres cuerpos de la 6.5
+  tengan formas disjuntas es coincidencia de los esquemas de hoy y no una
+  garantia.
+- La PURGA diaria de `idempotency_record` que pide la 6.5 tampoco existe, y no
+  hay scheduler en el proyecto. Hoy no molesta: la tabla crece como mucho una
+  fila por POST con cabecera, y con el mecanismo sin escribir no crece nada. El
+  disparador para hacerla es que la tabla crezca de verdad o que el sistema deje
+  de ser personal. La opcion mas barata entonces es un script en `packages/db`
+  enganchado al planificador del sistema operativo, como se hace con
+  `apikey:create`. DESCARTADA explicitamente la de un `setInterval` en el proceso
+  de Next: se duplica por instancia y el hot reload la multiplica, asi que borra
+  filas desde varios relojes a la vez y ninguno es observable.
 
 ## Entorno
 
