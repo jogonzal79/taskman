@@ -48,6 +48,7 @@ export type {
 } from "./column.js";
 
 export {
+  actualizarTarea,
   coincidencia,
   consultaDeBusqueda,
   consultaDeTareas,
@@ -64,6 +65,7 @@ export {
   PRIORIDADES,
 } from "./task.js";
 export type {
+  ActualizarTarea,
   Coincidencia,
   ConsultaDeBusqueda,
   ConsultaDeTareas,

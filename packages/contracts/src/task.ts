@@ -139,6 +139,52 @@ export const crearTarea = z
 export type CrearTarea = z.infer<typeof crearTarea>;
 
 /**
+ * Cuerpo de PATCH /api/tasks/{id} (6.2, RF-05): patch parcial de los campos
+ * editables de una tarea.
+ *
+ * Los CUATRO campos que la 5.2 deja modificar aca, y ni uno mas. `position` y
+ * `column_id` NO estan, y que no esten es lo que los rechaza: al ser
+ * `strictObject`, un cuerpo que los traiga sale por `unrecognized_keys` con un
+ * 400 que los nombra, en vez de quedar ignorado en silencio. Es la misma
+ * decision que toma `update_task` en el borde MCP, por un camino distinto: alla
+ * el validador del SDK DESCARTA las claves que no conoce, asi que la
+ * herramienta tiene que declararlas para poder rechazarlas; aca el esquema
+ * estricto ya las rechaza y declararlas seria volverlas parte del contrato.
+ *
+ * Las DOS intenciones de `description` y de `due_date`, igual que en
+ * `actualizarTablero`:
+ *
+ *   - AUSENTE: no tocar lo que ya tiene.
+ *   - `null`: borrarlo.
+ *
+ * `nullish()` deja pasar las dos y no se colapsan porque Zod OMITE la clave de
+ * un opcional ausente en lugar de ponerla en undefined. El adaptador lo traduce
+ * al `patch.x === undefined` con el que el nucleo decide lo mismo.
+ *
+ * `title` es `optional()` y NO `nullish()`: una tarea sin titulo no existe (la
+ * 5.2 lo exige no vacio tras recortar), asi que `title: null` es un 400 y no un
+ * borrado. `priority` tampoco es nullable: la columna tiene DEFAULT MEDIUM pero
+ * no admite NULL, y "volver al valor por defecto" no es una operacion que la
+ * 5.2 contemple.
+ *
+ * El cuerpo vacio `{}` se acepta, como en `actualizarTablero`: un patch sin
+ * campos no cambia nada, que es el mismo caso que un patch con los valores que
+ * ya estaban, y el nucleo trata "sin cambio efectivo" como exito sin registro
+ * (5.2). Aca se separa del borde MCP, que si lo rechaza: `update_task` exige al
+ * menos un campo porque una herramienta de agente no tiene forma de devolver
+ * "no hice nada" sin que se lea como que lo hizo, y un endpoint HTTP si la
+ * tiene —el 200 con la tarea sin cambios ES la respuesta—.
+ */
+export const actualizarTarea = z.strictObject({
+  title: tituloDeTarea.optional(),
+  description: descripcionDeTarea.nullish(),
+  priority: prioridad.optional(),
+  due_date: fechaSola.nullish(),
+});
+
+export type ActualizarTarea = z.infer<typeof actualizarTarea>;
+
+/**
  * El `{id}` de las rutas /api/tasks/{id}.
  *
  * Aparte del de tablero y del de columna aunque la forma sea la misma: son
