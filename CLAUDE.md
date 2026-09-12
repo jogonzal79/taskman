@@ -137,16 +137,6 @@ contador de pruebas no tiene ese commit.
   contracts y que el nucleo los lea— porque contracts es una hoja del grafo
   (3.3) y no puede importar `DomainErrorCode`; por eso `ESTADO_POR_CODIGO` es un
   mapa de codigo a estado y no un enum que se crea la fuente de los codigos.
-- `verify` REGENERA `openapi.json` en vez de comprobarlo. Corre `build`, y
-  `build` lo reescribe, asi que un archivo desactualizado en el repo se arregla
-  SOLO y en silencio en la maquina de quien corre verify: nunca falla, y lo
-  unico que lo delata es que `git status` aparezca sucio despues de un verify
-  que dio verde. En CI, donde nadie mira `git status`, no se delata en absoluto.
-  El arreglo es un modo `--check` en `build.mjs` —generar en memoria, comparar
-  con el archivo versionado y fallar si difieren— y usarlo en verify en vez de
-  la generacion, o ademas de ella. Es el paso siguiente de la ADR-006: sin eso,
-  el archivo esta versionado pero nada obliga a que lo versionado sea lo que los
-  esquemas dicen hoy.
 
 ## Entorno
 
@@ -208,6 +198,24 @@ contador de pruebas no tiene ese commit.
   que la salvaguarda no funciona. Vale sobre todo para las contrapruebas, que
   son justamente las que esperan rojo y donde un verde se lee como "el
   mecanismo no sirve" en vez de como "no se volvió a compilar".
+- El `build` de `packages/contracts` NO ESCRIBE nada: comprueba. Corre el
+  generador con `--check`, que arma el documento en memoria y lo compara con el
+  `openapi.json` versionado, y falla si difieren. El que escribe es
+  `pnpm run openapi:generate`. La asimetria ES el punto: si `build` reescribiera
+  —como hacia al principio— verify pasaria en verde con un contrato
+  desactualizado en el repo, porque lo primero que haria seria taparlo. Y el
+  generador NO tiene modo por defecto, para que nadie lo llame sin decidir cual
+  de los dos quiere: olvidar la bandera es un mensaje de uso, no una escritura.
+- Ese check compara CONTENIDO y no bytes: normaliza CRLF a LF antes de comparar.
+  Con `core.autocrlf=true` un clon fresco deja `openapi.json` en CRLF en disco
+  mientras el generador siempre emite LF, asi que comparar bytes crudos fallaria
+  recien clonado con el contrato perfectamente al dia. Pasar el archivo entero a
+  CRLF NO rompe el check, y esta bien que no lo rompa, pero el estado intermedio
+  engaña y esta medido: con el archivo en CRLF, `git status` lo muestra como
+  ` M` —y `git update-index --refresh` dice `needs update`— mientras `git diff`
+  sale VACIO, porque el blob normalizado es el mismo; un `git add` lo vuelve a
+  dejar limpio sin stagear nada. O sea que ese ` M` no es un cambio de
+  contenido, y buscarle uno es perder la tarde.
 - No mates procesos `node` con un `Stop-Process` amplio en esta máquina: se
   llevan puestos los servidores MCP de la sesión, que también son `node`.
   Filtrá por PID o por línea de comando.
