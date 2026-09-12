@@ -21,22 +21,24 @@ Construido y verificado:
 - `packages/contracts`: los esquemas Zod del borde HTTP (ADR-006). Es una HOJA
   del grafo de dependencias (3.3): no importa nada del proyecto, ni siquiera el
   nucleo.
-- `apps/web`: Next.js con TRES endpoints de la 6.2 —GET /api/boards,
-  GET /api/boards/{id} y POST /api/boards— mas GET /api/health sin
-  autenticacion. Con ellos estan la autenticacion por API key con scopes
-  (ADR-005, 7.1 y 7.2), el mapeo exhaustivo de errores de dominio a HTTP de la
-  6.4 y el X-Request-Id de la 6.1, que correlaciona la respuesta con el registro
-  de auditoria. Salvedad: /api/health no pasa por `conAuth` y por eso es el
-  unico que NO lleva X-Request-Id.
+- `apps/web`: Next.js con los CINCO endpoints de tablero de la 6.2 —GET
+  /api/boards, POST /api/boards, y GET, PATCH y DELETE de /api/boards/{id}— mas
+  GET /api/health sin autenticacion. Con ellos estan la autenticacion por API
+  key con scopes (ADR-005, 7.1 y 7.2), el mapeo exhaustivo de errores de dominio
+  a HTTP de la 6.4 y el X-Request-Id de la 6.1, que correlaciona la respuesta con
+  el registro de auditoria. Salvedad: /api/health no pasa por `conAuth` y por eso
+  es el unico que NO lleva X-Request-Id.
+- Suite de contrato REST en `apps/web/test`, el nivel "Contrato REST" de la 10:
+  los cinco endpoints en exito, no autorizado y validacion fallida. Ver el
+  comentario de cabecera de `test/boards.test.ts` para el enfoque y su limite.
 
-255 pruebas contra PostgreSQL real: 10 en `packages/db`, 170 en
-`packages/core` y 75 en `apps/mcp-stdio`.
+290 pruebas contra PostgreSQL real: 10 en `packages/db`, 170 en
+`packages/core`, 75 en `apps/mcp-stdio` y 35 en `apps/web`.
 
-Todavia NO existen: el resto de los endpoints de la 6.2 (columnas, tareas,
-busqueda y los PATCH y DELETE de tablero), herramienta MCP ni endpoint para
-CONSULTAR la auditoria, HttpPort, el transporte Streamable HTTP, la UI, el
-openapi.json generado, la idempotencia de la 6.5 —con su tabla
-`idempotency_record`— y el limite de peticiones de la 7.3.
+Todavia NO existen: el resto de los endpoints de la 6.2 (columnas, tareas y
+busqueda), herramienta MCP ni endpoint para CONSULTAR la auditoria, HttpPort, el
+transporte Streamable HTTP, la UI, el openapi.json generado, la idempotencia de
+la 6.5 —con su tabla `idempotency_record`— y el limite de peticiones de la 7.3.
 
 Fase en curso: la API REST de la 6.2, en la rama `f2-api-rest`. Cerradas
 antes: F3, auditoria con ActorContext, y F4, log estructurado de la capa MCP.
@@ -98,9 +100,14 @@ aca es para que no se redescubran de cero.
   PostgreSQL 42601 SOLO en dev, con los fragmentos `Prisma.Sql` anidados
   bindeados como parámetros en vez de interpolados: son dos copias del runtime
   en el proceso, y el `Sql` que construye `packages/db` no es `instanceof` el
-  `Sql` que evalúa `$queryRaw`. Pendiente conocido: `@prisma/adapter-pg` y `pg`
-  siguen inertes por lo mismo y se empaquetan. Hoy no rompen nada —el bug era
-  específico del runtime de `@prisma/client`— y el arreglo sería idéntico.
+  `Sql` que evalúa `$queryRaw`. `pg` dejó de ser inerte cuando entró como
+  devDependency de `apps/web` para la suite de contrato: comprobado por realpath,
+  hay UNA sola copia física vista desde `apps/web`, `packages/db`,
+  `packages/core` y `apps/mcp-stdio`, y el camino de `$queryRaw` con fragmentos
+  `Prisma.Sql` sigue devolviendo 200 en dev, que es donde aparecería el 42601.
+  Pendiente conocido: `@prisma/adapter-pg` SIGUE inerte y se empaqueta. Hoy no
+  rompe nada —el bug era específico del runtime de `@prisma/client`— y el arreglo
+  sería idéntico.
 - Un typecheck que PASA donde esperabas que fallara puede ser un
   `tsconfig.tsbuildinfo` viejo, no un mecanismo roto. Pasó una vez con el
   `Record` exhaustivo de errores de `apps/web/lib/http.ts`: se agregó un código
@@ -194,6 +201,17 @@ aca es para que no se redescubran de cero.
   `crearCorePort()`. Su constructor exige el pepper, y leerlo al importar el
   módulo rompe el "Collecting page data" de `next build`: es la misma trampa que
   resolvió el proxy perezoso de `packages/db`.
+- El spread condicional de `description` en PATCH /api/boards/{id} lo defiende el
+  TYPECHECK —`exactOptionalPropertyTypes`— y NO la suite. `BoardService.update`
+  decide con `patch.description === undefined`, así que una clave PRESENTE en
+  undefined se comporta igual que una ausente: cambiarlo por
+  `description: entrada.data.description` deja las 35 pruebas de `apps/web` en
+  verde y falla con TS2375. O sea que el reflejo de "si no rompe ningún test, no
+  protege nada" acá se lee al revés: borrar el spread rompe `verify` un paso
+  antes, en `typecheck`. Lo que la suite SÍ atrapa son los dos colapsos que
+  compilan, y cada uno tiene su prueba: `?? null` hace que una descripción
+  ausente pase a borrar (falla "ausente conserva") y `== null` en vez de
+  `=== undefined` hace que `null` deje de borrar (falla "null borra").
 - Los errores de PostgreSQL llegan por dos caminos distintos segun donde
   falle la sentencia, y hay que cubrir los dos. Si la viola una sentencia
   concreta, Prisma la envuelve en un `PrismaClientKnownRequestError` y la
