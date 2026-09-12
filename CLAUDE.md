@@ -23,8 +23,10 @@ hace falta es el comando que lo averigua, no el dato.
   ```
 
   El `conAuth("…")` de cada línea es el scope que ese endpoint exige (7.2).
-  `/api/health` sale sin `conAuth` porque es el único sin autenticación, y por
-  eso es también el único que NO lleva X-Request-Id.
+  `/api/health` sale sin `conAuth` porque es el único sin autenticación (6.2), y
+  eso es TODO lo que lo hace distinto: no tiene 401, 403 ni el 429 de la 7.3, que
+  se cobra por clave. El X-Request-Id SÍ lo lleva, como toda respuesta (6.1);
+  genera el suyo con la misma `nuevoRequestId()` que usa `conAuth`.
 - **Qué endpoints faltan**: la tabla de la 6.2 es el objetivo y el comando de
   arriba es el estado; la resta de los dos es la lista. Cualquier copia escrita
   acá empieza a envejecer el mismo día.

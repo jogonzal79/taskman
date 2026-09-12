@@ -36,9 +36,19 @@ export async function comprobarConexion(
   const consulta = cliente.$queryRaw`SELECT 1`;
 
   // Si gana el plazo, la consulta sigue viva y puede rechazar despues de que
-  // nadie la espere. Sin este `catch` eso es una unhandled rejection, que en
-  // Node 20 tumba el proceso: el health check terminaria matando al servidor
-  // que intenta vigilar.
+  // nadie la espere.
+  //
+  // Este `catch` es un SEGURO, no una necesidad, y conviene saber cual es la
+  // diferencia: `Promise.race` se suscribe a TODAS sus promesas, asi que el
+  // rechazo tardio de la perdedora ya tiene manejador y NO dispara
+  // `unhandledRejection`. Medido: una promesa que nadie observo si lo dispara; la
+  // perdedora de un race, no. El comentario que habia aca afirmaba lo contrario
+  // —que sin el catch el proceso se cae— y eso es lo que justificaba una linea que
+  // ninguna prueba puede ejercitar (ver `packages/core/test/health.test.ts`, que
+  // anota los dos intentos).
+  //
+  // Se conserva porque deja de ser cierto en cuanto el `race` de abajo se
+  // reemplace por cualquier otra espera que no se suscriba a las dos.
   consulta.catch(() => {});
 
   let temporizador: ReturnType<typeof setTimeout> | undefined;

@@ -16,6 +16,7 @@ import {
   crearColumna,
 } from "../column.js";
 import { errorDeApi } from "../error.js";
+import { salud, saludDegradada } from "../health.js";
 import {
   actualizarTarea,
   coincidencia,
@@ -65,6 +66,8 @@ export const COMPONENTES = {
   RegistroDeAuditoria: registroDeAuditoria,
   ListadoDeAuditoria: listadoDeAuditoria,
   ErrorDeApi: errorDeApi,
+  Salud: salud,
+  SaludDegradada: saludDegradada,
 } as const;
 
 export type ComponenteId = keyof typeof COMPONENTES;

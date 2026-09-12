@@ -122,11 +122,11 @@ const CABECERA_RETRY_AFTER = { "Retry-After": { $ref: "#/components/headers/Retr
  * Las respuestas de una operacion: las que declara la tabla, mas una por cada
  * estado HTTP al que mapea algun codigo de error del endpoint.
  *
- * Toda respuesta lleva X-Request-Id salvo las de /api/health, que es el unico
- * endpoint que no pasa por el adaptador que la emite (6.1).
+ * TODA respuesta lleva X-Request-Id, sin excepcion, que es lo que dice la 6.1 sin
+ * excepcion. Aca habia una: /api/health no pasaba por el adaptador que la emite y
+ * el generador reflejaba fielmente esa falta. Ya no falta.
  */
 function respuestasDe(ruta: Ruta): ObjetoJson {
-  const conRequestId = ruta.scope !== null;
   const respuestas: ObjetoJson = {};
 
   for (const respuesta of ruta.respuestas) {
@@ -134,14 +134,10 @@ function respuestasDe(ruta: Ruta): ObjetoJson {
 
     respuestas[String(respuesta.estado)] = {
       description: frase(respuesta.estado),
-      ...(conRequestId
-        ? {
-            headers: {
-              ...CABECERA_REQUEST_ID,
-              ...(ruta.idempotente === true && exito ? CABECERA_REPLAYED : {}),
-            },
-          }
-        : {}),
+      headers: {
+        ...CABECERA_REQUEST_ID,
+        ...(ruta.idempotente === true && exito ? CABECERA_REPLAYED : {}),
+      },
       ...(respuesta.componente === undefined
         ? {}
         : { content: { "application/json": { schema: ref(respuesta.componente) } } }),
@@ -280,7 +276,6 @@ function tags(): readonly ObjetoJson[] {
 const LIMITES = [
   "Las reglas ENTRE campos no aparecen: Zod las expresa con `.refine()` y JSON Schema no puede representarlas. Afecta a `board_id` o `column_id` en GET /api/tasks y GET /api/tasks/search, a `entity_type` junto a `entity_id` en GET /api/audit, y a `column_id` o `column_key` en POST /api/tasks y POST /api/tasks/{id}/move.",
   "Los topes de longitud de nombre, titulo y descripcion tampoco: se validan en PUNTOS DE CODIGO con `.refine()`, asi que no salen como `maxLength`.",
-  "El cuerpo de GET /api/health no tiene esquema Zod, asi que su respuesta se declara sin `content`.",
   "Las cabeceras (X-Request-Id, Idempotency-Key, Idempotency-Replayed) tampoco tienen esquema Zod: su forma se declara en el generador.",
 ];
 

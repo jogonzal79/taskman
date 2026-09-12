@@ -15,7 +15,11 @@ export type Scope = "read" | "write" | "delete";
 
 export interface Respuesta {
   readonly estado: number;
-  /** Ausente: la respuesta no tiene cuerpo, o su forma no sale de un esquema. */
+  /**
+   * Ausente: la respuesta NO tiene cuerpo. Hoy son solo los tres 204, y desde que
+   * GET /api/health publica su esquema no hay ninguna respuesta con cuerpo que no
+   * salga de uno.
+   */
   readonly componente?: ComponenteId;
 }
 
@@ -260,12 +264,15 @@ export const RUTAS = [
     ruta: "/api/health",
     resumen: "Sonda de salud (sin autenticacion)",
     scope: null,
-    // SIN esquema, y por eso sin `content`. El cuerpo de la sonda esta escrito
-    // como una interfaz de TypeScript dentro del handler y no existe como
-    // esquema Zod, asi que no se puede derivar: que falte y quede anotado es
-    // preferible a escribirlo aca, que es el desfase de la ADR-006. Es tambien
-    // el unico endpoint sin X-Request-Id, justamente porque no pasa por el
-    // adaptador que lo emite.
-    respuestas: [{ estado: 200 }, { estado: 503 }],
+    // Un esquema POR ESTADO: el 200 y el 503 son dos formas distintas, no una
+    // con campos opcionales. Ver `packages/contracts/src/health.ts`.
+    //
+    // Sigue siendo el unico endpoint sin `security` y sin codigos de error de la
+    // 6.4: no autentica, asi que no tiene 401, 403 ni 429. Lo que ya NO es
+    // excepcion es el X-Request-Id, que ahora emite como todos (6.1).
+    respuestas: [
+      { estado: 200, componente: "Salud" },
+      { estado: 503, componente: "SaludDegradada" },
+    ],
   },
 ] as const satisfies readonly Ruta[];

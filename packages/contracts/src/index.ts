@@ -11,6 +11,9 @@ export type { ConsultaDeListado } from "./pagination.js";
 export { errorDeApi, ESTADO_POR_CODIGO } from "./error.js";
 export type { CodigoDeError, ErrorDeApi } from "./error.js";
 
+export { salud, saludDegradada } from "./health.js";
+export type { Salud, SaludDegradada } from "./health.js";
+
 export {
   consultaDeAuditoria,
   idDeRegistro,

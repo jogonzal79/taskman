@@ -4,7 +4,7 @@
     "title": "TaskMan API",
     "version": "0.0.0",
     "summary": "API REST del gestor de tareas Kanban TaskMan.",
-    "description": "GENERADO desde los esquemas Zod de `packages/contracts` (ADR-006). No lo edites a mano: se reescribe en cada compilacion.\n\nEl contrato completo esta en la seccion 6 de `docs/especificacion-tecnica-v1.0.md`; la autenticacion en la 7.1 y los scopes en la 7.2.\n\nLimites de la derivacion:\n\n- Las reglas ENTRE campos no aparecen: Zod las expresa con `.refine()` y JSON Schema no puede representarlas. Afecta a `board_id` o `column_id` en GET /api/tasks y GET /api/tasks/search, a `entity_type` junto a `entity_id` en GET /api/audit, y a `column_id` o `column_key` en POST /api/tasks y POST /api/tasks/{id}/move.\n\n- Los topes de longitud de nombre, titulo y descripcion tampoco: se validan en PUNTOS DE CODIGO con `.refine()`, asi que no salen como `maxLength`.\n\n- El cuerpo de GET /api/health no tiene esquema Zod, asi que su respuesta se declara sin `content`.\n\n- Las cabeceras (X-Request-Id, Idempotency-Key, Idempotency-Replayed) tampoco tienen esquema Zod: su forma se declara en el generador."
+    "description": "GENERADO desde los esquemas Zod de `packages/contracts` (ADR-006). No lo edites a mano: se reescribe en cada compilacion.\n\nEl contrato completo esta en la seccion 6 de `docs/especificacion-tecnica-v1.0.md`; la autenticacion en la 7.1 y los scopes en la 7.2.\n\nLimites de la derivacion:\n\n- Las reglas ENTRE campos no aparecen: Zod las expresa con `.refine()` y JSON Schema no puede representarlas. Afecta a `board_id` o `column_id` en GET /api/tasks y GET /api/tasks/search, a `entity_type` junto a `entity_id` en GET /api/audit, y a `column_id` o `column_key` en POST /api/tasks y POST /api/tasks/{id}/move.\n\n- Los topes de longitud de nombre, titulo y descripcion tampoco: se validan en PUNTOS DE CODIGO con `.refine()`, asi que no salen como `maxLength`.\n\n- Las cabeceras (X-Request-Id, Idempotency-Key, Idempotency-Replayed) tampoco tienen esquema Zod: su forma se declara en el generador."
   },
   "servers": [
     {
@@ -2466,10 +2466,34 @@
         "security": [],
         "responses": {
           "200": {
-            "description": "Correcto."
+            "description": "Correcto.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Salud"
+                }
+              }
+            }
           },
           "503": {
-            "description": "Servicio no disponible."
+            "description": "Servicio no disponible.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SaludDegradada"
+                }
+              }
+            }
           }
         }
       }
@@ -3383,6 +3407,76 @@
         },
         "required": [
           "error"
+        ],
+        "additionalProperties": false
+      },
+      "Salud": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "ok"
+          },
+          "version": {
+            "type": "string",
+            "minLength": 1
+          },
+          "database": {
+            "type": "object",
+            "properties": {
+              "ok": {
+                "type": "boolean",
+                "const": true
+              },
+              "latency_ms": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "ok",
+              "latency_ms"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "status",
+          "version",
+          "database"
+        ],
+        "additionalProperties": false
+      },
+      "SaludDegradada": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "degraded"
+          },
+          "version": {
+            "type": "string",
+            "minLength": 1
+          },
+          "database": {
+            "type": "object",
+            "properties": {
+              "ok": {
+                "type": "boolean",
+                "const": false
+              }
+            },
+            "required": [
+              "ok"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "status",
+          "version",
+          "database"
         ],
         "additionalProperties": false
       }
