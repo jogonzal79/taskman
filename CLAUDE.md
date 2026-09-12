@@ -62,6 +62,17 @@ contador de pruebas no tiene ese commit.
   `search_tasks` tiene el mismo hueco). El nucleo lo tiene —`Page.nextCursor`, y
   las herramientas lo leen para calcular `has_more`— pero lo descartan al
   proyectar: el agente sabe que hay mas y no tiene con que pedirlo.
+- `aFecha` (`packages/core/src/mcp/tools/campos.ts`) acepta dias que no existen.
+  Valida el formato con una regex y despues con `Number.isNaN`, y eso NO alcanza:
+  `new Date("2026-02-30T00:00:00.000Z")` no da invalida, se corre sola al 2 de
+  marzo. O sea que hoy, por MCP, un `due_date` de "2026-02-30" crea una tarea que
+  vence el 2 de marzo sin avisar. El mes 13 SI se atrapa —ahi la fecha si sale
+  invalida— pero el dia no, que es el caso que alguien escribe de verdad. El
+  contrato REST no comparte ese helper: `fechaSola` de `packages/contracts`
+  valida con un ida y vuelta —reconstruye la fecha y la compara con lo que
+  entro— y eso si lo atrapa. El arreglo es el mismo ida y vuelta dentro de
+  `aFecha`, y conviene hacerlo ahi y no duplicar el de contracts, porque el borde
+  MCP no puede importar del paquete de contratos HTTP.
 
 ## Entorno
 

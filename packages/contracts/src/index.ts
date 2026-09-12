@@ -46,3 +46,14 @@ export type {
   CrearColumna,
   ParametrosDeColumna,
 } from "./column.js";
+
+export {
+  crearTarea,
+  fechaSola,
+  parametrosDeTarea,
+  prioridad,
+  tarea,
+  LIMITE_TITULO_TAREA,
+  PRIORIDADES,
+} from "./task.js";
+export type { CrearTarea, ParametrosDeTarea, Prioridad, Tarea } from "./task.js";
