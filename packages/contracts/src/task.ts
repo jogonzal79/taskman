@@ -1,7 +1,9 @@
 import { z } from "zod";
 
+import { consultaDeListado, listadoDe } from "./pagination.js";
+
 /**
- * El contrato de una tarea en el borde HTTP (6.1, 6.2 y 6.3.1).
+ * El contrato de una tarea en el borde HTTP (6.1, 6.2, 6.3.1 y 6.3.2).
  */
 
 /** Las cuatro de la 6.3.1, iguales al enum `Priority` de la base. */
@@ -148,3 +150,71 @@ export type CrearTarea = z.infer<typeof crearTarea>;
 export const parametrosDeTarea = z.object({ id: z.uuid() });
 
 export type ParametrosDeTarea = z.infer<typeof parametrosDeTarea>;
+
+/**
+ * Los cuatro ordenes de la 6.3.2, en el vocabulario del borde. El nucleo los
+ * tiene en camelCase (`TaskOrderBy`); la traduccion ocurre en el adaptador, igual
+ * que la de los scopes.
+ */
+export const ORDENES_DE_TAREA = ["position", "due_date", "priority", "created_at"] as const;
+
+export const ordenDeTarea = z.enum(ORDENES_DE_TAREA);
+
+export type OrdenDeTarea = z.infer<typeof ordenDeTarea>;
+
+/**
+ * Un booleano que llega por el query string, o sea como texto.
+ *
+ * Solo "true" y "false", y cualquier otra cosa es un 400: un `?overdue=si` que
+ * cayera en false devolveria el listado completo a quien pidio solo las vencidas,
+ * y no se enteraria. Mismo criterio que `?limit=abc` en GET /api/boards.
+ */
+const booleanoDeConsulta = z
+  .enum(["true", "false"])
+  .transform((valor) => valor === "true");
+
+/**
+ * Query string de GET /api/tasks (6.3.2).
+ *
+ * `limit` y `cursor` salen de `consultaDeListado` y no se reescriben: son los
+ * parametros de paginacion de la 6.1, y tenerlos dos veces dejaria que el
+ * maximo de uno se corrija y el del otro no.
+ *
+ * BOARD_ID OBLIGATORIO SALVO QUE SE INDIQUE COLUMN_ID, como dice la 6.3.2, y es
+ * una regla del BORDE: el nucleo sin filtros devuelve las tareas de todos los
+ * tableros, que para una API personal con una sola clave no es un agujero de
+ * permisos pero si una respuesta que nadie pidio. `column_key` no alcanza para
+ * reemplazar a `board_id` porque es "alternativa a column_id DENTRO del tablero
+ * indicado": sin tablero no hay donde resolverla.
+ *
+ * `priority` es repetible y actua como OR (6.3.2): llega del `getAll` del
+ * adaptador, asi que aca es un array.
+ *
+ * `due_before` y `due_after` son EXCLUSIVOS en el nucleo (`due_date <` y
+ * `due_date >`) y excluyen las tareas SIN fecha, que es lo que pide la 6.3.2. Lo
+ * segundo no es una condicion escrita: `NULL < fecha` no es verdadero, asi que
+ * las tareas sin fecha se caen del filtro por las reglas de NULL de SQL.
+ */
+export const consultaDeTareas = z
+  .strictObject({
+    ...consultaDeListado.shape,
+    board_id: z.uuid().optional(),
+    column_id: z.uuid().optional(),
+    column_key: z.string().trim().min(1).optional(),
+    priority: z.array(prioridad).min(1).optional(),
+    due_before: fechaSola.optional(),
+    due_after: fechaSola.optional(),
+    overdue: booleanoDeConsulta.optional(),
+    order_by: ordenDeTarea.optional(),
+  })
+  .refine((consulta) => consulta.board_id !== undefined || consulta.column_id !== undefined, {
+    error: "Indica board_id, o column_id para filtrar por una columna concreta.",
+    path: ["board_id"],
+  });
+
+export type ConsultaDeTareas = z.infer<typeof consultaDeTareas>;
+
+/** Respuesta de GET /api/tasks (6.2): misma envoltura que GET /api/boards. */
+export const listadoDeTareas = listadoDe(tarea);
+
+export type ListadoDeTareas = z.infer<typeof listadoDeTareas>;

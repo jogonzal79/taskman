@@ -1,11 +1,24 @@
-import { crearTarea, tarea as esquemaDeTarea, type Tarea } from "@taskman/contracts";
-import { crearCorePort, type CreateTaskInput } from "@taskman/core";
+import {
+  consultaDeTareas,
+  crearTarea,
+  listadoDeTareas,
+  tarea as esquemaDeTarea,
+  type OrdenDeTarea,
+  type Tarea,
+} from "@taskman/contracts";
+import {
+  crearCorePort,
+  type CreateTaskInput,
+  type ListTasksQuery,
+  type TaskOrderBy,
+} from "@taskman/core";
 
 import { conAuth, contextoDeApi } from "../../../lib/auth.js";
 import { respuestaDeError, respuestaDeFallo, responder } from "../../../lib/http.js";
 import { aFechaUtc, aTareaSalida } from "../../../lib/tareas.js";
 
 /**
+ * GET /api/tasks (6.2, 6.3.2, RF-04): lista y filtra tareas. Scope read.
  * POST /api/tasks (6.2, 6.3.1, RF-03): crea una tarea. Scope write.
  *
  * NINGUNA regla de la 5.2 se implementa aca. El titulo lo normaliza
@@ -28,6 +41,108 @@ import { aFechaUtc, aTareaSalida } from "../../../lib/tareas.js";
 export const dynamic = "force-dynamic";
 
 const taskman = crearCorePort();
+
+/**
+ * El vocabulario del borde al del dominio: la 6.3.2 nombra los ordenes en
+ * snake_case y `TaskOrderBy` los tiene en camelCase. La tabla vive aca, igual que
+ * la de los scopes en `lib/auth.ts`: el nucleo habla su vocabulario y el
+ * adaptador el del protocolo.
+ */
+const ORDEN_DE_DOMINIO: Record<OrdenDeTarea, TaskOrderBy> = {
+  position: "position",
+  due_date: "dueDate",
+  priority: "priority",
+  created_at: "createdAt",
+};
+
+/**
+ * GET /api/tasks (6.3.2). Scope read.
+ *
+ * NINGUN filtro se aplica aca. Los traduce a `ListTasksQuery` y los resuelve
+ * `TaskRepository.listTasks` en UNA consulta: las prioridades como un `IN`, el
+ * rango de fechas como dos comparaciones, y `overdue` como `due_date <
+ * CURRENT_DATE` mas la exclusion de las columnas cuya key es DONE. La paginacion
+ * tambien es suya y es keyset en SQL, con `id` de desempate, igual que
+ * GET /api/boards: el adaptador no corta ni reordena nada en memoria.
+ *
+ * `column_key` la resuelve el nucleo —`TaskService.#resolverFiltro` la traduce a
+ * `columnId` antes de consultar, con la misma `resolverColumna` que usa el
+ * create— asi que por key y por id se filtra igual sin que el borde lo sepa.
+ */
+export const GET = conAuth("read", async (request, auth): Promise<Response> => {
+  const parametros = new URL(request.url).searchParams;
+
+  /**
+   * `getAll` para `priority`, que la 6.3.2 declara repetible: `?priority=HIGH&
+   * priority=URGENT` actua como OR. Los demas son escalares, y `?x=abc` no puede
+   * caer en un default —seria devolver otra cosa a quien pidio algo concreto y no
+   * enterarse nunca— asi que van al esquema tal como llegaron.
+   */
+  const prioridades = parametros.getAll("priority");
+
+  const consulta = consultaDeTareas.safeParse({
+    limit: parametros.get("limit") ?? undefined,
+    cursor: parametros.get("cursor") ?? undefined,
+    board_id: parametros.get("board_id") ?? undefined,
+    column_id: parametros.get("column_id") ?? undefined,
+    column_key: parametros.get("column_key") ?? undefined,
+    priority: prioridades.length === 0 ? undefined : prioridades,
+    due_before: parametros.get("due_before") ?? undefined,
+    due_after: parametros.get("due_after") ?? undefined,
+    overdue: parametros.get("overdue") ?? undefined,
+    order_by: parametros.get("order_by") ?? undefined,
+  });
+
+  if (!consulta.success) {
+    return respuestaDeError(
+      "VALIDATION_ERROR",
+      "Los parametros de la consulta no superan el esquema.",
+      400,
+      auth,
+      { details: { issues: consulta.error.issues } },
+    );
+  }
+
+  // Todo lo opcional va condicional y no como `campo: undefined`, por
+  // exactOptionalPropertyTypes: la propiedad presente en undefined no es lo mismo
+  // que ausente.
+  const query: ListTasksQuery = {
+    limit: consulta.data.limit,
+    ...(consulta.data.cursor === undefined ? {} : { cursor: consulta.data.cursor }),
+    ...(consulta.data.board_id === undefined ? {} : { boardId: consulta.data.board_id }),
+    ...(consulta.data.column_id === undefined ? {} : { columnId: consulta.data.column_id }),
+    ...(consulta.data.column_key === undefined ? {} : { columnKey: consulta.data.column_key }),
+    ...(consulta.data.priority === undefined ? {} : { priority: consulta.data.priority }),
+    ...(consulta.data.due_before === undefined
+      ? {}
+      : { dueBefore: aFechaUtc(consulta.data.due_before) }),
+    ...(consulta.data.due_after === undefined
+      ? {}
+      : { dueAfter: aFechaUtc(consulta.data.due_after) }),
+    ...(consulta.data.overdue === undefined ? {} : { overdue: consulta.data.overdue }),
+    ...(consulta.data.order_by === undefined
+      ? {}
+      : { orderBy: ORDEN_DE_DOMINIO[consulta.data.order_by] }),
+  };
+
+  const pagina = await taskman.listTasks(query);
+
+  const salida = listadoDeTareas.safeParse({
+    items: pagina.items.map(aTareaSalida),
+    next_cursor: pagina.nextCursor,
+  });
+
+  if (!salida.success) {
+    console.error(
+      `[taskman-web] la respuesta de GET /api/tasks no cumple el contrato (${auth.requestId})`,
+      salida.error.issues,
+    );
+
+    return respuestaDeFallo(new Error("La salida no cumple el contrato."), auth);
+  }
+
+  return responder(salida.data, 200, auth);
+});
 
 export const POST = conAuth("write", async (request, auth): Promise<Response> => {
   let cuerpo: unknown;

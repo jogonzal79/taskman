@@ -48,12 +48,24 @@ export type {
 } from "./column.js";
 
 export {
+  consultaDeTareas,
   crearTarea,
   fechaSola,
+  listadoDeTareas,
+  ordenDeTarea,
   parametrosDeTarea,
   prioridad,
   tarea,
   LIMITE_TITULO_TAREA,
+  ORDENES_DE_TAREA,
   PRIORIDADES,
 } from "./task.js";
-export type { CrearTarea, ParametrosDeTarea, Prioridad, Tarea } from "./task.js";
+export type {
+  ConsultaDeTareas,
+  CrearTarea,
+  ListadoDeTareas,
+  OrdenDeTarea,
+  ParametrosDeTarea,
+  Prioridad,
+  Tarea,
+} from "./task.js";
