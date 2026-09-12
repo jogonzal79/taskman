@@ -9,6 +9,24 @@ export { consultaDeListado, listadoDe, LIMITE_DEFECTO, LIMITE_MAXIMO } from "./p
 export type { ConsultaDeListado } from "./pagination.js";
 
 export {
+  consultaDeAuditoria,
+  idDeRegistro,
+  listadoDeAuditoria,
+  registroDeAuditoria,
+  tipoDeActor,
+  tipoDeEntidad,
+  TIPOS_DE_ACTOR,
+  TIPOS_DE_ENTIDAD,
+} from "./audit.js";
+export type {
+  ConsultaDeAuditoria,
+  ListadoDeAuditoria,
+  RegistroDeAuditoria,
+  TipoDeActor,
+  TipoDeEntidad,
+} from "./audit.js";
+
+export {
   actualizarTablero,
   crearTablero,
   listadoDeTableros,

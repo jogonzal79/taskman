@@ -75,16 +75,16 @@ contador de pruebas no tiene ese commit.
   tildes se lee como roto; y la busqueda incremental mientras se escribe no es
   viable de entrada, porque `plainto_tsquery` no agrega `:*` y un prefijo no
   matchea (ver la entrada de arriba).
-- Un parametro de consulta DESCONOCIDO se ignora en silencio en los CUATRO
-  endpoints de listado (GET /api/boards, GET /api/tasks, GET /api/tasks/search y
-  el listado por columna). No es que el `strictObject` lo acepte: es que nunca lo
-  ve, porque el handler arma el objeto a validar leyendo SOLO los parametros que
-  conoce, uno por uno. Lo peligroso no es el 200 sino creer que el parametro
-  acoto cuando quedo INERTE: `?column_key=TODO` en la busqueda devuelve el
-  tablero entero, y quien lo mando no se entera. Esta atado con un test que
-  afirma justamente eso. Cambiarlo —comparar las claves recibidas contra las
-  declaradas y devolver 400— afecta a los cuatro endpoints a la vez, asi que es
-  su propio paso y no un arreglo al pasar.
+- Un parametro de consulta DESCONOCIDO se ignora en silencio en los CINCO
+  endpoints de listado (GET /api/boards, GET /api/tasks, GET /api/tasks/search,
+  GET /api/audit y el listado por columna). No es que el `strictObject` lo
+  acepte: es que nunca lo ve, porque el handler arma el objeto a validar leyendo
+  SOLO los parametros que conoce, uno por uno. Lo peligroso no es el 200 sino
+  creer que el parametro acoto cuando quedo INERTE: `?column_key=TODO` en la
+  busqueda devuelve el tablero entero, y quien lo mando no se entera. Esta atado
+  con un test que afirma justamente eso. Cambiarlo —comparar las claves
+  recibidas contra las declaradas y devolver 400— afecta a los cinco endpoints a
+  la vez, asi que es su propio paso y no un arreglo al pasar.
 - `list_boards` y `list_tasks` devuelven `has_more` pero no el `cursor` (y
   `search_tasks` tiene el mismo hueco). El nucleo lo tiene —`Page.nextCursor`, y
   las herramientas lo leen para calcular `has_more`— pero lo descartan al
@@ -100,6 +100,19 @@ contador de pruebas no tiene ese commit.
   entro— y eso si lo atrapa. El arreglo es el mismo ida y vuelta dentro de
   `aFecha`, y conviene hacerlo ahi y no duplicar el de contracts, porque el borde
   MCP no puede importar del paquete de contratos HTTP.
+- GET /api/audit NO se puede filtrar por `request_id`, y es el filtro que mas se
+  va a extra~nar: correlacionar el `X-Request-Id` que devolvio una respuesta con
+  lo que esa peticion escribio es el uso mas natural del log, y es exactamente lo
+  que la 6.1 promete al hacer coincidir los dos valores. No esta porque
+  `audit_log` no tiene indice por esa columna (4.1 declara solo
+  `(entity_type, entity_id, created_at)` y `(created_at)`), y es la tabla que
+  crece con CADA escritura del sistema: un filtro sin indice ahi es un seq scan
+  que empeora solo, y ofrecerlo seria peor que no tenerlo porque funcionaria bien
+  el primer mes. Lo mismo vale para `action`, `actor_type`, `actor_name` y
+  `client_id`, que tampoco tienen indice, pero ninguno de esos se pide igual. El
+  arreglo es un indice por `request_id` en una migracion ADITIVA —no toca ninguna
+  de las cuatro restricciones que Prisma propone dropear— y despues el filtro en
+  el contrato y en `ListAuditQuery`. Es su propio paso.
 
 ## Entorno
 

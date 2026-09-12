@@ -1,9 +1,14 @@
 import { prisma } from "@taskman/db";
 
+import { AuditRepository } from "../db/audit-repository.js";
 import { BoardRepository } from "../db/board-repository.js";
 import { TaskRepository } from "../db/task-repository.js";
 import { TransactionRunner } from "../db/transaction-runner.js";
 import type { ActorContext } from "../domain/actor.js";
+import type {
+  AuditEntry,
+  ListAuditQuery,
+} from "../domain/audit.js";
 import type {
   Board,
   BoardDetail,
@@ -25,6 +30,7 @@ import type {
   UpdateColumnInput,
   UpdateTaskInput,
 } from "../domain/types.js";
+import { AuditQueryService } from "../services/audit-query-service.js";
 import { AuditService } from "../services/audit-service.js";
 import { BoardService } from "../services/board-service.js";
 import { ColumnService } from "../services/column-service.js";
@@ -42,11 +48,18 @@ export class CorePort implements TaskManagerPort {
   readonly #boards: BoardService;
   readonly #columns: ColumnService;
   readonly #tasks: TaskService;
+  readonly #audit: AuditQueryService;
 
-  constructor(services: { boards: BoardService; columns: ColumnService; tasks: TaskService }) {
+  constructor(services: {
+    boards: BoardService;
+    columns: ColumnService;
+    tasks: TaskService;
+    audit: AuditQueryService;
+  }) {
     this.#boards = services.boards;
     this.#columns = services.columns;
     this.#tasks = services.tasks;
+    this.#audit = services.audit;
   }
 
   async listBoards(query: ListBoardsQuery): Promise<Page<Board>> {
@@ -164,6 +177,21 @@ export class CorePort implements TaskManagerPort {
   async searchTasks(text: string, scope: SearchScope): Promise<Page<TaskMatch>> {
     return this.#tasks.search(text, scope);
   }
+
+  /**
+   * Para GET /api/audit (6.2, RF-10). Va SOLO aca y no en `TaskManagerPort`,
+   * por lo mismo que `updateBoard`, `deleteBoard`, `updateColumn` y
+   * `deleteColumn`: el catalogo de la 8.2 no tiene ninguna herramienta de
+   * auditoria, asi que sumarlo a la interfaz obligaria a implementarlo tambien
+   * en el HttpPort que todavia no existe, para ningun llamador.
+   *
+   * Es la unica LECTURA que se agrega al puerto sin pasar por los tres
+   * servicios de entidad, y por eso el campo es un servicio aparte: ver
+   * `AuditQueryService`.
+   */
+  async listAudit(query: ListAuditQuery): Promise<Page<AuditEntry>> {
+    return this.#audit.list(query);
+  }
 }
 
 /**
@@ -183,5 +211,7 @@ export function crearCorePort(): CorePort {
     boards: new BoardService(boards, audit),
     columns: new ColumnService(boards, audit),
     tasks: new TaskService(new TaskRepository(runner), audit),
+    // El de LECTURA es otro objeto y otro repositorio: ver AuditQueryService.
+    audit: new AuditQueryService(new AuditRepository(runner)),
   });
 }

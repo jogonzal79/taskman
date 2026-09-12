@@ -50,8 +50,10 @@ export {
 export type {
   AuditAction,
   AuditEntityType,
+  AuditEntry,
   AuditEvent,
   AuditPayload,
+  ListAuditQuery,
   Cambios,
   CampoAuditado,
   ValorJson,
@@ -83,6 +85,7 @@ export type {
   TaskTransaction,
 } from "./db/task-repository.js";
 
+export { AuditQueryService } from "./services/audit-query-service.js";
 export { AuditService } from "./services/audit-service.js";
 export { TaskService } from "./services/task-service.js";
 export { BoardService, COLUMNAS_POR_DEFECTO, LIMITE_BOARD_DESCRIPTION, LIMITE_BOARD_NAME } from "./services/board-service.js";
@@ -90,7 +93,7 @@ export { ColumnService } from "./services/column-service.js";
 export { resolverColumna } from "./services/column-reference.js";
 export type { BuscadorDeColumnas } from "./services/column-reference.js";
 
-export { insertAuditRow } from "./db/audit-repository.js";
+export { AuditRepository, insertAuditRow } from "./db/audit-repository.js";
 export type { AuditRow, AuditTransaction } from "./db/audit-repository.js";
 export { BoardRepository } from "./db/board-repository.js";
 export type { BoardTransaction, LockedColumn, NewBoardRow, NewColumnRow } from "./db/board-repository.js";

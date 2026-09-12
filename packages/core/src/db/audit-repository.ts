@@ -1,16 +1,25 @@
-import { Prisma } from "@taskman/db";
+import { Prisma, type PrismaClient } from "@taskman/db";
 
 import type { ActorType } from "../domain/actor.js";
-import type { AuditPayload } from "../domain/audit.js";
+import type { AuditEntry, AuditPayload, ListAuditQuery } from "../domain/audit.js";
+import type { Page } from "../domain/types.js";
+import { normalizarLimite } from "./pagination.js";
+import type { TransactionRunner } from "./transaction-runner.js";
 
 /**
- * La fila fisica de `audit_log` (4.1) y como se inserta.
+ * La fila fisica de `audit_log` (4.1): como se inserta y como se lee.
  *
- * No hay un `AuditRepository` con su propia transaccion, y es la decision
- * central de F3: un registro de auditoria NUNCA se escribe por su cuenta. Se
- * inserta con el `tx` de la operacion auditada (7.4), asi que si la operacion
- * falla no queda registro huerfano y si el registro falla la operacion se
- * revierte. Darle transaccion propia haria posible justamente lo contrario.
+ * LA ESCRITURA NO TIENE REPOSITORIO, y es la decision central de F3: un
+ * registro de auditoria NUNCA se escribe por su cuenta. Se inserta con el `tx`
+ * de la operacion auditada (7.4), asi que si la operacion falla no queda
+ * registro huerfano y si el registro falla la operacion se revierte. Darle
+ * transaccion propia haria posible justamente lo contrario.
+ *
+ * `AuditRepository`, mas abajo, es SOLO DE LECTURA y no toca esa regla: no
+ * expone ningun camino de escritura, y sus consultas no abren transaccion
+ * porque no la necesitan —una lectura no se audita (7.4) y no tiene nada que
+ * revertir—. Que la escritura y la lectura no compartan objeto es lo que
+ * mantiene la asimetria a la vista.
  */
 export interface AuditRow {
   actorType: ActorType;
@@ -56,4 +65,135 @@ export async function insertAuditRow(tx: Prisma.TransactionClient, row: AuditRow
       requestId: row.requestId,
     },
   });
+}
+
+// --- Lectura (6.2, RF-10) ----------------------------------------------------
+
+/**
+ * El cursor de este listado, opaco para el llamador: el `id` de la ultima fila
+ * devuelta, en texto y en base64url, con la misma envoltura JSON que usan los
+ * otros listados.
+ *
+ * NO se reutiliza `codificarCursor` de `pagination.ts` y no es por descuido:
+ * ese keyset castea el desempate con `::uuid` y ordena `id ASC`, y aca el `id`
+ * es bigint y el orden es DESC. Parametrizar aquella funcion para este caso
+ * tocaria los cuatro listados que ya andan; quince lineas propias no tocan
+ * ninguno.
+ */
+function codificarCursorDeAuditoria(id: bigint): string {
+  return Buffer.from(JSON.stringify({ id: id.toString() }), "utf8").toString("base64url");
+}
+
+/**
+ * Devuelve undefined ante cualquier cosa que no decodifique a un entero.
+ *
+ * Que un cursor invalido se IGNORE —y devuelva la primera pagina en vez de un
+ * 400— es el comportamiento heredado de `decodificarCursor`, que ya tienen GET
+ * /api/boards, GET /api/tasks y la busqueda. Se repite a proposito: que los
+ * cinco listados respondan igual vale mas que arreglarlo en uno solo, y el dia
+ * que se decida que tiene que ser 400 es un cambio de los cinco a la vez.
+ */
+function decodificarCursorDeAuditoria(cursor: string): bigint | undefined {
+  try {
+    const crudo: unknown = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8"));
+    if (typeof crudo !== "object" || crudo === null) {
+      return undefined;
+    }
+    const { id } = crudo as { id?: unknown };
+    if (typeof id !== "string" || !/^\d+$/.test(id)) {
+      return undefined;
+    }
+    return BigInt(id);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Al LEER, el NULL de SQL vuelve como `null` a secas: los centinelas
+ * `DbNull` / `JsonNull` son de entrada y no aparecen en el resultado. Y un
+ * `null` de JSON guardado tampoco se distingue, porque no lo escribimos nunca:
+ * `json()` de arriba manda `DbNull` para el payload ausente.
+ */
+function payload(valor: Prisma.JsonValue | null): AuditPayload | null {
+  return valor === null ? null : (valor as AuditPayload);
+}
+
+/**
+ * Lectura del registro de auditoria. SOLO lectura: no hay aca ningun camino
+ * para escribir una fila, que es lo que sostiene la regla de la 7.4.
+ */
+export class AuditRepository {
+  readonly #runner: TransactionRunner;
+
+  constructor(runner: TransactionRunner) {
+    this.#runner = runner;
+  }
+
+  get #prisma(): PrismaClient {
+    return this.#runner.prisma;
+  }
+
+  /**
+   * Pagina keyset por `id DESC`: mas reciente primero, que es lo util en un log.
+   *
+   * SE ORDENA POR `id` Y NO POR `created_at`, y no es un atajo. `created_at` es
+   * `timestamp(3)` y una sola transaccion puede escribir varias filas con el
+   * mismo valor, asi que como clave de paginacion admite empates y un empate en
+   * el borde de pagina saltea o repite filas. El `id` es una secuencia: no
+   * empata nunca, y por eso el recorrido completo devuelve exactamente el
+   * conjunto.
+   *
+   * Lo que se paga por eso conviene decirlo: bajo concurrencia el orden de `id`
+   * es el de ASIGNACION y no el de COMMIT, asi que una fila puede aparecer una
+   * posicion mas abajo de lo que su `created_at` sugiere. No se pierde ni se
+   * repite —un id mas alto siempre es una fila mas nueva— que es la garantia
+   * que importa para paginar.
+   */
+  async listAudit(query: ListAuditQuery): Promise<Page<AuditEntry>> {
+    const limite = normalizarLimite(query.limit);
+    const cursor =
+      query.cursor === undefined ? undefined : decodificarCursorDeAuditoria(query.cursor);
+
+    const filas = await this.#prisma.auditLog.findMany({
+      where: {
+        ...(query.entityType === undefined ? {} : { entityType: query.entityType }),
+        ...(query.entityId === undefined ? {} : { entityId: query.entityId }),
+        ...(query.createdAfter === undefined && query.createdBefore === undefined
+          ? {}
+          : {
+              createdAt: {
+                ...(query.createdAfter === undefined ? {} : { gt: query.createdAfter }),
+                ...(query.createdBefore === undefined ? {} : { lt: query.createdBefore }),
+              },
+            }),
+        // Keyset: estrictamente "mas viejo que el cursor" en un orden DESC.
+        ...(cursor === undefined ? {} : { id: { lt: cursor } }),
+      },
+      orderBy: { id: "desc" },
+      // Una fila de mas para saber si hay pagina siguiente, igual que los otros.
+      take: limite + 1,
+    });
+
+    const hayMas = filas.length > limite;
+    const pagina = hayMas ? filas.slice(0, limite) : filas;
+    const ultima = pagina.at(-1);
+
+    return {
+      items: pagina.map((fila) => ({
+        id: fila.id,
+        actorType: fila.actorType,
+        actorName: fila.actorName,
+        clientId: fila.clientId,
+        action: fila.action,
+        entityType: fila.entityType,
+        entityId: fila.entityId,
+        beforeData: payload(fila.beforeData),
+        afterData: payload(fila.afterData),
+        requestId: fila.requestId,
+        createdAt: fila.createdAt,
+      })),
+      nextCursor: hayMas && ultima !== undefined ? codificarCursorDeAuditoria(ultima.id) : null,
+    };
+  }
 }

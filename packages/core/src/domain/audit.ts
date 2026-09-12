@@ -1,3 +1,4 @@
+import type { ActorType } from "./actor.js";
 import type { Board, BoardDetail, Column, Task } from "./types.js";
 
 /**
@@ -222,4 +223,62 @@ export function borrado(
     beforeData: cascade === undefined ? entidad : { ...entidad, cascade },
     afterData: null,
   };
+}
+
+// --- Lectura del registro (6.2, RF-10) ---------------------------------------
+
+/**
+ * Una fila de `audit_log` tal como se LEE (4.1).
+ *
+ * Aparte de `AuditEvent`, que es lo que se escribe: el evento describe QUE paso
+ * y no tiene id, actor ni fecha —se los pone `AuditService` con el
+ * `ActorContext`— mientras que esto es la fila ya persistida, con las tres
+ * cosas. Colapsarlos en un tipo obligaria a que la escritura acepte campos que
+ * no le tocan.
+ *
+ * `id` es bigint y no string, que es lo que la columna ES (4.1: BigInt
+ * autoincremental, el unico del modelo que no es UUID). La conversion a texto
+ * pertenece al borde que serializa, no al dominio: aca mentir sobre el tipo
+ * solo mueve el problema de lugar.
+ */
+export interface AuditEntry {
+  id: bigint;
+  actorType: ActorType;
+  actorName: string;
+  clientId: string | null;
+  action: string;
+  entityType: string;
+  entityId: string;
+  beforeData: AuditPayload | null;
+  afterData: AuditPayload | null;
+  requestId: string | null;
+  createdAt: Date;
+}
+
+/**
+ * Filtros de GET /api/audit (6.2). SOLO los que los indices de la 4.1
+ * sostienen, y por eso la lista es corta:
+ *
+ *   - `entityType` [+ `entityId`] va por `(entity_type, entity_id, created_at)`.
+ *     `entityType` solo alcanza porque es PREFIJO del indice; `entityId` solo NO,
+ *     y quien lo exige es el borde.
+ *   - el rango sobre `createdAt` va por `(created_at)`.
+ *
+ * Lo que NO esta —`action`, `actorType`, `actorName`, `clientId`, `requestId`—
+ * no tiene indice, y un filtro sin indice sobre una tabla que crece con CADA
+ * escritura del sistema es un seq scan que empeora solo. Ver la deuda anotada
+ * en CLAUDE.md sobre `requestId`, que es el que mas se va a extra~nar.
+ *
+ * El rango es EXCLUSIVO en las dos puntas, igual que el `due_before` /
+ * `due_after` de la 6.3.2: un solo criterio para los dos listados con rango.
+ */
+export interface ListAuditQuery {
+  entityType?: AuditEntityType;
+  entityId?: string;
+  /** Estrictamente posterior. */
+  createdAfter?: Date;
+  /** Estrictamente anterior. */
+  createdBefore?: Date;
+  limit?: number;
+  cursor?: string;
 }
