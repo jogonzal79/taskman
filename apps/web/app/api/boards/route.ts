@@ -9,15 +9,30 @@ import {
 } from "@taskman/contracts";
 import {
   crearCorePort,
+  violatesConstraint,
+  IDEMPOTENCY_PK_CONSTRAINT,
   type Board,
   type BoardDetail,
   type Column,
   type CreateBoardInput,
   type ListBoardsQuery,
+  type ParticipanteIdempotente,
 } from "@taskman/core";
 
 import { conAuth, contextoDeApi } from "../../../lib/auth.js";
-import { respuestaDeError, respuestaDeFallo, responder } from "../../../lib/http.js";
+import {
+  respuestaDeError,
+  respuestaDeFallo,
+  responder,
+  responderTexto,
+  type ContextoPeticion,
+} from "../../../lib/http.js";
+import {
+  cabecerasDeEjecucion,
+  canonicalizar,
+  reproducirTrasCarrera,
+  resolverIdempotencia,
+} from "../../../lib/idempotencia.js";
 
 /**
  * GET /api/boards (6.2): lista tableros, paginado por cursor.
@@ -137,6 +152,32 @@ function aDetalleSalida(board: BoardDetail): TableroDetallado {
 }
 
 /**
+ * Proyecta el tablero y comprueba que la salida cumpla el contrato que este
+ * endpoint publica. Si no lo cumple es un bug nuestro, asi que LANZA: devolver
+ * el cuerpo igual convertiria un error detectado en uno silencioso que rompe al
+ * cliente mas lejos. El unico try/catch del borde, el de `conAuth`, lo traduce
+ * al 500 de la 6.4 con el mismo request_id que ya viajo en la cabecera.
+ *
+ * Lanza en vez de devolver un Response porque el llamador puede ser el
+ * participante de la 6.5, que corre DENTRO de la transaccion: ahi la unica forma
+ * de no guardar un cuerpo que no podemos devolver es abortarla.
+ */
+function proyectarSalida(board: BoardDetail, ctx: ContextoPeticion): TableroDetallado {
+  const salida = tableroDetallado.safeParse(aDetalleSalida(board));
+
+  if (!salida.success) {
+    console.error(
+      `[taskman-web] la respuesta de POST /api/boards no cumple el contrato (${ctx.requestId})`,
+      salida.error.issues,
+    );
+
+    throw new Error("La salida no cumple el contrato.");
+  }
+
+  return salida.data;
+}
+
+/**
  * POST /api/boards (6.2, RF-01). Scope write.
  *
  * Devuelve 201 y no 200, como fija la 6.3.1 para los POST que crean, y el
@@ -167,6 +208,20 @@ export const POST = conAuth("write", async (request, auth): Promise<Response> =>
     });
   }
 
+  /**
+   * La idempotencia de la 6.5, ANTES de validar el cuerpo: ver
+   * `resolverIdempotencia`, que explica por que ese orden. Sin cabecera
+   * `Idempotency-Key` devuelve "sin-clave" y de aca en adelante no pasa nada
+   * distinto de lo que pasaba antes de que esto existiera.
+   */
+  const idem = await resolverIdempotencia(request, cuerpo, auth, (key, clientId) =>
+    taskman.findIdempotencyRecord(key, clientId),
+  );
+
+  if (idem.tipo === "reproducir") {
+    return idem.respuesta;
+  }
+
   const entrada = crearTablero.safeParse(cuerpo);
 
   if (!entrada.success) {
@@ -183,29 +238,68 @@ export const POST = conAuth("write", async (request, auth): Promise<Response> =>
     ...(entrada.data.description === undefined ? {} : { description: entrada.data.description }),
   };
 
-  // Primera escritura del borde REST, y por eso la primera que lleva
-  // `ActorContext` (7.4). El requestId que va adentro es el mismo que viaja en
-  // la cabecera X-Request-Id de esta respuesta, que es lo que permite ir del
-  // registro de auditoria a la peticion que lo produjo.
-  const tablero = await taskman.createBoard(input, contextoDeApi(auth));
-
   /**
-   * Validar la SALIDA comprueba que el adaptador siga cumpliendo el contrato que
-   * publica. Si deja de cumplirlo es un bug nuestro, asi que es un 500 y no una
-   * respuesta a medias: devolver el cuerpo igual convertiria un error detectado
-   * en uno silencioso que rompe al cliente mas lejos.
+   * El participante de la 6.5. Proyecta la salida y guarda la fila DENTRO de la
+   * transaccion que crea el tablero, que es lo que hace imposible el estado
+   * intermedio: no puede existir un tablero creado cuya clave quedo sin guardar
+   * —el reintento del cliente crearia un segundo— ni una clave guardada cuyo
+   * tablero no se creo.
+   *
+   * La salida proyectada se guarda ademas en `salida` para no volver a
+   * construirla afuera: el cuerpo que se devuelve tiene que ser EL MISMO que
+   * quedo en la fila, y proyectarlo dos veces abriria la posibilidad de que no
+   * lo sea.
    */
-  const salida = tableroDetallado.safeParse(aDetalleSalida(tablero));
+  let salida: TableroDetallado | undefined;
 
-  if (!salida.success) {
-    console.error(
-      `[taskman-web] la respuesta de POST /api/boards no cumple el contrato (${auth.requestId})`,
-      salida.error.issues,
-    );
+  const participante: ParticipanteIdempotente<BoardDetail> | undefined =
+    idem.tipo === "ejecutar"
+      ? async (board, escritura) => {
+          salida = proyectarSalida(board, auth);
+          await escritura.insertIdempotency({
+            ...idem.clave,
+            // 201 y no 200: la 6.3.1 lo fija para los POST que crean un recurso.
+            statusCode: 201,
+            responseBody: salida,
+          });
+        }
+      : undefined;
 
-    return respuestaDeFallo(new Error("La salida no cumple el contrato."), auth);
+  let tablero: BoardDetail;
+
+  try {
+    // Primera escritura del borde REST, y por eso la primera que lleva
+    // `ActorContext` (7.4). El requestId que va adentro es el mismo que viaja en
+    // la cabecera X-Request-Id de esta respuesta, que es lo que permite ir del
+    // registro de auditoria a la peticion que lo produjo.
+    tablero = await taskman.createBoard(input, contextoDeApi(auth), participante);
+  } catch (error: unknown) {
+    // Dos peticiones simultaneas con la misma clave: esta perdio la PK y su
+    // transaccion entera se revirtio. Ver `reproducirTrasCarrera`.
+    if (idem.tipo === "ejecutar" && violatesConstraint(error, IDEMPOTENCY_PK_CONSTRAINT)) {
+      const reproducida = await reproducirTrasCarrera(idem.clave, auth, (key, clientId) =>
+        taskman.findIdempotencyRecord(key, clientId),
+      );
+
+      if (reproducida !== undefined) {
+        return reproducida;
+      }
+    }
+
+    throw error;
   }
 
-  // 201 y no 200: la 6.3.1 lo fija para los POST que crean un recurso.
-  return responder(salida.data, 201, auth);
+  // Sin participante nadie proyecto todavia. Con el, ya esta hecho y validado.
+  const cuerpoSalida = salida ?? proyectarSalida(tablero, auth);
+
+  /**
+   * El cuerpo se serializa con `canonicalizar` SIEMPRE, mande o no la cabecera
+   * quien llama, y no con `Response.json`. Es lo que hace que la respuesta
+   * guardada y la reproducida sean el mismo texto byte a byte (ver
+   * `respuestaReproducida`). Hacerlo solo cuando hay cabecera dejaria que lo
+   * reproducible no sea lo que este endpoint devuelve normalmente, que es
+   * justo la propiedad que hay que sostener. Lo unico que cambia para un
+   * cliente es el ORDEN de las claves del objeto JSON, que no significa nada.
+   */
+  return responderTexto(canonicalizar(cuerpoSalida), 201, auth, cabecerasDeEjecucion(idem));
 });

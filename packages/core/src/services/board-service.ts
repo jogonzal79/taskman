@@ -23,6 +23,7 @@ import type {
   UpdateBoardInput,
 } from "../domain/types.js";
 import { AuditService } from "./audit-service.js";
+import type { ParticipanteIdempotente } from "./participante.js";
 
 /** Iguales a los VARCHAR de `board`. */
 export const LIMITE_BOARD_NAME = 120;
@@ -109,8 +110,18 @@ export class BoardService {
    * Tablero y columnas se crean en la misma transaccion: un tablero sin
    * columnas no es un estado util, y dejarlo a medias obligaria a todos los
    * llamadores a contemplarlo.
+   *
+   * `participante` es el gancho de la 6.5 y es OPCIONAL: sin el —que es el caso
+   * de todos los llamadores de hoy salvo POST /api/boards con cabecera
+   * `Idempotency-Key`— esta operacion hace exactamente lo mismo que antes de
+   * que existiera. Ver `ParticipanteIdempotente` para que puede y que no puede
+   * hacer quien entra por ahi.
    */
-  async create(input: CreateBoardInput, ctx: ActorContext): Promise<BoardDetail> {
+  async create(
+    input: CreateBoardInput,
+    ctx: ActorContext,
+    participante?: ParticipanteIdempotente<BoardDetail>,
+  ): Promise<BoardDetail> {
     const name = normalizarNombre(input.name, LIMITE_BOARD_NAME, {});
     const description = normalizarDescripcion(input.description, {});
 
@@ -150,6 +161,15 @@ export class BoardService {
       // Dentro de la MISMA transaccion (7.4): si el registro falla, el tablero
       // y sus columnas se van con el.
       await this.#audit.registrar(tx, ctx, creacion("board", boardId, tableroConColumnas(detalle)));
+
+      // Ultimo, y DENTRO del intento: lo que el participante guarda describe lo
+      // que se va a devolver, asi que necesita el detalle ya armado. Si el
+      // intento se aborta y se reintenta, su fila se va con la transaccion,
+      // igual que la de auditoria.
+      if (participante !== undefined) {
+        await participante(detalle, tx);
+      }
+
       return detalle;
     });
   }

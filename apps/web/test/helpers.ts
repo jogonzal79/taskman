@@ -27,13 +27,26 @@ import { Client } from "pg";
  * porque esta suite EMITE claves: si no se vaciaran, las de una corrida previa
  * quedarian validas y un test podria pasar con una clave que no emitio.
  *
+ * `idempotency_record` entra por lo mismo: sus filas sobreviven a la peticion
+ * que las creo, asi que una clave usada en una corrida previa haria que la
+ * siguiente REPRODUJERA en vez de ejecutar, y el test fallaria por un estado
+ * que no sembro. Ademas el CASCADE no la alcanza —no tiene FK a ninguna de las
+ * otras— asi que tiene que estar nombrada.
+ *
  * La siembra de tableros y tareas NO esta duplicada en SQL crudo: va por el
  * `CorePort`, que es el mismo camino que usan los Route Handlers del otro lado.
  * Cuando existan los endpoints de columnas y tareas (6.2) la siembra puede pasar
  * a ellos sin tocar las aserciones.
  */
 
-const TABLAS = ["task", "board_column", "board", "audit_log", "api_key"] as const;
+const TABLAS = [
+  "task",
+  "board_column",
+  "board",
+  "audit_log",
+  "api_key",
+  "idempotency_record",
+] as const;
 
 /**
  * El pepper de la suite.
@@ -143,8 +156,14 @@ export interface OpcionesPeticion {
   clave?: string;
   /** Se serializa a JSON. */
   cuerpo?: unknown;
-  /** Texto tal cual, para el caso del cuerpo que NO es JSON. */
+  /**
+   * Texto tal cual. Para el cuerpo que NO es JSON, y para los casos donde
+   * importa el ORDEN de las claves: `JSON.stringify` conserva el del objeto
+   * literal, pero escribir el texto no deja lugar a dudas.
+   */
   cuerpoCrudo?: string;
+  /** Cabeceras extra, p. ej. la `Idempotency-Key` de la 6.5. */
+  cabeceras?: Readonly<Record<string, string>>;
 }
 
 export function peticion(opciones: OpcionesPeticion = {}): Request {
@@ -161,6 +180,10 @@ export function peticion(opciones: OpcionesPeticion = {}): Request {
 
   if (cuerpo !== undefined) {
     cabeceras.set("content-type", "application/json");
+  }
+
+  for (const [nombre, valor] of Object.entries(opciones.cabeceras ?? {})) {
+    cabeceras.set(nombre, valor);
   }
 
   return new Request(`${ORIGEN}${opciones.ruta ?? "/api/boards"}`, {

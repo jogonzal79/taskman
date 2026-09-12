@@ -2,6 +2,7 @@ import { prisma } from "@taskman/db";
 
 import { AuditRepository } from "../db/audit-repository.js";
 import { BoardRepository } from "../db/board-repository.js";
+import { IdempotencyRepository, type IdempotencyRecord } from "../db/idempotency-repository.js";
 import { TaskRepository } from "../db/task-repository.js";
 import { TransactionRunner } from "../db/transaction-runner.js";
 import type { ActorContext } from "../domain/actor.js";
@@ -34,6 +35,7 @@ import { AuditQueryService } from "../services/audit-query-service.js";
 import { AuditService } from "../services/audit-service.js";
 import { BoardService } from "../services/board-service.js";
 import { ColumnService } from "../services/column-service.js";
+import type { ParticipanteIdempotente } from "../services/participante.js";
 import { TaskService } from "../services/task-service.js";
 import type { TaskManagerPort } from "./port.js";
 
@@ -49,17 +51,20 @@ export class CorePort implements TaskManagerPort {
   readonly #columns: ColumnService;
   readonly #tasks: TaskService;
   readonly #audit: AuditQueryService;
+  readonly #idempotency: IdempotencyRepository;
 
   constructor(services: {
     boards: BoardService;
     columns: ColumnService;
     tasks: TaskService;
     audit: AuditQueryService;
+    idempotency: IdempotencyRepository;
   }) {
     this.#boards = services.boards;
     this.#columns = services.columns;
     this.#tasks = services.tasks;
     this.#audit = services.audit;
+    this.#idempotency = services.idempotency;
   }
 
   async listBoards(query: ListBoardsQuery): Promise<Page<Board>> {
@@ -80,8 +85,33 @@ export class CorePort implements TaskManagerPort {
     return this.#boards.getWithTaskCounts(boardId);
   }
 
-  async createBoard(input: CreateBoardInput, ctx: ActorContext): Promise<BoardDetail> {
-    return this.#boards.create(input, ctx);
+  /**
+   * El tercer parametro es el gancho de la 6.5 y NO esta en `TaskManagerPort`:
+   * es opcional, asi que esta firma sigue satisfaciendo la del puerto, y el
+   * borde MCP —que no tiene cabeceras HTTP y por lo tanto no tiene
+   * `Idempotency-Key`— no se entera de que existe. Mismo criterio que
+   * `getBoardWithTaskCounts` y `updateBoard`: lo que solo necesita REST llega
+   * por la clase concreta que devuelve `crearCorePort()`, no por la interfaz.
+   */
+  async createBoard(
+    input: CreateBoardInput,
+    ctx: ActorContext,
+    participante?: ParticipanteIdempotente<BoardDetail>,
+  ): Promise<BoardDetail> {
+    return this.#boards.create(input, ctx, participante);
+  }
+
+  /**
+   * La consulta previa de la 6.5. Es una LECTURA suelta y por eso no lleva
+   * `ctx`: no se audita (7.4) y no abre transaccion.
+   *
+   * Vive en el puerto y no en el adaptador porque ningun adaptador importa
+   * Prisma (3.2). Lo que el borde HTTP calcula —la canonicalizacion del cuerpo
+   * y su SHA-256— se queda del lado del borde: el nucleo solo guarda y devuelve
+   * la cadena.
+   */
+  async findIdempotencyRecord(key: string, clientId: string): Promise<IdempotencyRecord | undefined> {
+    return this.#idempotency.find(key, clientId);
   }
 
   /**
@@ -213,5 +243,8 @@ export function crearCorePort(): CorePort {
     tasks: new TaskService(new TaskRepository(runner), audit),
     // El de LECTURA es otro objeto y otro repositorio: ver AuditQueryService.
     audit: new AuditQueryService(new AuditRepository(runner)),
+    // Tambien solo de lectura: la ESCRITURA del registro de idempotencia no
+    // pasa por aca, va con la transaccion de la operacion (6.5).
+    idempotency: new IdempotencyRepository(runner),
   });
 }

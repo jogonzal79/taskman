@@ -46,6 +46,36 @@ export function responder(cuerpo: unknown, status: number, ctx: ContextoPeticion
 }
 
 /**
+ * Respuesta con un cuerpo JSON YA SERIALIZADO, y con cabeceras extra.
+ *
+ * Existe por la 6.5: una respuesta que se va a guardar para devolverla otra vez
+ * mas tarde tiene que poder reconstruirse byte a byte, y `responder` no sirve
+ * para eso porque el cuerpo pasa dos veces por formas distintas —se guarda como
+ * JSONB, que NO conserva el orden de las claves ni los espacios, y al leerlo de
+ * vuelta `JSON.stringify` produciria otro texto—. Quien la usa serializa con
+ * `canonicalizar` en los dos lados y obtiene el mismo texto en los dos.
+ *
+ * Las cabeceras son las de `responder` mas las que pase el llamador, que hoy
+ * son solo la `Idempotency-Replayed` de la 6.5.
+ */
+export function responderTexto(
+  cuerpo: string,
+  status: number,
+  ctx: ContextoPeticion,
+  extra: Readonly<Record<string, string>> = {},
+): Response {
+  return new Response(cuerpo, {
+    status,
+    headers: {
+      "Content-Type": "application/json",
+      "Cache-Control": "no-store",
+      "X-Request-Id": ctx.requestId,
+      ...extra,
+    },
+  });
+}
+
+/**
  * Respuesta SIN cuerpo, para el 204 de un DELETE.
  *
  * No se puede resolver con `responder(null, 204, ctx)`: 204 es uno de los
@@ -89,6 +119,7 @@ const HTTP_POR_CODIGO: Record<DomainErrorCode, number> = {
   AMBIGUOUS_MATCH: 409,
   COLUMN_NOT_EMPTY: 409,
   DUPLICATE_KEY: 409,
+  IDEMPOTENCY_MISMATCH: 422,
   CONFIRMATION_REQUIRED: 428,
 
   // --- No estan en la 6.4: el razonamiento de cada uno -----------------------

@@ -29,6 +29,11 @@ export type DomainErrorCode =
   | "INVALID_REASSIGN_TARGET"
   // Ya hay una columna con esa key en el tablero.
   | "DUPLICATE_KEY"
+  // La misma Idempotency-Key se reutilizo con un cuerpo distinto (6.5). No es
+  // un fallo de la operacion: la operacion NO se ejecuto. Lo que esta mal es la
+  // clave, y por eso el error no lo produce ningun servicio sino el borde, que
+  // es el unico que ve la cabecera.
+  | "IDEMPOTENCY_MISMATCH"
   // Vacio y demasiado largo son causas distintas del mismo campo, con codigos
   // distintos a proposito: un agente tiene que poder saber si le falto
   // contenido o si le sobro. Cada limite es el del VARCHAR de su columna, y

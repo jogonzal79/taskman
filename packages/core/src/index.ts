@@ -70,6 +70,7 @@ export {
   COLUMN_KEY_CONSTRAINT,
   COLUMN_POSITION_CONSTRAINT,
   DEADLOCK_DETECTED,
+  IDEMPOTENCY_PK_CONSTRAINT,
   SERIALIZATION_FAILURE,
   TASK_POSITION_CONSTRAINT,
 } from "./db/db-error.js";
@@ -95,6 +96,16 @@ export type { BuscadorDeColumnas } from "./services/column-reference.js";
 
 export { AuditRepository, insertAuditRow } from "./db/audit-repository.js";
 export type { AuditRow, AuditTransaction } from "./db/audit-repository.js";
+
+// --- Idempotencia (6.5) ------------------------------------------------------
+
+export { IdempotencyRepository, insertIdempotencyRow } from "./db/idempotency-repository.js";
+export type {
+  EscrituraIdempotente,
+  IdempotencyRecord,
+  IdempotencyRow,
+} from "./db/idempotency-repository.js";
+export type { ParticipanteIdempotente } from "./services/participante.js";
 export { BoardRepository } from "./db/board-repository.js";
 export type { BoardTransaction, LockedColumn, NewBoardRow, NewColumnRow } from "./db/board-repository.js";
 export { TransactionRunner } from "./db/transaction-runner.js";
