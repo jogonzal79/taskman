@@ -1,13 +1,13 @@
 import {
-  columnaCreada,
+  columnaConOrden,
   crearColumna,
   parametrosDeTablero,
-  type Columna,
-  type ColumnaCreada,
+  type ColumnaConOrden,
 } from "@taskman/contracts";
-import { crearCorePort, type Column, type CreateColumnInput } from "@taskman/core";
+import { crearCorePort, type CreateColumnInput } from "@taskman/core";
 
 import { conAuth, contextoDeApi } from "../../../../../lib/auth.js";
+import { aColumnaSalida } from "../../../../../lib/columnas.js";
 import { respuestaDeError, respuestaDeFallo, responder } from "../../../../../lib/http.js";
 
 /**
@@ -32,19 +32,6 @@ import { respuestaDeError, respuestaDeFallo, responder } from "../../../../../li
 export const dynamic = "force-dynamic";
 
 const taskman = crearCorePort();
-
-/** La traduccion camelCase -> snake_case vive en el adaptador (6.1). */
-function aSalida(columna: Column): Columna {
-  return {
-    id: columna.id,
-    board_id: columna.boardId,
-    name: columna.name,
-    key: columna.key,
-    position: columna.position,
-    created_at: columna.createdAt.toISOString(),
-    updated_at: columna.updatedAt.toISOString(),
-  };
-}
 
 /** En Next 16 los parametros de una ruta dinamica llegan como Promise. */
 interface ContextoRuta {
@@ -105,7 +92,7 @@ export const POST = conAuth<[ContextoRuta]>("write", async (request, auth, conte
    * que el orden que hay que devolver solo existe despues de la transaccion.
    *
    * `getBoard` y no `getBoardWithTaskCounts`: los recuentos no entran en esta
-   * respuesta (ver `columnaCreada`), y pedirlos seria pagar el GROUP BY para
+   * respuesta (ver `columnaConOrden`), y pedirlos seria pagar el GROUP BY para
    * tirarlo.
    */
   const final = await taskman.getBoard(parametros.data.id);
@@ -116,10 +103,10 @@ export const POST = conAuth<[ContextoRuta]>("write", async (request, auth, conte
    * respuesta a medias: devolver el cuerpo igual convertiria un error detectado
    * en uno silencioso que rompe al cliente mas lejos.
    */
-  const salida = columnaCreada.safeParse({
-    column: aSalida(columna),
-    columns: final.columns.map(aSalida),
-  } satisfies ColumnaCreada);
+  const salida = columnaConOrden.safeParse({
+    column: aColumnaSalida(columna),
+    columns: final.columns.map(aColumnaSalida),
+  } satisfies ColumnaConOrden);
 
   if (!salida.success) {
     console.error(

@@ -12,6 +12,7 @@ import type {
   CreateBoardInput,
   CreateColumnInput,
   CreateTaskInput,
+  DeleteColumnOptions,
   ListBoardsQuery,
   ListTasksQuery,
   MoveResult,
@@ -21,6 +22,7 @@ import type {
   Task,
   TaskMatch,
   UpdateBoardInput,
+  UpdateColumnInput,
   UpdateTaskInput,
 } from "../domain/types.js";
 import { AuditService } from "../services/audit-service.js";
@@ -101,6 +103,38 @@ export class CorePort implements TaskManagerPort {
 
   async createColumn(input: CreateColumnInput, ctx: ActorContext): Promise<Column> {
     return this.#columns.create(input, ctx);
+  }
+
+  /**
+   * Para PATCH /api/columns/{id} (6.2). Va SOLO aca y no en `TaskManagerPort`,
+   * por lo mismo que `updateBoard` y `deleteBoard`: el catalogo de la 8.2 no
+   * tiene una herramienta `update_column`, asi que sumarlo a la interfaz
+   * obligaria a implementarlo tambien al HttpPort que todavia no existe, para
+   * ningun llamador. `crearCorePort()` devuelve la clase concreta, asi que el
+   * adaptador REST lo alcanza sin ampliar el puerto.
+   */
+  async updateColumn(
+    columnId: string,
+    patch: UpdateColumnInput,
+    ctx: ActorContext,
+  ): Promise<Column> {
+    return this.#columns.update(columnId, patch, ctx);
+  }
+
+  /**
+   * Para DELETE /api/columns/{id} (6.2). Igual que `updateColumn`: la 8.2 no
+   * tiene `delete_column` —la unica destructiva del catalogo es `delete_task`—
+   * asi que no entra en el puerto.
+   *
+   * Devuelve void porque eso devuelve el servicio. El recuento de tareas
+   * reasignadas queda en el registro de auditoria, no en el valor de retorno.
+   */
+  async deleteColumn(
+    columnId: string,
+    options: DeleteColumnOptions,
+    ctx: ActorContext,
+  ): Promise<void> {
+    return this.#columns.delete(columnId, options, ctx);
   }
 
   async listTasks(query: ListTasksQuery): Promise<Page<Task>> {

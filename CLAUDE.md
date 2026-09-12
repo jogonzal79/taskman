@@ -21,24 +21,25 @@ Construido y verificado:
 - `packages/contracts`: los esquemas Zod del borde HTTP (ADR-006). Es una HOJA
   del grafo de dependencias (3.3): no importa nada del proyecto, ni siquiera el
   nucleo.
-- `apps/web`: Next.js con los CINCO endpoints de tablero de la 6.2 —GET
-  /api/boards, POST /api/boards, y GET, PATCH y DELETE de /api/boards/{id}— mas
-  GET /api/health sin autenticacion. Con ellos estan la autenticacion por API
-  key con scopes (ADR-005, 7.1 y 7.2), el mapeo exhaustivo de errores de dominio
-  a HTTP de la 6.4 y el X-Request-Id de la 6.1, que correlaciona la respuesta con
-  el registro de auditoria. Salvedad: /api/health no pasa por `conAuth` y por eso
-  es el unico que NO lleva X-Request-Id.
+- `apps/web`: Next.js con los OCHO endpoints de tablero y columna de la 6.2 —GET
+  y POST /api/boards; GET, PATCH y DELETE de /api/boards/{id}; POST
+  /api/boards/{id}/columns; PATCH y DELETE de /api/columns/{id}— mas GET
+  /api/health sin autenticacion. Con ellos estan la autenticacion por API key con
+  scopes (ADR-005, 7.1 y 7.2), el mapeo exhaustivo de errores de dominio a HTTP
+  de la 6.4 y el X-Request-Id de la 6.1, que correlaciona la respuesta con el
+  registro de auditoria. Salvedad: /api/health no pasa por `conAuth` y por eso es
+  el unico que NO lleva X-Request-Id.
 - Suite de contrato REST en `apps/web/test`, el nivel "Contrato REST" de la 10:
-  los cinco endpoints en exito, no autorizado y validacion fallida. Ver el
+  los ocho endpoints en exito, no autorizado y validacion fallida. Ver el
   comentario de cabecera de `test/boards.test.ts` para el enfoque y su limite.
 
-290 pruebas contra PostgreSQL real: 10 en `packages/db`, 170 en
-`packages/core`, 75 en `apps/mcp-stdio` y 35 en `apps/web`.
+344 pruebas contra PostgreSQL real: 10 en `packages/db`, 170 en
+`packages/core`, 75 en `apps/mcp-stdio` y 89 en `apps/web`.
 
-Todavia NO existen: el resto de los endpoints de la 6.2 (columnas, tareas y
-busqueda), herramienta MCP ni endpoint para CONSULTAR la auditoria, HttpPort, el
-transporte Streamable HTTP, la UI, el openapi.json generado, la idempotencia de
-la 6.5 —con su tabla `idempotency_record`— y el limite de peticiones de la 7.3.
+Todavia NO existen: el resto de los endpoints de la 6.2 (tareas y busqueda),
+herramienta MCP ni endpoint para CONSULTAR la auditoria, HttpPort, el transporte
+Streamable HTTP, la UI, el openapi.json generado, la idempotencia de la 6.5 —con
+su tabla `idempotency_record`— y el limite de peticiones de la 7.3.
 
 Fase en curso: la API REST de la 6.2, en la rama `f2-api-rest`. Cerradas
 antes: F3, auditoria con ActorContext, y F4, log estructurado de la capa MCP.
@@ -122,6 +123,18 @@ aca es para que no se redescubran de cero.
 - No mates procesos `node` con un `Stop-Process` amplio en esta máquina: se
   llevan puestos los servidores MCP de la sesión, que también son `node`.
   Filtrá por PID o por línea de comando.
+- Contrapruebas hechas con `sed -i`: `sed` reescribe el archivo en LF, y con
+  `core.autocrlf=true` git lo entrega en CRLF. Así que comparar el sha256 justo
+  después del `sed` inverso da MISMATCH sin que haya nada mal —el contenido es
+  idéntico y `git diff` sale vacío—, y es fácil leerlo como "el revert no
+  funcionó" y empezar a tocar cosas. El checksum se compara DESPUÉS de dejar que
+  git reescriba el archivo, con `git checkout -- <archivo>`, no después del
+  `sed`. Y al revés: `git checkout --` sobre un archivo que estaba en LF lo
+  convierte a CRLF, que es churn invisible para git pero real en disco. Si hace
+  falta dejar los bytes exactos que había, mirá primero con qué terminadores
+  estaba (`file <archivo>`), y no uses `grep -c $'\r'` para averiguarlo desde
+  esta herramienta: el `$'\r'` puede llegar como patrón vacío y entonces cuenta
+  TODAS las líneas, que se lee igual que "el archivo es CRLF".
 
 ## Reglas que no se negocian
 

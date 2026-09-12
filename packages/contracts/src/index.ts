@@ -28,10 +28,21 @@ export type {
 } from "./board.js";
 
 export {
+  actualizarColumna,
   columna,
-  columnaCreada,
+  columnaConOrden,
   columnaDetallada,
+  consultaDeBorradoDeColumna,
   crearColumna,
+  parametrosDeColumna,
   LIMITE_NOMBRE_COLUMNA,
 } from "./column.js";
-export type { Columna, ColumnaCreada, ColumnaDetallada, CrearColumna } from "./column.js";
+export type {
+  ActualizarColumna,
+  Columna,
+  ColumnaConOrden,
+  ColumnaDetallada,
+  ConsultaDeBorradoDeColumna,
+  CrearColumna,
+  ParametrosDeColumna,
+} from "./column.js";

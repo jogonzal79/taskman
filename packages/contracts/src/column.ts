@@ -127,29 +127,89 @@ export const crearColumna = z.strictObject({
 export type CrearColumna = z.infer<typeof crearColumna>;
 
 /**
- * Respuesta de POST /api/boards/{id}/columns: la columna creada Y todas las
- * columnas del tablero en su orden final.
+ * Respuesta de las operaciones que escriben UNA columna y pueden reordenar el
+ * tablero: POST /api/boards/{id}/columns y PATCH /api/columns/{id}. La columna
+ * afectada Y todas las del tablero en su orden final.
  *
- * Las dos cosas, y no solo la columna, porque insertar en una position
+ * Las dos cosas, y no solo la columna, porque insertar o mover en una position
  * intermedia REESCRIBE la position de las demas: devolver unicamente la columna
- * nueva dejaria al cliente con un orden viejo y sin señal de que cambio. Es la
- * misma decision que ya tomo la herramienta `create_column` del borde MCP para
- * esta operacion, y que las dos puertas de la misma operacion informen su efecto
- * igual importa mas que el par de campos repetidos.
+ * afectada dejaria al cliente con un orden viejo y sin señal de que cambio. Es la
+ * misma decision que ya tomo la herramienta `create_column` del borde MCP, y que
+ * las dos puertas de la misma operacion informen su efecto igual importa mas que
+ * el par de campos repetidos.
  *
- * Lo que NO va es el tablero en si: este endpoint no toca ninguno de sus
+ * UNA sola forma para los dos endpoints a proposito. El PATCH podria devolver la
+ * columna sola cuando solo renombra, pero entonces su respuesta cambiaria de
+ * forma segun que campos trajo el cuerpo, y un cliente tendria que mantener dos
+ * lectores para el mismo endpoint. El costo de la forma unica es un SELECT del
+ * orden en un rename, que no cambia nada; el de la forma variable lo paga el
+ * cliente en cada llamada.
+ *
+ * Lo que NO va es el tablero en si: estos endpoints no tocan ninguno de sus
  * campos. Incluirlo repetiria el error que PATCH /api/boards/{id} evita al no
  * devolver columnas —mezclar en una respuesta datos de otro instante que la
  * operacion no modifico— y para eso ya esta GET /api/boards/{id}.
  *
  * Tampoco van los recuentos, por lo mismo: habria que pedirlos DESPUES de la
- * transaccion que inserto, asi que la respuesta mezclaria un orden de un
+ * transaccion que escribio, asi que la respuesta mezclaria un orden de un
  * instante con recuentos de otro.
  */
-export const columnaCreada = z.strictObject({
+export const columnaConOrden = z.strictObject({
   column: columna,
-  /** TODAS las del tablero, en el orden que quedo tras insertar. */
+  /** TODAS las del tablero, en el orden que quedo tras la operacion. */
   columns: z.array(columna),
 });
 
-export type ColumnaCreada = z.infer<typeof columnaCreada>;
+export type ColumnaConOrden = z.infer<typeof columnaConOrden>;
+
+/**
+ * El `{id}` de las rutas /api/columns/{id}.
+ *
+ * Aparte de `parametrosDeTablero` aunque la forma sea la misma: son entidades
+ * distintas, el mensaje de error nombra a cada una, y el dia que una key de
+ * columna sirva tambien como referencia en la ruta este esquema cambia sin
+ * arrastrar al del tablero.
+ */
+export const parametrosDeColumna = z.object({ id: z.uuid() });
+
+export type ParametrosDeColumna = z.infer<typeof parametrosDeColumna>;
+
+/**
+ * Cuerpo de PATCH /api/columns/{id} (6.2): "renombrar o reordenar".
+ *
+ * `key` NO esta, y un cuerpo que la traiga es un 400 por el `strictObject`. Las
+ * keys son estables por diseño: los agentes resuelven referencias con ellas
+ * (8.3.1), asi que cambiarlas rompe integraciones en silencio. Es la misma
+ * ausencia que ya tiene `UpdateColumnInput` en el nucleo.
+ *
+ * Los dos campos opcionales a la vez permiten el cuerpo vacio `{}`. Es a
+ * proposito y el mismo criterio que PATCH /api/boards/{id}: un patch sin campos
+ * no cambia nada, que es el mismo caso que uno con el valor que ya estaba, y el
+ * nucleo ya trata "sin cambio efectivo" como exito sin registro de auditoria
+ * (5.2).
+ */
+export const actualizarColumna = z.strictObject({
+  name: nombreDeColumna.optional(),
+  position: posicionDeColumna,
+});
+
+export type ActualizarColumna = z.infer<typeof actualizarColumna>;
+
+/**
+ * Query string de DELETE /api/columns/{id} (6.2): `reassign_to` opcional.
+ *
+ * Va en la QUERY y no en el cuerpo. Un cuerpo en un DELETE es legal pero lo
+ * descartan proxies e intermediarios con suficiente frecuencia como para que el
+ * parametro llegue vacio sin que nadie se entere, y esto es un identificador
+ * suelto: justo lo que un parametro de consulta expresa. Aceptar las dos vias
+ * seria dejar dos fuentes para el mismo dato, que es lo que POST
+ * /api/boards/{id}/columns ya rechaza con su `board_id`.
+ *
+ * En snake_case como fija la 6.1 para el borde; el nucleo lo recibe como
+ * `reassignTo`, y la traduccion ocurre en el adaptador.
+ */
+export const consultaDeBorradoDeColumna = z.strictObject({
+  reassign_to: z.uuid().optional(),
+});
+
+export type ConsultaDeBorradoDeColumna = z.infer<typeof consultaDeBorradoDeColumna>;

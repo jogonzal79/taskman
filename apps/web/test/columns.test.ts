@@ -1,4 +1,4 @@
-import type { ColumnaCreada } from "@taskman/contracts";
+import type { ColumnaConOrden } from "@taskman/contracts";
 import type { CorePort } from "@taskman/core";
 import type { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -121,7 +121,7 @@ describe("POST /api/boards/{id}/columns", () => {
     expect(respuesta.headers.get("X-Request-Id")).toMatch(/^req_[0-9a-f]{32}$/);
     expect(respuesta.headers.get("Cache-Control")).toBe("no-store");
 
-    const cuerpo = await leerJson<ColumnaCreada>(respuesta);
+    const cuerpo = await leerJson<ColumnaConOrden>(respuesta);
 
     expect(Object.keys(cuerpo).sort()).toEqual(["column", "columns"]);
     expect(Object.keys(cuerpo.column).sort()).toEqual(CLAVES_COLUMNA);
@@ -153,7 +153,7 @@ describe("POST /api/boards/{id}/columns", () => {
 
     expect(respuesta.status).toBe(201);
 
-    const cuerpo = await leerJson<ColumnaCreada>(respuesta);
+    const cuerpo = await leerJson<ColumnaConOrden>(respuesta);
 
     expect(cuerpo.column.position).toBe(1);
     expect(await keysPorPosicion(tablero.id)).toEqual([
@@ -192,7 +192,7 @@ describe("POST /api/boards/{id}/columns", () => {
     );
 
     expect(respuesta.status).toBe(201);
-    expect((await leerJson<ColumnaCreada>(respuesta)).column.position).toBe(0);
+    expect((await leerJson<ColumnaConOrden>(respuesta)).column.position).toBe(0);
     expect(await keysPorPosicion(tablero.id)).toEqual(["INBOX", ...POR_DEFECTO]);
     await expectTableroDenso(tablero.id);
   });
@@ -213,7 +213,7 @@ describe("POST /api/boards/{id}/columns", () => {
     expect(respuesta.status).toBe(201);
     // Mismo criterio que `move` (5.2): el que calcula mal el indice obtiene un
     // resultado util, no un error.
-    expect((await leerJson<ColumnaCreada>(respuesta)).column.position).toBe(4);
+    expect((await leerJson<ColumnaConOrden>(respuesta)).column.position).toBe(4);
     expect(await keysPorPosicion(tablero.id)).toEqual([...POR_DEFECTO, "EN_REVISION"]);
     await expectTableroDenso(tablero.id);
   });
@@ -232,7 +232,7 @@ describe("POST /api/boards/{id}/columns", () => {
     );
 
     expect(respuesta.status).toBe(201);
-    expect((await leerJson<ColumnaCreada>(respuesta)).column.position).toBe(4);
+    expect((await leerJson<ColumnaConOrden>(respuesta)).column.position).toBe(4);
     await expectTableroDenso(tablero.id);
   });
 
@@ -347,7 +347,7 @@ describe("POST /api/boards/{id}/columns", () => {
 
       expect(segunda.status).toBe(201);
 
-      const cuerpo = await leerJson<ColumnaCreada>(segunda);
+      const cuerpo = await leerJson<ColumnaConOrden>(segunda);
 
       expect(cuerpo.column.board_id).toBe(otro.id);
       expect(await keysPorPosicion(uno.id)).toEqual([...POR_DEFECTO, "EN_REVISION"]);
@@ -371,7 +371,7 @@ describe("POST /api/boards/{id}/columns", () => {
 
       expect(respuesta.status).toBe(201);
 
-      const cuerpo = await leerJson<ColumnaCreada>(respuesta);
+      const cuerpo = await leerJson<ColumnaConOrden>(respuesta);
 
       expect(cuerpo.column.key).toBe("EN_PROGRESO_LARGO");
       // Y es lo que quedo en la base, no solo lo que dice la respuesta.
@@ -398,7 +398,7 @@ describe("POST /api/boards/{id}/columns", () => {
 
       expect(respuesta.status).toBe(201);
 
-      const cuerpo = await leerJson<ColumnaCreada>(respuesta);
+      const cuerpo = await leerJson<ColumnaConOrden>(respuesta);
 
       expect(cuerpo.column.key).toBe("TODO");
       expect(await keyEnLaBase(cuerpo.column.id)).toBe("TODO");
@@ -421,7 +421,7 @@ describe("POST /api/boards/{id}/columns", () => {
       );
 
       expect(respuesta.status).toBe(201);
-      expect((await leerJson<ColumnaCreada>(respuesta)).column.name).toBe("En revision");
+      expect((await leerJson<ColumnaConOrden>(respuesta)).column.name).toBe("En revision");
     });
   });
 
