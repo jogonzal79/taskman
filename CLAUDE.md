@@ -7,47 +7,46 @@ directorio son ese original binario; no intentes leerlos.
 
 ## Estado
 
-Construido y verificado:
+Acá NO hay inventario, y es a propósito. Un contador de pruebas y una lista de
+endpoints caducan en cada commit, ningún paso tiene motivo para volver a
+tocarlos, y entonces mienten por defecto: la lista de endpoints quedó vieja tres
+veces seguidas, y las tres anunció como faltante algo que ya estaba construido.
+Si estás por escribir acá un número o una enumeración de lo que ya existe, lo que
+hace falta es el comando que lo averigua, no el dato.
 
-- `packages/db`: esquema, migracion inicial y las restricciones por SQL crudo.
-- `packages/core`: errores de dominio, repositorios, BoardService, ColumnService
-  y TaskService completos, mas el registro de herramientas MCP (`src/mcp`).
-- Auditoria (RF-10): `ActorContext`, `AuditService` y los eventos de la 7.4. El
-  registro se escribe en la MISMA transaccion que la operacion auditada, y toda
-  operacion de escritura de los tres servicios recibe `ctx`.
-- `apps/mcp-stdio`: servidor MCP por stdio en modo `core`, con las ONCE
-  herramientas del catalogo de la 8.2 y la politica de operaciones destructivas
-  de la 8.3.2 (MCP_DESTRUCTIVE_POLICY), mas el log estructurado de la 11.1.
-- `packages/contracts`: los esquemas Zod del borde HTTP (ADR-006). Es una HOJA
-  del grafo de dependencias (3.3): no importa nada del proyecto, ni siquiera el
-  nucleo.
-- `apps/web`: Next.js con los OCHO endpoints de tablero y columna de la 6.2 —GET
-  y POST /api/boards; GET, PATCH y DELETE de /api/boards/{id}; POST
-  /api/boards/{id}/columns; PATCH y DELETE de /api/columns/{id}— mas GET
-  /api/health sin autenticacion. Con ellos estan la autenticacion por API key con
-  scopes (ADR-005, 7.1 y 7.2), el mapeo exhaustivo de errores de dominio a HTTP
-  de la 6.4 y el X-Request-Id de la 6.1, que correlaciona la respuesta con el
-  registro de auditoria. Salvedad: /api/health no pasa por `conAuth` y por eso es
-  el unico que NO lleva X-Request-Id.
-- Suite de contrato REST en `apps/web/test`, el nivel "Contrato REST" de la 10:
-  los ocho endpoints en exito, no autorizado y validacion fallida. Ver el
-  comentario de cabecera de `test/boards.test.ts` para el enfoque y su limite.
+- **Cuántas pruebas hay y si pasan**: `pnpm run verify`. Levanta la base, migra y
+  corre las suites contra PostgreSQL real; cada paquete imprime su total.
+- **Qué endpoints existen**, con su verbo y su scope, uno por línea:
 
-344 pruebas contra PostgreSQL real: 10 en `packages/db`, 170 en
-`packages/core`, 75 en `apps/mcp-stdio` y 89 en `apps/web`.
+  ```
+  grep -rnE "^export (const|async function) (GET|POST|PATCH|PUT|DELETE)" apps/web/app --include=route.ts
+  ```
 
-Todavia NO existen: el resto de los endpoints de la 6.2 (tareas y busqueda),
-herramienta MCP ni endpoint para CONSULTAR la auditoria, HttpPort, el transporte
-Streamable HTTP, la UI, el openapi.json generado, la idempotencia de la 6.5 —con
-su tabla `idempotency_record`— y el limite de peticiones de la 7.3.
+  El `conAuth("…")` de cada línea es el scope que ese endpoint exige (7.2).
+  `/api/health` sale sin `conAuth` porque es el único sin autenticación, y por
+  eso es también el único que NO lleva X-Request-Id.
+- **Qué endpoints faltan**: la tabla de la 6.2 es el objetivo y el comando de
+  arriba es el estado; la resta de los dos es la lista. Cualquier copia escrita
+  acá empieza a envejecer el mismo día.
+- **Qué herramientas MCP hay**: un archivo por herramienta en
+  `packages/core/src/mcp/tools/`, montadas en `registry.ts`. El catálogo que
+  tienen que cubrir es el de la 8.2.
+- **En qué rama y fase estás**: `git branch --show-current` y `git log --oneline`.
+  Los nombres de fase (F1b, F3, F4…) salen del plan de la 12.
 
-Fase en curso: la API REST de la 6.2, en la rama `f2-api-rest`. Cerradas
-antes: F3, auditoria con ActorContext, y F4, log estructurado de la capa MCP.
+Lo que no caduca está en las secciones de abajo, que son las que valen: la deuda
+conocida, las trampas del entorno, las reglas que no se negocian y los
+invariantes del servidor MCP.
 
 ## Deuda conocida
 
 Salio del uso real, no de la especificacion. Ninguna esta arreglada; anotarlas
 aca es para que no se redescubran de cero.
+
+Esta lista SÍ va escrita a mano, a diferencia del inventario de arriba, y la
+diferencia no es el formato: una entrada de acá se borra en el mismo commit que
+arregla lo que describe, así que el trabajo que la invalida es el que la toca. Un
+contador de pruebas no tiene ese commit.
 
 - `ubicarTarea` no verifica que un id de tarea pertenezca al `board` indicado:
   la resolucion por id no busca, asi que un id valido de OTRO tablero se acepta.
@@ -71,10 +70,14 @@ aca es para que no se redescubran de cero.
 - Node 20+, pnpm workspaces, TypeScript strict con noUncheckedIndexedAccess.
 - PostgreSQL 16 en Docker Desktop.
 - `pnpm run verify` corre los tests contra la base de desarrollo y la TRUNCA:
-  cualquier dato cargado a mano ahí se pierde en el próximo verify. Lo que
-  aparezca es fixture de `apps/mcp-stdio/test/mcp.test.ts` y no dato real: los
-  tableros se llaman "QA", "Trazado" o "Auditado", y "Revisar HU-25" es el
-  título de una TAREA, no de un tablero.
+  cualquier dato cargado a mano ahí se pierde en el próximo verify. Y lo que
+  quede después NO es dato real: es el residuo de la última prueba que corrió,
+  porque cada una trunca en su `beforeEach` y siembra lo suyo. Cuál sea ese
+  residuo cambia con el orden de las suites —este archivo decía "fixture de
+  `apps/mcp-stdio`" y dejó de ser cierto en cuanto `apps/web` pasó a correr
+  después—, así que no lo anotes acá: si ves algo y dudás, buscá de dónde sale
+  con `grep -rn "<lo que viste>" --include=*.test.ts .`. Ya engañó una vez, con
+  un título de TAREA leído como nombre de tablero.
 - Eso incluye `api_key`: verify también la vacía, así que cualquier clave
   emitida a mano desaparece en el próximo verify y hay que reemitirla con
   `pnpm run apikey:create`.
@@ -193,6 +196,13 @@ aca es para que no se redescubran de cero.
 - (A partir de F1b) `packages/core` no importa Next, ni el SDK de MCP, ni nada
   de HTTP. Los adaptadores (REST, MCP) no contienen reglas de negocio. Ningún
   adaptador importa Prisma directamente.
+- `packages/contracts` es una HOJA del grafo de dependencias (3.3): no importa
+  NADA del proyecto, ni siquiera el núcleo. Por eso sus límites —los de nombre,
+  descripción y paginación— están escritos ahí otra vez en vez de leerse de
+  `packages/core`: que hoy coincidan con los del dominio no los hace el mismo
+  dato, estos son los que documenta el borde. Si alguna vez hace falta que
+  coincidan por construcción, la salida es generar unos de los otros, no importar
+  el núcleo.
 - `packages/core/src/domain/api-key.ts` NO puede importar nada del resto del
   núcleo: solo `node:crypto`. El script de administración lo carga por ruta
   directa (`../src/domain/api-key.ts`) apoyándose en el stripping de tipos
@@ -218,7 +228,7 @@ aca es para que no se redescubran de cero.
   TYPECHECK —`exactOptionalPropertyTypes`— y NO la suite. `BoardService.update`
   decide con `patch.description === undefined`, así que una clave PRESENTE en
   undefined se comporta igual que una ausente: cambiarlo por
-  `description: entrada.data.description` deja las 35 pruebas de `apps/web` en
+  `description: entrada.data.description` deja la suite de `apps/web` ENTERA en
   verde y falla con TS2375. O sea que el reflejo de "si no rompe ningún test, no
   protege nada" acá se lee al revés: borrar el spread rompe `verify` un paso
   antes, en `typecheck`. Lo que la suite SÍ atrapa son los dos colapsos que
@@ -315,6 +325,10 @@ aca es para que no se redescubran de cero.
   titulo.
 - Una coincidencia ambigua NUNCA se resuelve eligiendo la primera. Devuelve
   AMBIGUOUS_MATCH con todos los candidatos y un `hint` que dice que hacer.
+- `apps/mcp-stdio` corre en modo `core` (MCP_PORT_MODE de la 8.1): habla con la
+  base por los servicios, en el mismo proceso, sin pasar por HTTP. La politica de
+  operaciones destructivas de la 8.3.2 se controla con MCP_DESTRUCTIVE_POLICY, y
+  el log estructurado es el de la 11.1: a stderr, nunca a stdout.
 - stdout es el canal del protocolo: en `apps/mcp-stdio` todo diagnostico va a
   stderr. Un `console.log` suelto rompe la sesion MCP entera.
 - `apps/mcp-stdio` se empaqueta con esbuild porque `@taskman/core` y
