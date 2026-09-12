@@ -8,6 +8,9 @@
 export { consultaDeListado, listadoDe, LIMITE_DEFECTO, LIMITE_MAXIMO } from "./pagination.js";
 export type { ConsultaDeListado } from "./pagination.js";
 
+export { errorDeApi, ESTADO_POR_CODIGO } from "./error.js";
+export type { CodigoDeError, ErrorDeApi } from "./error.js";
+
 export {
   consultaDeAuditoria,
   idDeRegistro,

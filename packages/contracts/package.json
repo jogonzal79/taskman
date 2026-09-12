@@ -9,9 +9,13 @@
     ".": "./src/index.ts"
   },
   "scripts": {
+    "build": "node build.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "zod": "4.5.4"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
   }
 }

@@ -16,6 +16,7 @@
     "db:migrate:dev": "pnpm --filter @taskman/db run migrate:dev",
     "db:constraints": "pnpm --filter @taskman/db run constraints",
     "build": "pnpm -r run build",
+    "openapi:generate": "pnpm --filter @taskman/contracts run build",
     "test": "pnpm -r --workspace-concurrency=1 run test",
     "typecheck": "pnpm -r run typecheck",
     "verify": "pnpm run db:generate && pnpm run typecheck && pnpm run build && pnpm run db:up && pnpm run db:migrate && pnpm run test",

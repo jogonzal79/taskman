@@ -122,6 +122,31 @@ contador de pruebas no tiene ese commit.
   `apikey:create`. DESCARTADA explicitamente la de un `setInterval` en el proceso
   de Next: se duplica por instancia y el hot reload la multiplica, asi que borra
   filas desde varios relojes a la vez y ninguno es observable.
+- `apps/web/lib/http.ts` mantiene su PROPIA `CuerpoError` y su
+  `HTTP_POR_CODIGO`, y HOY coinciden con `packages/contracts/src/error.ts` —los
+  compare campo por campo y codigo por codigo al escribirlo— pero NADA lo
+  comprueba. O sea que es un RT-03, la desincronizacion que la ADR-006 existe
+  para prevenir, y esta DENTRO del paso que vino a cerrarla: el generador de
+  OpenAPI necesitaba el modelo de errores de la 6.4 como esquema y ese modelo no
+  existia en ninguna parte salvo como interfaz de TypeScript en el adaptador. El
+  arreglo es que `http.ts` DERIVE de `error.ts` en vez de declararlo otra vez.
+  Sale barato y no pierde nada: `HTTP_POR_CODIGO` es `Record<DomainErrorCode,
+  number>`, o sea exhaustivo por typecheck sobre los codigos del nucleo, asi que
+  un codigo de dominio nuevo sin estado asignado seguiria fallando en `tsc`
+  despues del cambio. Lo que NO se puede hacer es al reves —mover los codigos a
+  contracts y que el nucleo los lea— porque contracts es una hoja del grafo
+  (3.3) y no puede importar `DomainErrorCode`; por eso `ESTADO_POR_CODIGO` es un
+  mapa de codigo a estado y no un enum que se crea la fuente de los codigos.
+- `verify` REGENERA `openapi.json` en vez de comprobarlo. Corre `build`, y
+  `build` lo reescribe, asi que un archivo desactualizado en el repo se arregla
+  SOLO y en silencio en la maquina de quien corre verify: nunca falla, y lo
+  unico que lo delata es que `git status` aparezca sucio despues de un verify
+  que dio verde. En CI, donde nadie mira `git status`, no se delata en absoluto.
+  El arreglo es un modo `--check` en `build.mjs` —generar en memoria, comparar
+  con el archivo versionado y fallar si difieren— y usarlo en verify en vez de
+  la generacion, o ademas de ella. Es el paso siguiente de la ADR-006: sin eso,
+  el archivo esta versionado pero nada obliga a que lo versionado sea lo que los
+  esquemas dicen hoy.
 
 ## Entorno
 
