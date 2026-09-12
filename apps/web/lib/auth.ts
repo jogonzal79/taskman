@@ -11,6 +11,12 @@ import {
   respuestaDeFallo,
   type ContextoPeticion,
 } from "./http.js";
+import {
+  consumir,
+  CUBO_POR_SCOPE,
+  VENTANA_MS,
+  type LimiteSuperado,
+} from "./rate-limit.js";
 
 /**
  * Autenticacion por API key en el borde HTTP (ADR-005, 7.1 y 7.2).
@@ -97,6 +103,33 @@ function noAutenticado(ctx: ContextoPeticion): Response {
     401,
     ctx,
     { hint: "Envia la clave como 'Authorization: Bearer tmk_live_...'." },
+  );
+}
+
+/**
+ * El 429 de la 7.3, con la envoltura de la 6.4 y `Retry-After` en SEGUNDOS,
+ * que es una de las dos formas que permite HTTP (la otra es una fecha) y la que
+ * un cliente puede usar sin mirar su propio reloj.
+ *
+ * `details` lleva cual de los dos cupos se agoto y cuanto vale, para que quien
+ * lo reciba pueda ajustar su ritmo sin ir a leer la especificacion.
+ */
+function limiteSuperado(veredicto: LimiteSuperado, ctx: ContextoPeticion): Response {
+  return respuestaDeError(
+    "RATE_LIMITED",
+    `Se supero el limite de ${veredicto.limite} peticiones por minuto de ${veredicto.nombreHttp} de esta clave.`,
+    429,
+    ctx,
+    {
+      details: {
+        bucket: veredicto.nombreHttp,
+        limit: veredicto.limite,
+        window_seconds: VENTANA_MS / 1000,
+        retry_after_seconds: veredicto.esperaSegundos,
+      },
+      hint: `Espera ${veredicto.esperaSegundos} segundos y reintenta; el cupo se libera de a una peticion.`,
+      cabeceras: { "Retry-After": String(veredicto.esperaSegundos) },
+    },
   );
 }
 
@@ -203,6 +236,33 @@ export function conAuth<Args extends unknown[]>(scope: ScopeHttp, handler: Handl
       }
 
       const resultado = await servicio.autenticar(clave, aScopeDeDominio(scope));
+
+      /**
+       * El limite de la 7.3, DESPUES de autenticar y ANTES de resolver el scope.
+       *
+       * Despues de autenticar porque el limite es POR CLAVE: no hay a quien
+       * cobrarle la peticion hasta saber cual es. Eso deja fuera del limite a las
+       * peticiones que no autentican, y esta bien que queden fuera: acotarlas
+       * seria un limite por IP, que la 7.3 no pide y que con una sola clave
+       * detras de un proxy haria mas dano que bien.
+       *
+       * Antes del scope porque un cliente en bucle de 403 sigue siendo un cliente
+       * en bucle: el cupo acota el VOLUMEN que una clave puede causar, y ese
+       * volumen es real tanto si el scope alcanzaba como si no. Al reves —el 403
+       * primero— un bucle de scope equivocado no se acotaria nunca. La
+       * consecuencia es que una clave sin scope y sin cupo recibe 429 y no 403, y
+       * es el orden correcto de las dos noticias: en cuanto baje el ritmo se
+       * encuentra con el 403 y arregla lo otro.
+       *
+       * El cupo lo elige el SCOPE del endpoint, no su metodo: ver CUBO_POR_SCOPE.
+       */
+      if (resultado.ok || resultado.motivo === "SCOPE_INSUFICIENTE") {
+        const veredicto = consumir(resultado.clave.id, CUBO_POR_SCOPE[scope]);
+
+        if (!veredicto.permitido) {
+          return limiteSuperado(veredicto, ctx);
+        }
+      }
 
       if (resultado.ok) {
         return await handler(request, { ...ctx, clave: resultado.clave }, ...args);

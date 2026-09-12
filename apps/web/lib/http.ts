@@ -35,12 +35,18 @@ export interface ContextoPeticion {
  * va en todas: un listado o un tablero cacheados responden por el estado de
  * otro momento.
  */
-export function responder(cuerpo: unknown, status: number, ctx: ContextoPeticion): Response {
+export function responder(
+  cuerpo: unknown,
+  status: number,
+  ctx: ContextoPeticion,
+  extra: Readonly<Record<string, string>> = {},
+): Response {
   return Response.json(cuerpo, {
     status,
     headers: {
       "Cache-Control": "no-store",
       "X-Request-Id": ctx.requestId,
+      ...extra,
     },
   });
 }
@@ -182,15 +188,26 @@ function cuerpoDeError(
   };
 }
 
-/** Error con la envoltura de la 6.4, para los codigos que no son de dominio. */
+/**
+ * Error con la envoltura de la 6.4, para los codigos que no son de dominio.
+ *
+ * `cabeceras` existe por el 429 de la 7.3, que ademas del cuerpo tiene que
+ * llevar `Retry-After`: es la unica respuesta de error del borde que dice algo
+ * en una cabecera. Va aca y no en el llamador para que el 429 siga saliendo por
+ * el mismo camino que los demas errores y no se arme a mano.
+ */
 export function respuestaDeError(
   code: string,
   message: string,
   status: number,
   ctx: ContextoPeticion,
-  extra: { details?: Readonly<Record<string, unknown>>; hint?: string } = {},
+  extra: {
+    details?: Readonly<Record<string, unknown>>;
+    hint?: string;
+    cabeceras?: Readonly<Record<string, string>>;
+  } = {},
 ): Response {
-  return responder(cuerpoDeError(code, message, ctx, extra), status, ctx);
+  return responder(cuerpoDeError(code, message, ctx, extra), status, ctx, extra.cabeceras ?? {});
 }
 
 /**

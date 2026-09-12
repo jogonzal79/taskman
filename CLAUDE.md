@@ -137,6 +137,21 @@ contador de pruebas no tiene ese commit.
   contracts y que el nucleo los lea— porque contracts es una hoja del grafo
   (3.3) y no puede importar `DomainErrorCode`; por eso `ESTADO_POR_CODIGO` es un
   mapa de codigo a estado y no un enum que se crea la fuente de los codigos.
+- El ESQUEMA ZOD de configuracion que pide la 11.2 —validar el entorno entero al
+  arrancar, con una variable ausente o invalida impidiendo el arranque— NO
+  existe. Lo que hay en `apps/web/instrumentation.ts` son dos comprobaciones a
+  mano, `DATABASE_URL` y `RATE_LIMIT_ENABLED`, y es facil leerlas como que la
+  11.2 ya esta cumplida: no lo esta. Las que faltan son las demas variables de
+  esa tabla, y la que mas importa es `API_KEY_PEPPER`, que hoy se valida RECIEN
+  en la primera peticion autenticada —el `ApiKeyService` se construye por
+  peticion y su constructor falla con un pepper vacio— asi que un despliegue sin
+  pepper arranca bien y devuelve 500 en la primera peticion con clave, que es
+  exactamente el 'fallo posterior en tiempo de ejecucion' que la 11.2 prohibe.
+  El arreglo es un esquema Zod en `apps/web` —no en `packages/contracts`, que es
+  una hoja y no valida entornos— consumido desde `register()`. Ojo con una cosa
+  al escribirlo: `register()` corre TAMBIEN en el runtime edge, donde no hay
+  `process.exit`, y por eso la comprobacion de hoy sale temprano si
+  `NEXT_RUNTIME` no es nodejs.
 
 ## Entorno
 

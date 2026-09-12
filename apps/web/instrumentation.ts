@@ -23,4 +23,22 @@ export function register(): void {
     );
     process.exit(1);
   }
+
+  /**
+   * RATE_LIMIT_ENABLED (11.2). Es OPCIONAL —ausente, el limite de la 7.3 queda
+   * encendido— pero un valor que no sea true o false SI impide el arranque, que
+   * es lo que pide la 11.2 para una variable invalida.
+   *
+   * El motivo de ser estricto aca y no tolerante: el limite falla cerrado, asi
+   * que `RATE_LIMIT_ENABLED=flase` lo deja ENCENDIDO. Quien escribio eso queria
+   * apagarlo, y sin esta comprobacion se enteraria por los 429 de un cliente en
+   * produccion. Al arranque se entera en la primera linea del log.
+   */
+  const limite = process.env["RATE_LIMIT_ENABLED"]?.trim().toLowerCase();
+  if (limite !== undefined && limite !== "" && limite !== "true" && limite !== "false") {
+    process.stderr.write(
+      `[taskman-web] RATE_LIMIT_ENABLED tiene que ser "true" o "false", y es "${limite}".\n`,
+    );
+    process.exit(1);
+  }
 }

@@ -127,6 +127,24 @@
               }
             }
           },
+          "429": {
+            "description": "Demasiadas peticiones. Codigos: RATE_LIMITED.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              },
+              "Retry-After": {
+                "$ref": "#/components/headers/RetryAfter"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDeApi"
+                }
+              }
+            }
+          },
           "500": {
             "description": "Error interno. Codigos: INTERNAL_ERROR.",
             "headers": {
@@ -246,6 +264,24 @@
               }
             }
           },
+          "429": {
+            "description": "Demasiadas peticiones. Codigos: RATE_LIMITED.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              },
+              "Retry-After": {
+                "$ref": "#/components/headers/RetryAfter"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDeApi"
+                }
+              }
+            }
+          },
           "500": {
             "description": "Error interno. Codigos: INTERNAL_ERROR.",
             "headers": {
@@ -351,6 +387,24 @@
             "headers": {
               "X-Request-Id": {
                 "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDeApi"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Demasiadas peticiones. Codigos: RATE_LIMITED.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              },
+              "Retry-After": {
+                "$ref": "#/components/headers/RetryAfter"
               }
             },
             "content": {
@@ -484,6 +538,24 @@
               }
             }
           },
+          "429": {
+            "description": "Demasiadas peticiones. Codigos: RATE_LIMITED.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              },
+              "Retry-After": {
+                "$ref": "#/components/headers/RetryAfter"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDeApi"
+                }
+              }
+            }
+          },
           "500": {
             "description": "Error interno. Codigos: INTERNAL_ERROR.",
             "headers": {
@@ -580,6 +652,24 @@
             "headers": {
               "X-Request-Id": {
                 "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDeApi"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Demasiadas peticiones. Codigos: RATE_LIMITED.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              },
+              "Retry-After": {
+                "$ref": "#/components/headers/RetryAfter"
               }
             },
             "content": {
@@ -751,6 +841,24 @@
               }
             }
           },
+          "429": {
+            "description": "Demasiadas peticiones. Codigos: RATE_LIMITED.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              },
+              "Retry-After": {
+                "$ref": "#/components/headers/RetryAfter"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDeApi"
+                }
+              }
+            }
+          },
           "500": {
             "description": "Error interno. Codigos: INTERNAL_ERROR.",
             "headers": {
@@ -866,6 +974,24 @@
             "headers": {
               "X-Request-Id": {
                 "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDeApi"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Demasiadas peticiones. Codigos: RATE_LIMITED.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              },
+              "Retry-After": {
+                "$ref": "#/components/headers/RetryAfter"
               }
             },
             "content": {
@@ -997,6 +1123,24 @@
             "headers": {
               "X-Request-Id": {
                 "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDeApi"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Demasiadas peticiones. Codigos: RATE_LIMITED.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              },
+              "Retry-After": {
+                "$ref": "#/components/headers/RetryAfter"
               }
             },
             "content": {
@@ -1225,6 +1369,24 @@
               }
             }
           },
+          "429": {
+            "description": "Demasiadas peticiones. Codigos: RATE_LIMITED.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              },
+              "Retry-After": {
+                "$ref": "#/components/headers/RetryAfter"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDeApi"
+                }
+              }
+            }
+          },
           "500": {
             "description": "Error interno. Codigos: INTERNAL_ERROR.",
             "headers": {
@@ -1374,6 +1536,24 @@
               }
             }
           },
+          "429": {
+            "description": "Demasiadas peticiones. Codigos: RATE_LIMITED.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              },
+              "Retry-After": {
+                "$ref": "#/components/headers/RetryAfter"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDeApi"
+                }
+              }
+            }
+          },
           "500": {
             "description": "Error interno. Codigos: INTERNAL_ERROR.",
             "headers": {
@@ -1513,6 +1693,24 @@
               }
             }
           },
+          "429": {
+            "description": "Demasiadas peticiones. Codigos: RATE_LIMITED.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              },
+              "Retry-After": {
+                "$ref": "#/components/headers/RetryAfter"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDeApi"
+                }
+              }
+            }
+          },
           "500": {
             "description": "Error interno. Codigos: INTERNAL_ERROR.",
             "headers": {
@@ -1618,6 +1816,24 @@
             "headers": {
               "X-Request-Id": {
                 "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDeApi"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Demasiadas peticiones. Codigos: RATE_LIMITED.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              },
+              "Retry-After": {
+                "$ref": "#/components/headers/RetryAfter"
               }
             },
             "content": {
@@ -1751,6 +1967,24 @@
               }
             }
           },
+          "429": {
+            "description": "Demasiadas peticiones. Codigos: RATE_LIMITED.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              },
+              "Retry-After": {
+                "$ref": "#/components/headers/RetryAfter"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDeApi"
+                }
+              }
+            }
+          },
           "500": {
             "description": "Error interno. Codigos: INTERNAL_ERROR.",
             "headers": {
@@ -1847,6 +2081,24 @@
             "headers": {
               "X-Request-Id": {
                 "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDeApi"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Demasiadas peticiones. Codigos: RATE_LIMITED.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              },
+              "Retry-After": {
+                "$ref": "#/components/headers/RetryAfter"
               }
             },
             "content": {
@@ -1987,6 +2239,24 @@
             "headers": {
               "X-Request-Id": {
                 "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDeApi"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Demasiadas peticiones. Codigos: RATE_LIMITED.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              },
+              "Retry-After": {
+                "$ref": "#/components/headers/RetryAfter"
               }
             },
             "content": {
@@ -2149,6 +2419,24 @@
               }
             }
           },
+          "429": {
+            "description": "Demasiadas peticiones. Codigos: RATE_LIMITED.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              },
+              "Retry-After": {
+                "$ref": "#/components/headers/RetryAfter"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDeApi"
+                }
+              }
+            }
+          },
           "500": {
             "description": "Error interno. Codigos: INTERNAL_ERROR.",
             "headers": {
@@ -2224,6 +2512,14 @@
           ]
         },
         "required": false
+      },
+      "RetryAfter": {
+        "description": "Segundos enteros que faltan para que se libere un lugar del cupo de la clave (7.3). Nunca cero. La forma de fecha que tambien permite HTTP no se usa: obligaria al cliente a confiar en su propio reloj.",
+        "schema": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "required": true
       }
     },
     "schemas": {

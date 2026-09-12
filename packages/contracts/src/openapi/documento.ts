@@ -80,9 +80,11 @@ function etiqueta(ruta: Ruta): string {
  *
  * Deducidos y no escritos endpoint por endpoint: UNAUTHENTICATED y
  * FORBIDDEN_SCOPE los puede devolver cualquiera que exija scope (7.2),
- * VALIDATION_ERROR cualquiera que reciba entrada, INTERNAL_ERROR cualquiera que
- * pase por el try/catch del adaptador, e IDEMPOTENCY_MISMATCH solo los tres de
- * la 6.5. Repetirlos 16 veces en la tabla seria repetir 16 veces la misma regla.
+ * RATE_LIMITED tambien —el limite de la 7.3 se cobra en `conAuth`, o sea en
+ * todos—, VALIDATION_ERROR cualquiera que reciba entrada, INTERNAL_ERROR
+ * cualquiera que pase por el try/catch del adaptador, e IDEMPOTENCY_MISMATCH
+ * solo los tres de la 6.5. Repetirlos 16 veces en la tabla seria repetir 16
+ * veces la misma regla.
  */
 function erroresDe(ruta: Ruta): readonly CodigoDeError[] {
   // GET /api/health no autentica y no arma la envoltura de la 6.4.
@@ -96,7 +98,7 @@ function erroresDe(ruta: Ruta): readonly CodigoDeError[] {
     codigos.push("VALIDATION_ERROR");
   }
 
-  codigos.push("UNAUTHENTICATED", "FORBIDDEN_SCOPE", ...(ruta.errores ?? []));
+  codigos.push("UNAUTHENTICATED", "FORBIDDEN_SCOPE", "RATE_LIMITED", ...(ruta.errores ?? []));
 
   if (ruta.idempotente === true) {
     codigos.push("IDEMPOTENCY_MISMATCH");
@@ -112,6 +114,9 @@ const CABECERA_REQUEST_ID = { "X-Request-Id": { $ref: "#/components/headers/XReq
 const CABECERA_REPLAYED = {
   "Idempotency-Replayed": { $ref: "#/components/headers/IdempotencyReplayed" },
 };
+
+/** Solo el 429 de la 7.3 la lleva, asi que se agrega por estado y no por ruta. */
+const CABECERA_RETRY_AFTER = { "Retry-After": { $ref: "#/components/headers/RetryAfter" } };
 
 /**
  * Las respuestas de una operacion: las que declara la tabla, mas una por cada
@@ -159,7 +164,10 @@ function respuestasDe(ruta: Ruta): ObjetoJson {
   for (const [estado, codigos] of porEstado) {
     respuestas[String(estado)] = {
       description: `${frase(estado)} Codigos: ${codigos.join(", ")}.`,
-      headers: { ...CABECERA_REQUEST_ID },
+      headers: {
+        ...CABECERA_REQUEST_ID,
+        ...(estado === 429 ? CABECERA_RETRY_AFTER : {}),
+      },
       content: { "application/json": { schema: ref("ErrorDeApi") } },
     };
   }
@@ -336,6 +344,12 @@ export function documentoOpenApi(opciones: OpcionesDelDocumento): ObjetoJson {
             "Solo si la peticion llevo `Idempotency-Key`: `true` si la respuesta se reprodujo de `idempotency_record` sin ejecutar nada, `false` si la operacion se ejecuto (6.5).",
           schema: { type: "string", enum: ["true", "false"] },
           required: false,
+        },
+        RetryAfter: {
+          description:
+            "Segundos enteros que faltan para que se libere un lugar del cupo de la clave (7.3). Nunca cero. La forma de fecha que tambien permite HTTP no se usa: obligaria al cliente a confiar en su propio reloj.",
+          schema: { type: "integer", minimum: 1 },
+          required: true,
         },
       },
       schemas: componentesDeEsquema(),
