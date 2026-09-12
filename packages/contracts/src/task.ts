@@ -185,6 +185,81 @@ export const actualizarTarea = z.strictObject({
 export type ActualizarTarea = z.infer<typeof actualizarTarea>;
 
 /**
+ * Cuerpo de POST /api/tasks/{id}/move (6.2, 6.3.3, RF-07 y RF-08).
+ *
+ * `column_id` O `column_key`, y al menos uno, igual que en `crearTarea`: la
+ * 6.3.3 muestra las dos formas y la RESOLUCION es del nucleo —la misma
+ * `resolverColumna` que usa el create, que tambien implementa el "si vienen
+ * ambos gana column_id"—. Exigir que venga al menos una SI es del borde: sin
+ * esta comprobacion, un cuerpo sin columna llega al nucleo y vuelve como un
+ * COLUMN_NOT_FOUND 404, y un 404 es una respuesta enga~nosa para un cuerpo
+ * incompleto.
+ *
+ * `position` es OBLIGATORIA, a diferencia de la del create y a diferencia del
+ * default `"end"` de la herramienta `move_task`. La 6.3.3 la escribe en sus DOS
+ * ejemplos y no documenta ningun valor por defecto, mientras que la 6.3.1 si
+ * documenta el suyo (`"position": null // null => al final de la columna`), asi
+ * que ponerle uno aca seria una regla del borde que la especificacion no tiene.
+ * El default de MCP es otra cosa: una comodidad para un agente que compone la
+ * llamada desde lenguaje natural, donde "mové esto a DONE" no dice ningun
+ * indice. Un cliente HTTP que quiere el final lo escribe, y son cinco letras.
+ *
+ * NO se acepta `null` como sinonimo de `"end"`, tambien a diferencia del
+ * create: ahi el null esta porque la 6.3.1 lo escribe, y aca la 6.3.3 no.
+ */
+export const moverTarea = z
+  .strictObject({
+    column_id: z.uuid().optional(),
+    /** Se normaliza en el nucleo, igual que al crear la tarea. */
+    column_key: z.string().trim().min(1).optional(),
+    position: z.union([z.int().min(0), z.literal("end")]),
+  })
+  .refine((cuerpo) => cuerpo.column_id !== undefined || cuerpo.column_key !== undefined, {
+    error: "Indica column_id o column_key.",
+    path: ["column_id"],
+  });
+
+export type MoverTarea = z.infer<typeof moverTarea>;
+
+/** El orden final de UNA columna afectada por el movimiento (5.1, 6.3.3). */
+export const ordenDeColumna = z.strictObject({
+  column_id: z.uuid(),
+  task_order: z.array(z.uuid()),
+});
+
+export type OrdenDeColumna = z.infer<typeof ordenDeColumna>;
+
+/**
+ * Respuesta de POST /api/tasks/{id}/move (6.3.3).
+ *
+ * Devuelve el ORDEN COMPLETO de las columnas afectadas, a diferencia de POST
+ * /api/tasks, que devuelve la tarea sola. No es una inconsistencia: es que en
+ * los dos casos la especificacion escribe el cuerpo campo por campo, y escribe
+ * cosas distintas. Donde la especificacion calla, elegimos; donde escribe un
+ * ejemplo, un cliente que programo contra el tiene razon y nosotros no.
+ *
+ * Y ademas lo necesita: `affected_columns` es lo que la UI usa para reconciliar
+ * su estado optimista sin volver a consultar (9.2), y un agente recibe con el
+ * el estado final de su accion. Un `task_order` que no fuera el orden real de
+ * la base dejaria a la UI mostrando algo que no existe, y el error no se veria
+ * hasta que alguien recargue.
+ *
+ * `min(1)` porque un movimiento afecta SIEMPRE al menos una columna: la propia,
+ * si fue intracolumna. Un array vacio seria un bug del nucleo, y validar la
+ * salida existe justamente para que eso sea un 500 nuestro y no un cuerpo a
+ * medias que el cliente interpreta como "no cambio nada".
+ */
+export const resultadoDeMovimiento = z.strictObject({
+  task: tarea,
+  from_column_id: z.uuid(),
+  to_column_id: z.uuid(),
+  /** Origen y destino, o una sola entrada si el movimiento fue intracolumna. */
+  affected_columns: z.array(ordenDeColumna).min(1),
+});
+
+export type ResultadoDeMovimiento = z.infer<typeof resultadoDeMovimiento>;
+
+/**
  * El `{id}` de las rutas /api/tasks/{id}.
  *
  * Aparte del de tablero y del de columna aunque la forma sea la misma: son
