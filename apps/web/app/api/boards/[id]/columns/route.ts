@@ -23,6 +23,7 @@ import {
   reproducirTrasCarrera,
   resolverIdempotencia,
 } from "../../../../../lib/idempotencia.js";
+import { registrarContratoRoto } from "../../../../../lib/log.js";
 
 /**
  * POST /api/boards/{id}/columns (6.2, RF-02): agrega una columna al tablero.
@@ -69,10 +70,7 @@ function proyectarSalida(resultado: ColumnWithOrder, ctx: ContextoPeticion): Col
   } satisfies ColumnaConOrden);
 
   if (!salida.success) {
-    console.error(
-      `[taskman-web] la respuesta de POST /api/boards/{id}/columns no cumple el contrato (${ctx.requestId})`,
-      salida.error.issues,
-    );
+    registrarContratoRoto(ctx.requestId, "POST /api/boards/{id}/columns", salida.error.issues);
 
     throw new Error("La salida no cumple el contrato.");
   }

@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 
 import { isDomainError, type DomainErrorCode } from "@taskman/core";
 
+import { registrarFallo } from "./log.js";
+
 /**
  * Envoltura de respuestas y modelo de errores del borde HTTP (6.1 y 6.4).
  *
@@ -226,9 +228,10 @@ export function respuestaDeFallo(error: unknown, ctx: ContextoPeticion): Respons
     });
   }
 
-  // El request_id es lo que permite correlacionar este 500 con la linea del
-  // log, que es el unico lugar donde queda el detalle.
-  console.error(`[taskman-web] fallo no controlado (${ctx.requestId})`, error);
+  // Las dos mitades de la 11.1: la traza COMPLETA al log y al cliente solo el
+  // codigo y el request_id, que es lo que permite correlacionar uno con otro sin
+  // contarle nada del interior a quien llamo.
+  registrarFallo(ctx.requestId, error);
 
   return respuestaDeError("INTERNAL_ERROR", "Fallo no controlado.", 500, ctx);
 }

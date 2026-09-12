@@ -13,6 +13,7 @@ import {
   responder,
   responderSinCuerpo,
 } from "../../../../lib/http.js";
+import { registrarContratoRoto } from "../../../../lib/log.js";
 import { aFechaUtc, aTareaSalida } from "../../../../lib/tareas.js";
 
 /**
@@ -80,10 +81,7 @@ export const GET = conAuth<[ContextoRuta]>("read", async (_request, auth, contex
   const salida = esquemaDeTarea.safeParse(aTareaSalida(tarea) satisfies Tarea);
 
   if (!salida.success) {
-    console.error(
-      `[taskman-web] la respuesta de GET /api/tasks/{id} no cumple el contrato (${auth.requestId})`,
-      salida.error.issues,
-    );
+    registrarContratoRoto(auth.requestId, "GET /api/tasks/{id}", salida.error.issues);
 
     return respuestaDeFallo(new Error("La salida no cumple el contrato."), auth);
   }
@@ -199,10 +197,7 @@ export const PATCH = conAuth<[ContextoRuta]>("write", async (request, auth, cont
   const salida = esquemaDeTarea.safeParse(aTareaSalida(actualizada) satisfies Tarea);
 
   if (!salida.success) {
-    console.error(
-      `[taskman-web] la respuesta de PATCH /api/tasks/{id} no cumple el contrato (${auth.requestId})`,
-      salida.error.issues,
-    );
+    registrarContratoRoto(auth.requestId, "PATCH /api/tasks/{id}", salida.error.issues);
 
     return respuestaDeFallo(new Error("La salida no cumple el contrato."), auth);
   }

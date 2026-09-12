@@ -15,6 +15,7 @@ import {
   responder,
   responderSinCuerpo,
 } from "../../../../lib/http.js";
+import { registrarContratoRoto } from "../../../../lib/log.js";
 
 /**
  * PATCH /api/columns/{id} (6.2): renombra o reordena la columna. Scope write.
@@ -121,10 +122,7 @@ export const PATCH = conAuth<[ContextoRuta]>("write", async (request, auth, cont
   } satisfies ColumnaConOrden);
 
   if (!salida.success) {
-    console.error(
-      `[taskman-web] la respuesta de PATCH /api/columns/{id} no cumple el contrato (${auth.requestId})`,
-      salida.error.issues,
-    );
+    registrarContratoRoto(auth.requestId, "PATCH /api/columns/{id}", salida.error.issues);
 
     return respuestaDeFallo(new Error("La salida no cumple el contrato."), auth);
   }

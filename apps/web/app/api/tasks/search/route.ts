@@ -3,6 +3,7 @@ import { crearCorePort, type SearchScope } from "@taskman/core";
 
 import { conAuth } from "../../../../lib/auth.js";
 import { respuestaDeError, respuestaDeFallo, responder } from "../../../../lib/http.js";
+import { registrarContratoRoto } from "../../../../lib/log.js";
 import { aTareaSalida } from "../../../../lib/tareas.js";
 
 /**
@@ -72,10 +73,7 @@ export const GET = conAuth("read", async (request, auth): Promise<Response> => {
   });
 
   if (!salida.success) {
-    console.error(
-      `[taskman-web] la respuesta de GET /api/tasks/search no cumple el contrato (${auth.requestId})`,
-      salida.error.issues,
-    );
+    registrarContratoRoto(auth.requestId, "GET /api/tasks/search", salida.error.issues);
 
     return respuestaDeFallo(new Error("La salida no cumple el contrato."), auth);
   }

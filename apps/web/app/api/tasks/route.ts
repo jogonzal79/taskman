@@ -31,6 +31,7 @@ import {
   reproducirTrasCarrera,
   resolverIdempotencia,
 } from "../../../lib/idempotencia.js";
+import { registrarContratoRoto } from "../../../lib/log.js";
 import { aFechaUtc, aTareaSalida } from "../../../lib/tareas.js";
 
 /**
@@ -149,10 +150,7 @@ export const GET = conAuth("read", async (request, auth): Promise<Response> => {
   });
 
   if (!salida.success) {
-    console.error(
-      `[taskman-web] la respuesta de GET /api/tasks no cumple el contrato (${auth.requestId})`,
-      salida.error.issues,
-    );
+    registrarContratoRoto(auth.requestId, "GET /api/tasks", salida.error.issues);
 
     return respuestaDeFallo(new Error("La salida no cumple el contrato."), auth);
   }
@@ -187,10 +185,7 @@ function proyectarSalida(creada: Task, ctx: ContextoPeticion): Tarea {
   const salida = esquemaDeTarea.safeParse(aTareaSalida(creada) satisfies Tarea);
 
   if (!salida.success) {
-    console.error(
-      `[taskman-web] la respuesta de POST /api/tasks no cumple el contrato (${ctx.requestId})`,
-      salida.error.issues,
-    );
+    registrarContratoRoto(ctx.requestId, "POST /api/tasks", salida.error.issues);
 
     throw new Error("La salida no cumple el contrato.");
   }

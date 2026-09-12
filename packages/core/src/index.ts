@@ -31,8 +31,13 @@ export type {
 export { LIMITE_PAGINA_DEFECTO, LIMITE_PAGINA_MAXIMO } from "./domain/types.js";
 
 export type { ActorContext, ActorType } from "./domain/actor.js";
-export { LOGGER_NULO } from "./domain/logger.js";
-export type { CamposDeLog, Logger } from "./domain/logger.js";
+export {
+  leerNivelLog,
+  LOGGER_NULO,
+  NIVEL_LOG_POR_DEFECTO,
+  NIVELES_LOG,
+} from "./domain/logger.js";
+export type { CamposDeLog, Logger, NivelLog } from "./domain/logger.js";
 export {
   actualizacion,
   borrado,

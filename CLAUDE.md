@@ -201,6 +201,11 @@ contador de pruebas no tiene ese commit.
   hay UNA sola copia física vista desde `apps/web`, `packages/db`,
   `packages/core` y `apps/mcp-stdio`, y el camino de `$queryRaw` con fragmentos
   `Prisma.Sql` sigue devolviendo 200 en dev, que es donde aparecería el 42601.
+  `pino` entró por lo mismo con el log de la 11.1, y se comprobó igual: una sola
+  copia física vista desde `apps/web` y `apps/mcp-stdio` —el mismo realpath, no el
+  mismo número de versión— y después `next build` más `next start` con
+  GET /api/health devolviendo 200 y escribiendo su línea JSON, que es donde se
+  vería si el bundler lo hubiera partido.
   Pendiente conocido: `@prisma/adapter-pg` SIGUE inerte y se empaqueta. Hoy no
   rompe nada —el bug era específico del runtime de `@prisma/client`— y el arreglo
   sería idéntico.

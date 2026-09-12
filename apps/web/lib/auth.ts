@@ -11,6 +11,7 @@ import {
   respuestaDeFallo,
   type ContextoPeticion,
 } from "./http.js";
+import { registrarPeticion } from "./log.js";
 import {
   consumir,
   CUBO_POR_SCOPE,
@@ -226,14 +227,60 @@ export function conAuth<Args extends unknown[]>(scope: ScopeHttp, handler: Handl
     // Se genera antes que nada: hasta un fallo de configuracion tiene que salir
     // con su X-Request-Id para poder correlacionarlo con el log.
     const ctx: ContextoPeticion = { requestId: nuevoRequestId() };
+    const inicio = Date.now();
 
-    try {
-      const servicio = crearServicio();
+    const atencion = await atender(scope, handler, request, ctx, args);
 
-      const clave = leerBearer(request);
-      if (clave === undefined) {
-        return noAutenticado(ctx);
-      }
+    /**
+     * UNA linea por peticion (11.1), y aca porque es el unico punto por el que
+     * salen TODAS: el 401 que no llego a autenticar, el 403, el 429, lo que
+     * devuelva el handler y el 500 del catch. Registrar dentro de `atender`
+     * obligaria a acordarse en cada `return`, que es la forma de que al 401 le
+     * falte la linea justo cuando es la que uno fue a buscar.
+     *
+     * El estado y la duracion solo se saben aca, y el prefijo de la clave solo
+     * existe si la peticion autentico: `atender` lo devuelve junto con la
+     * respuesta en vez de dejarlo en una variable mutable.
+     */
+    registrarPeticion({
+      requestId: ctx.requestId,
+      metodo: request.method,
+      ruta: new URL(request.url).pathname,
+      status: atencion.respuesta.status,
+      duracionMs: Date.now() - inicio,
+      clientId: atencion.clientId,
+    });
+
+    return atencion.respuesta;
+  };
+}
+
+/** La respuesta, mas el prefijo de la clave si la peticion llego a autenticar. */
+interface Atencion {
+  readonly respuesta: Response;
+  readonly clientId: string | null;
+}
+
+/**
+ * El cuerpo de `conAuth`. NUNCA lanza: todo camino termina en una `Response`, que
+ * es lo que permite que la linea de log de arriba sea incondicional.
+ */
+async function atender<Args extends unknown[]>(
+  scope: ScopeHttp,
+  handler: Handler<Args>,
+  request: Request,
+  ctx: ContextoPeticion,
+  args: Args,
+): Promise<Atencion> {
+  let clientId: string | null = null;
+
+  try {
+    const servicio = crearServicio();
+
+    const clave = leerBearer(request);
+    if (clave === undefined) {
+      return { respuesta: noAutenticado(ctx), clientId };
+    }
 
       const resultado = await servicio.autenticar(clave, aScopeDeDominio(scope));
 
@@ -256,25 +303,38 @@ export function conAuth<Args extends unknown[]>(scope: ScopeHttp, handler: Handl
        *
        * El cupo lo elige el SCOPE del endpoint, no su metodo: ver CUBO_POR_SCOPE.
        */
-      if (resultado.ok || resultado.motivo === "SCOPE_INSUFICIENTE") {
-        const veredicto = consumir(resultado.clave.id, CUBO_POR_SCOPE[scope]);
+    if (resultado.ok || resultado.motivo === "SCOPE_INSUFICIENTE") {
+      // Desde aca la peticion ya tiene una clave identificada, asi que su linea
+      // de log la lleva: un 403 y un 429 SI dicen de quien fueron.
+      clientId = resultado.clave.prefix;
 
-        if (!veredicto.permitido) {
-          return limiteSuperado(veredicto, ctx);
-        }
+      const veredicto = consumir(resultado.clave.id, CUBO_POR_SCOPE[scope]);
+
+      if (!veredicto.permitido) {
+        return { respuesta: limiteSuperado(veredicto, ctx), clientId };
       }
-
-      if (resultado.ok) {
-        return await handler(request, { ...ctx, clave: resultado.clave }, ...args);
-      }
-
-      if (resultado.motivo === "SCOPE_INSUFICIENTE") {
-        return scopeInsuficiente(aScopeHttp(resultado.scopeRequerido), resultado.clave.scopes, ctx);
-      }
-
-      return noAutenticado(ctx);
-    } catch (error: unknown) {
-      return respuestaDeFallo(error, ctx);
     }
-  };
+
+    if (resultado.ok) {
+      return {
+        respuesta: await handler(request, { ...ctx, clave: resultado.clave }, ...args),
+        clientId,
+      };
+    }
+
+    if (resultado.motivo === "SCOPE_INSUFICIENTE") {
+      return {
+        respuesta: scopeInsuficiente(
+          aScopeHttp(resultado.scopeRequerido),
+          resultado.clave.scopes,
+          ctx,
+        ),
+        clientId,
+      };
+    }
+
+    return { respuesta: noAutenticado(ctx), clientId };
+  } catch (error: unknown) {
+    return { respuesta: respuestaDeFallo(error, ctx), clientId };
+  }
 }

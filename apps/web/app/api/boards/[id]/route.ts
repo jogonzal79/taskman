@@ -22,6 +22,7 @@ import {
   responder,
   responderSinCuerpo,
 } from "../../../../lib/http.js";
+import { registrarContratoRoto } from "../../../../lib/log.js";
 
 /**
  * GET /api/boards/{id} (6.2): el tablero con sus columnas y el recuento de
@@ -109,10 +110,7 @@ export const GET = conAuth<[ContextoRuta]>("read", async (request, auth, context
   const salida = tableroDetallado.safeParse(aSalida(tablero));
 
   if (!salida.success) {
-    console.error(
-      `[taskman-web] la respuesta de GET /api/boards/{id} no cumple el contrato (${auth.requestId})`,
-      salida.error.issues,
-    );
+    registrarContratoRoto(auth.requestId, "GET /api/boards/{id}", salida.error.issues);
 
     return respuestaDeFallo(new Error("La salida no cumple el contrato."), auth);
   }
@@ -195,10 +193,7 @@ export const PATCH = conAuth<[ContextoRuta]>("write", async (request, auth, cont
   const salida = tablero.safeParse(aTableroSalida(actualizado));
 
   if (!salida.success) {
-    console.error(
-      `[taskman-web] la respuesta de PATCH /api/boards/{id} no cumple el contrato (${auth.requestId})`,
-      salida.error.issues,
-    );
+    registrarContratoRoto(auth.requestId, "PATCH /api/boards/{id}", salida.error.issues);
 
     return respuestaDeFallo(new Error("La salida no cumple el contrato."), auth);
   }

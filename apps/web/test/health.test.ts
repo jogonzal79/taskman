@@ -1,6 +1,8 @@
 import { salud, saludDegradada } from "@taskman/contracts";
+import type { CamposDeLog } from "@taskman/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { fijarLogger } from "../lib/log.js";
 import { leerError, leerJson } from "./helpers.js";
 
 /**
@@ -54,19 +56,32 @@ const { VERSION } = await import("../lib/version.js");
 
 const REQUEST_ID = /^req_[0-9a-f]{32}$/;
 
-let errores: ReturnType<typeof vi.spyOn>;
+/**
+ * El handler registra el detalle del fallo en el log de la 11.1, no en la
+ * respuesta. Capturarlo sirve para las dos cosas: afirmar que lo registro y que
+ * el `request_id` de la linea es el de la cabecera.
+ */
+let lineas: Array<{ campos: CamposDeLog; mensaje: string }>;
 
 beforeEach(() => {
   versionFalsa = undefined;
   vi.mocked(comprobarConexion).mockClear();
-  // El handler escribe el detalle del fallo al stderr a proposito; espiarlo
-  // mantiene limpia la salida de la suite y permite afirmar que lo escribio.
-  errores = vi.spyOn(console, "error").mockImplementation(() => {});
+
+  lineas = [];
+  const anotar = (campos: CamposDeLog, mensaje: string): void => {
+    lineas.push({ campos, mensaje });
+  };
+  fijarLogger({ debug: anotar, info: anotar, warn: anotar, error: anotar });
 });
 
 afterEach(() => {
-  errores.mockRestore();
+  // El setup de la suite vuelve a poner LOGGER_NULO antes de la siguiente.
+  fijarLogger(undefined);
 });
+
+function porMensaje(mensaje: string): Array<{ campos: CamposDeLog; mensaje: string }> {
+  return lineas.filter((linea) => linea.mensaje === mensaje);
+}
 
 describe("GET /api/health", () => {
   it("con la base arriba devuelve 200, X-Request-Id y un cuerpo que cumple el esquema", async () => {
@@ -91,7 +106,10 @@ describe("GET /api/health", () => {
     // La sonda real corrio: es la unica prueba que ejercita `comprobarConexion`
     // contra la base.
     expect(comprobarConexion).toHaveBeenCalledTimes(1);
-    expect(errores).not.toHaveBeenCalled();
+    expect(porMensaje("la sonda a la base fallo")).toHaveLength(0);
+
+    // Y dejo su linea por peticion (11.1), como todo endpoint.
+    expect(porMensaje("peticion")).toHaveLength(1);
   });
 
   it("no exige clave: sin Authorization responde 200 y no 401", async () => {
@@ -136,11 +154,14 @@ describe("GET /api/health", () => {
     // Y el esquema es estricto, asi que el cuerpo tiene exactamente tres claves.
     expect(Object.keys(cuerpo).sort()).toEqual(["database", "status", "version"]);
 
-    // El detalle SI va al stderr, con el request_id para poder correlacionarlo.
-    expect(errores).toHaveBeenCalledTimes(1);
-    const [mensaje, causa] = errores.mock.calls[0] ?? [];
-    expect(String(mensaje)).toContain(respuesta.headers.get("X-Request-Id"));
-    expect(causa).toBe(fallo);
+    // El detalle SI va al log, con el request_id para poder correlacionarlo.
+    const registradas = porMensaje("la sonda a la base fallo");
+
+    expect(registradas).toHaveLength(1);
+    expect(registradas[0]?.campos["request_id"]).toBe(respuesta.headers.get("X-Request-Id"));
+    expect((registradas[0]?.campos["err"] as Record<string, unknown>)["message"]).toBe(
+      fallo.message,
+    );
   });
 
   it("un cuerpo que no cumple el esquema sale como 500, no como 200 ni como 503", async () => {

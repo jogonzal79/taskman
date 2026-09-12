@@ -8,6 +8,7 @@ import { crearCorePort, type MoveResult, type MoveTarget } from "@taskman/core";
 
 import { conAuth, contextoDeApi } from "../../../../../lib/auth.js";
 import { respuestaDeError, respuestaDeFallo, responder } from "../../../../../lib/http.js";
+import { registrarContratoRoto } from "../../../../../lib/log.js";
 import { aTareaSalida } from "../../../../../lib/tareas.js";
 
 /**
@@ -120,10 +121,7 @@ export const POST = conAuth<[ContextoRuta]>("write", async (request, auth, conte
   const salida = resultadoDeMovimiento.safeParse(aSalida(resultado));
 
   if (!salida.success) {
-    console.error(
-      `[taskman-web] la respuesta de POST /api/tasks/{id}/move no cumple el contrato (${auth.requestId})`,
-      salida.error.issues,
-    );
+    registrarContratoRoto(auth.requestId, "POST /api/tasks/{id}/move", salida.error.issues);
 
     return respuestaDeFallo(new Error("La salida no cumple el contrato."), auth);
   }

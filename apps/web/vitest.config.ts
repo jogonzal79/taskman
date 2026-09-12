@@ -3,6 +3,8 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     include: ["test/**/*.test.ts"],
+    // Calla el log de la 11.1 en toda la suite. Ver test/setup.ts.
+    setupFiles: ["./test/setup.ts"],
     /**
      * El limite de la 7.3, APAGADO para toda la suite, que es para lo que la
      * 11.2 declara la variable ("permite desactivar el limite en entornos de

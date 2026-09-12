@@ -33,6 +33,7 @@ import {
   reproducirTrasCarrera,
   resolverIdempotencia,
 } from "../../../lib/idempotencia.js";
+import { registrarContratoRoto } from "../../../lib/log.js";
 
 /**
  * GET /api/boards (6.2): lista tableros, paginado por cursor.
@@ -113,7 +114,7 @@ export const GET = conAuth("read", async (request, auth): Promise<Response> => {
   });
 
   if (!salida.success) {
-    console.error("[taskman-web] la respuesta de GET /api/boards no cumple el contrato", salida.error.issues);
+    registrarContratoRoto(auth.requestId, "GET /api/boards", salida.error.issues);
 
     return respuestaDeFallo(new Error("La salida no cumple el contrato."), auth);
   }
@@ -166,10 +167,7 @@ function proyectarSalida(board: BoardDetail, ctx: ContextoPeticion): TableroDeta
   const salida = tableroDetallado.safeParse(aDetalleSalida(board));
 
   if (!salida.success) {
-    console.error(
-      `[taskman-web] la respuesta de POST /api/boards no cumple el contrato (${ctx.requestId})`,
-      salida.error.issues,
-    );
+    registrarContratoRoto(ctx.requestId, "POST /api/boards", salida.error.issues);
 
     throw new Error("La salida no cumple el contrato.");
   }

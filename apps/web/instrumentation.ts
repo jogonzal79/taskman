@@ -1,3 +1,5 @@
+import { leerNivelLog } from "@taskman/core";
+
 /**
  * Validacion de entorno al arrancar (11.2): una variable ausente DEBE impedir
  * el arranque del proceso con un mensaje explicito, no producir un fallo
@@ -39,6 +41,21 @@ export function register(): void {
     process.stderr.write(
       `[taskman-web] RATE_LIMIT_ENABLED tiene que ser "true" o "false", y es "${limite}".\n`,
     );
+    process.exit(1);
+  }
+
+  /**
+   * LOG_LEVEL (11.2). El log por peticion de la 11.1 lo lee PEREZOSAMENTE —en la
+   * primera linea que escribe, para no romper el "Collecting page data" de
+   * `next build`— y eso, solo, dejaria que un valor invalido apareciera como un
+   * 500 en la primera peticion: exactamente el "fallo posterior en tiempo de
+   * ejecucion" que la 11.2 prohibe. Comprobarlo aca cierra ese hueco sin quitarle
+   * la pereza al logger: el mismo validador, corrido al arrancar.
+   */
+  try {
+    leerNivelLog(process.env["LOG_LEVEL"]);
+  } catch (error: unknown) {
+    process.stderr.write(`[taskman-web] ${error instanceof Error ? error.message : String(error)}\n`);
     process.exit(1);
   }
 }

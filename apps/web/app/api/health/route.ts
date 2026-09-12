@@ -7,6 +7,11 @@ import {
   respuestaDeFallo,
   type ContextoPeticion,
 } from "../../../lib/http.js";
+import {
+  registrarContratoRoto,
+  registrarPeticion,
+  registrarSondaCaida,
+} from "../../../lib/log.js";
 import { VERSION } from "../../../lib/version.js";
 
 /**
@@ -50,11 +55,11 @@ async function sondear(ctx: ContextoPeticion): Promise<Sonda> {
     // Date.now() ya son milisegundos enteros; la resta tambien.
     return { ok: true, latencyMs: Date.now() - inicio };
   } catch (error: unknown) {
-    // El detalle va al stderr del proceso y NUNCA al cuerpo: el mensaje del
-    // driver lleva host, puerto, base y usuario de la cadena de conexion, y
-    // este endpoint no pide autenticacion. El request_id es lo que permite
-    // correlacionar esta linea con la respuesta que la persona esta mirando.
-    console.error(`[taskman-web] la sonda a la base fallo (${ctx.requestId})`, error);
+    // El detalle va al LOG y NUNCA al cuerpo: el mensaje del driver lleva host,
+    // puerto, base y usuario de la cadena de conexion, y este endpoint no pide
+    // autenticacion. El request_id es lo que permite correlacionar esta linea con
+    // la respuesta que la persona esta mirando.
+    registrarSondaCaida(ctx.requestId, error);
 
     return { ok: false };
   }
@@ -73,20 +78,12 @@ async function sondear(ctx: ContextoPeticion): Promise<Sonda> {
  * dependencia para un tipo generico seria pagar un import por comodidad.
  */
 function contratoRoto(ctx: ContextoPeticion, issues: unknown): never {
-  console.error(
-    `[taskman-web] la respuesta de GET /api/health no cumple el contrato (${ctx.requestId})`,
-    issues,
-  );
+  registrarContratoRoto(ctx.requestId, "GET /api/health", issues);
 
   throw new Error("La salida no cumple el contrato.");
 }
 
-export async function GET(): Promise<Response> {
-  // Se genera antes que nada y con la misma funcion que `conAuth`: hasta un fallo
-  // de contrato tiene que salir con su X-Request-Id para poder correlacionarlo
-  // con el log.
-  const ctx: ContextoPeticion = { requestId: nuevoRequestId() };
-
+async function atender(ctx: ContextoPeticion): Promise<Response> {
   try {
     const sonda = await sondear(ctx);
 
@@ -116,4 +113,36 @@ export async function GET(): Promise<Response> {
   } catch (error: unknown) {
     return respuestaDeFallo(error, ctx);
   }
+}
+
+export async function GET(): Promise<Response> {
+  // Se genera antes que nada y con la misma funcion que `conAuth`: hasta un fallo
+  // de contrato tiene que salir con su X-Request-Id para poder correlacionarlo
+  // con el log.
+  const ctx: ContextoPeticion = { requestId: nuevoRequestId() };
+  const inicio = Date.now();
+
+  const respuesta = await atender(ctx);
+
+  /**
+   * La linea por peticion de la 11.1, tambien aca. Este endpoint no pasa por
+   * `conAuth` —es el unico sin autenticacion (6.2)— asi que si no la registrara
+   * el, la sonda seria lo unico invisible en el log, que es justo lo que uno mira
+   * cuando quiere saber si el servicio estaba vivo.
+   *
+   * `metodo` y `ruta` van literales porque el handler NO recibe el Request, y esa
+   * ausencia es deliberada: es la garantia de que no puede leer la cabecera
+   * Authorization ni por error. `clientId` en null porque no hay clave que
+   * identificar.
+   */
+  registrarPeticion({
+    requestId: ctx.requestId,
+    metodo: "GET",
+    ruta: "/api/health",
+    status: respuesta.status,
+    duracionMs: Date.now() - inicio,
+    clientId: null,
+  });
+
+  return respuesta;
 }

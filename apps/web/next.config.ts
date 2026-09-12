@@ -18,8 +18,16 @@ const config: NextConfig = {
    */
   agentRules: false,
   transpilePackages: ["@taskman/core", "@taskman/db"],
-  // Binarios y runtime de Prisma: se cargan del disco, no se empaquetan.
-  serverExternalPackages: ["@prisma/client", "@prisma/adapter-pg", "pg"],
+  /**
+   * Binarios y runtime de Prisma: se cargan del disco, no se empaquetan.
+   *
+   * `pino` esta por lo mismo y por una razon propia: resuelve `process.env` y
+   * modulos por nombre en tiempo de ejecucion, que es justo lo que un bundler
+   * rompe al reescribirlos. OJO con el precedente de `@prisma/client` y `pg`: una
+   * entrada aca es INERTE si el paquete no se resuelve desde apps/web, asi que
+   * `pino` va tambien en sus dependencies, apuntando a la MISMA copia fisica.
+   */
+  serverExternalPackages: ["@prisma/client", "@prisma/adapter-pg", "pg", "pino"],
   experimental: {
     /**
      * El nucleo esta escrito en el estilo NodeNext que fija tsconfig.base.json:

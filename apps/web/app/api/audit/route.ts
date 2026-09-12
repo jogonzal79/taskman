@@ -7,6 +7,7 @@ import { crearCorePort, type AuditEntry, type ListAuditQuery } from "@taskman/co
 
 import { conAuth } from "../../../lib/auth.js";
 import { respuestaDeError, respuestaDeFallo, responder } from "../../../lib/http.js";
+import { registrarContratoRoto } from "../../../lib/log.js";
 
 /**
  * GET /api/audit (6.2, RF-10): consulta el registro de auditoria. Scope read
@@ -114,10 +115,7 @@ export const GET = conAuth("read", async (request, auth): Promise<Response> => {
   });
 
   if (!salida.success) {
-    console.error(
-      `[taskman-web] la respuesta de GET /api/audit no cumple el contrato (${auth.requestId})`,
-      salida.error.issues,
-    );
+    registrarContratoRoto(auth.requestId, "GET /api/audit", salida.error.issues);
 
     return respuestaDeFallo(new Error("La salida no cumple el contrato."), auth);
   }
