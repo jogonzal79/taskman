@@ -48,9 +48,12 @@ export type {
 } from "./column.js";
 
 export {
+  coincidencia,
+  consultaDeBusqueda,
   consultaDeTareas,
   crearTarea,
   fechaSola,
+  listadoDeCoincidencias,
   listadoDeTareas,
   ordenDeTarea,
   parametrosDeTarea,
@@ -61,8 +64,11 @@ export {
   PRIORIDADES,
 } from "./task.js";
 export type {
+  Coincidencia,
+  ConsultaDeBusqueda,
   ConsultaDeTareas,
   CrearTarea,
+  ListadoDeCoincidencias,
   ListadoDeTareas,
   OrdenDeTarea,
   ParametrosDeTarea,

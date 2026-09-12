@@ -58,6 +58,33 @@ contador de pruebas no tiene ese commit.
   encuentra "autenticacion". Es como funciona `to_tsvector('spanish', ...)`, no
   un bug del query. La salida es `pg_trgm` en una migracion aditiva, sin tocar
   el indice que ya existe.
+- Los ACENTOS no se normalizan de forma uniforme, y eso no se deduce leyendo el
+  query: depende de la palabra. Si la forma acentuada solo pierde el acento, los
+  dos lados convergen y se encuentran —"revisión" y "revision" dan los dos
+  `revision`, "código" y "codigo" dan `codig`—. Pero si el acento dispara una
+  regla del stemmer, NO convergen: "aceptación" da `acept` porque reconoce el
+  sufijo -ación y lo quita, mientras "aceptacion" sin tilde da `aceptacion`. Son
+  lexemas distintos, asi que buscar "aceptacion" NO encuentra "aceptación". Lo
+  mismo con "documentación"/"documentacion" y "validación"/"validacion". O sea
+  que la insensibilidad a acentos que se ve en algunos casos es ACCIDENTAL y no
+  una garantia: no hay `unaccent` en el pipeline. La salida es `unaccent` en la
+  CONFIGURACION de busqueda —una configuracion propia que encadene unaccent con
+  el stemmer, y el indice de la 4.2 reconstruido sobre ella— y NO un cambio en el
+  query, que es donde uno lo buscaria primero. Consecuencia de producto, para
+  cuando se escriba la UI: sin eso, un buscador libre donde la gente tipea sin
+  tildes se lee como roto; y la busqueda incremental mientras se escribe no es
+  viable de entrada, porque `plainto_tsquery` no agrega `:*` y un prefijo no
+  matchea (ver la entrada de arriba).
+- Un parametro de consulta DESCONOCIDO se ignora en silencio en los CUATRO
+  endpoints de listado (GET /api/boards, GET /api/tasks, GET /api/tasks/search y
+  el listado por columna). No es que el `strictObject` lo acepte: es que nunca lo
+  ve, porque el handler arma el objeto a validar leyendo SOLO los parametros que
+  conoce, uno por uno. Lo peligroso no es el 200 sino creer que el parametro
+  acoto cuando quedo INERTE: `?column_key=TODO` en la busqueda devuelve el
+  tablero entero, y quien lo mando no se entera. Esta atado con un test que
+  afirma justamente eso. Cambiarlo —comparar las claves recibidas contra las
+  declaradas y devolver 400— afecta a los cuatro endpoints a la vez, asi que es
+  su propio paso y no un arreglo al pasar.
 - `list_boards` y `list_tasks` devuelven `has_more` pero no el `cursor` (y
   `search_tasks` tiene el mismo hueco). El nucleo lo tiene —`Page.nextCursor`, y
   las herramientas lo leen para calcular `has_more`— pero lo descartan al

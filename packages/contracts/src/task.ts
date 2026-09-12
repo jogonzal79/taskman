@@ -218,3 +218,74 @@ export type ConsultaDeTareas = z.infer<typeof consultaDeTareas>;
 export const listadoDeTareas = listadoDe(tarea);
 
 export type ListadoDeTareas = z.infer<typeof listadoDeTareas>;
+
+/**
+ * Una coincidencia de GET /api/tasks/search (6.2, RF-09): la tarea MAS su
+ * relevancia.
+ *
+ * PLANA y no `{ task, rank }`, siguiendo lo que ya publica la herramienta
+ * `search_tasks` del borde MCP: un resultado de busqueda es una tarea con un dato
+ * mas, y anidarla obligaria al cliente a desenvolver cada item para leer los
+ * mismos campos que los demas endpoints le dan directo.
+ *
+ * `rank` lo calcula `ts_rank` de PostgreSQL y es un `real`: numero, no entero, y
+ * mayor es mas relevante. Es el ORDEN en que vienen los items, asi que un cliente
+ * que solo quiera respetarlo puede ignorar el campo; esta para quien necesite
+ * mostrarlo o cortar por un umbral.
+ */
+export const coincidencia = z.strictObject({
+  ...tarea.shape,
+  rank: z.number().min(0),
+});
+
+export type Coincidencia = z.infer<typeof coincidencia>;
+
+/**
+ * Query string de GET /api/tasks/search (6.2, RF-09).
+ *
+ * `q` es el texto a buscar. Se exige NO VACIO tras recortar: un `q` vacio
+ * devolveria cero resultados —`plainto_tsquery` no produce ningun lexema— y eso
+ * es indistinguible de "no hubo coincidencias", cuando en realidad no se pidio
+ * ninguna busqueda. OJO con el limite de esa validacion: un texto de solo
+ * PALABRAS VACIAS ("de la") tampoco produce lexemas y SI devuelve 200 con la
+ * lista vacia, porque saber que una palabra es vacia exige el diccionario de
+ * PostgreSQL y el borde no lo tiene. La regla del borde es "dijiste algo", no
+ * "lo que dijiste es buscable".
+ *
+ * El AMBITO sigue el precedente de GET /api/tasks: `board_id` obligatorio salvo
+ * que se indique `column_id`. El nucleo acepta un scope vacio y buscaria en
+ * TODOS los tableros; para un Kanban personal eso no es un agujero de permisos
+ * pero si una respuesta que nadie pidio, y ademas la 6.2 nombra la busqueda junto
+ * al resto de los endpoints de tarea, todos acotados.
+ *
+ * NO hay `column_key`, a diferencia del listado, y no es un olvido: el
+ * `SearchScope` del nucleo solo acepta `columnId`, porque `search` no pasa por el
+ * `#resolverFiltro` que traduce la key. Resolverla en el adaptador seria poner
+ * una resolucion de referencia en la capa equivocada. Si alguna vez hace falta,
+ * el cambio empieza en el nucleo.
+ *
+ * Tampoco hay `order_by`: la busqueda ordena siempre por relevancia
+ * (`ts_rank` DESC), que es lo unico que tiene sentido para un resultado de
+ * busqueda. El listado esta para ordenar por los otros criterios.
+ */
+export const consultaDeBusqueda = z
+  .strictObject({
+    ...consultaDeListado.shape,
+    q: z
+      .string()
+      .trim()
+      .min(1, { error: "Indica el texto a buscar en el parametro q." }),
+    board_id: z.uuid().optional(),
+    column_id: z.uuid().optional(),
+  })
+  .refine((consulta) => consulta.board_id !== undefined || consulta.column_id !== undefined, {
+    error: "Indica board_id, o column_id para buscar dentro de una columna concreta.",
+    path: ["board_id"],
+  });
+
+export type ConsultaDeBusqueda = z.infer<typeof consultaDeBusqueda>;
+
+/** Respuesta de GET /api/tasks/search: misma envoltura paginada que el listado. */
+export const listadoDeCoincidencias = listadoDe(coincidencia);
+
+export type ListadoDeCoincidencias = z.infer<typeof listadoDeCoincidencias>;
