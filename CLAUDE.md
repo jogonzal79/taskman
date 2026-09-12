@@ -345,8 +345,28 @@ contador de pruebas no tiene ese commit.
   compatibilidad de modos de bloqueo en `packages/core` usa una operacion de
   cada tipo y no cuatro.
 - No se reintenta NUNCA ante 40P01. Un interbloqueo significa que el orden de
-  bloqueo esta mal, y reintentarlo esconde el bug que detecta la prueba C2 de
-  `packages/core` en vez de arreglarlo.
+  bloqueo esta mal, y reintentarlo esconde el bug en vez de arreglarlo. Es
+  ademas lo que lo hace distinguible de un reintento: un 40P01 sube como
+  rechazo, con la firma de ~1150 ms del `deadlock_timeout`, y nunca se absorbe.
+  El reintento que SI se observa en los tres casos de concurrencia de la 10.1
+  absorbe un 40001, no una UNIQUE diferida; verificado corriendo los mismos
+  escenarios con `maxRetries: 0`.
+- El orden de bloqueo canonico de la 5.4 —`ORDER BY column_id, id`, el MISMO
+  para los dos movimientos— esta MEDIDO y no supuesto: rompiendolo a proposito
+  (ordenando la columna de ORIGEN primero, que es distinto para cada
+  movimiento) aparecen interbloqueos reales, 3 en 300 rondas —~1% por ronda—
+  contra 0 en 200 rondas con el orden canonico. O sea que esa linea hace algo.
+  PERO la prueba C2 de `packages/core`, con sus 5 rondas, atrapa esa regresion
+  cerca del 5% de las veces: no es inestable —con el codigo correcto da 0
+  interbloqueos siempre— es INSENSIBLE, que es otra cosa y no se nota
+  mirandola. El detector real es `packages/core/test/orden-de-bloqueo.test.ts`,
+  460 rondas (~55 s), que NO corre en verify y se invoca a mano:
+
+  ```
+  pnpm --filter @taskman/core run test:orden-de-bloqueo
+  ```
+
+  Si tocas el orden de bloqueo, corre ese. Que verify pase no prueba nada ahi.
 
 ## Servidor MCP
 
