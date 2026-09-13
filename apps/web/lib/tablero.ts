@@ -31,6 +31,14 @@ const taskman = crearCorePort();
 export interface TareaEnTablero {
   id: string;
   title: string;
+  /**
+   * No la pinta la TARJETA —la 9.3 le da titulo, prioridad y fecha, y nada mas—
+   * sino el PANEL de detalle, que la edita. Viaja igual con cada tarea porque el
+   * panel se resuelve sobre lo que la pagina ya cargo (ver `ubicarEnVista`) y no
+   * con una consulta propia: traerla aca cuesta una columna mas en un SELECT que
+   * ya se hace, y no traerla costaria una consulta por apertura de panel.
+   */
+  description: string | null;
   priority: Task["priority"];
   dueDate: Date | null;
   /**
@@ -152,10 +160,58 @@ async function cargarColumna(
     tasks: pagina.items.map((tarea) => ({
       id: tarea.id,
       title: tarea.title,
+      description: tarea.description,
       priority: tarea.priority,
       dueDate: tarea.dueDate,
       vencida: esVencida(tarea, columna, hoy),
     })),
     omitidas: Math.max(0, columna.taskCount - pagina.items.length),
   };
+}
+
+/** Una tarea localizada dentro de la vista, con la columna donde vive. */
+export interface TareaUbicada {
+  tarea: TareaEnTablero;
+  columna: ColumnaEnTablero;
+}
+
+/**
+ * Busca una tarea POR ID DENTRO DE LO QUE LA PAGINA YA CARGO, para el panel de
+ * detalle. No consulta nada.
+ *
+ * ES A PROPOSITO QUE NO CONSULTE, y tiene tres consecuencias que valen las tres:
+ *
+ *   - Ni una consulta mas por apertura de panel. Los cuatro campos que el panel
+ *     edita ya vienen en `TareaEnTablero`.
+ *   - Un id de OTRO tablero no abre nada. Es el mismo agujero que CLAUDE.md
+ *     anota para `ubicarTarea` del borde MCP —"un id valido de OTRO tablero se
+ *     acepta"— y aca no puede existir, porque el ambito de la busqueda ES el
+ *     tablero que se esta mostrando. No es que se compruebe: es que no hay donde
+ *     buscar fuera.
+ *   - Un id inexistente, o el de una tarea que se acaba de borrar, devuelve
+ *     `undefined` y la pagina dibuja el tablero sin panel. Ni 404 ni 500: un
+ *     enlace viejo en la barra de direcciones no es un error del sistema.
+ *
+ * El precio, que hoy no se paga: una tarea que quedo fuera por el tope de pagina
+ * de su columna (`omitidas`) no se puede abrir. En uso personal `omitidas` es
+ * cero siempre; el dia que no lo sea, el arreglo es consultarla por id y
+ * comprobar que su `boardId` es el del tablero mostrado, no ampliar el tope.
+ */
+export function ubicarEnVista(
+  tablero: TableroEnPantalla,
+  taskId: string | undefined,
+): TareaUbicada | undefined {
+  if (taskId === undefined) {
+    return undefined;
+  }
+
+  for (const columna of tablero.columns) {
+    const tarea = columna.tasks.find((candidata) => candidata.id === taskId);
+
+    if (tarea !== undefined) {
+      return { tarea, columna };
+    }
+  }
+
+  return undefined;
 }

@@ -28,6 +28,7 @@ export function ColumnCard({
   boardId,
   columna,
   hoy,
+  tareaAbierta,
 }: {
   /**
    * Baja desde la pagina y no se deduce de la columna: `CreateTaskInput` pide
@@ -38,6 +39,8 @@ export function ColumnCard({
   boardId: string;
   columna: ColumnaEnTablero;
   hoy: Date;
+  /** La tarea abierta en el panel, si es alguna de esta columna. */
+  tareaAbierta: string | undefined;
 }) {
   return (
     <section className="columna" aria-labelledby={`columna-${columna.id}`}>
@@ -50,7 +53,12 @@ export function ColumnCard({
 
       <ul className="columna__tareas">
         {columna.tasks.map((tarea) => (
-          <TaskCard key={tarea.id} tarea={tarea} hoy={hoy} />
+          <TaskCard
+            key={tarea.id}
+            tarea={tarea}
+            hoy={hoy}
+            abierta={tarea.id === tareaAbierta}
+          />
         ))}
 
         {/* Una columna vacia es un estado normal de un tablero, no un error. */}

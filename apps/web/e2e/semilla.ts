@@ -91,6 +91,13 @@ const TABLAS = [
 /** Una tarea de la semilla, tal como se va a ver en la tarjeta. */
 export interface TareaSembrada {
   readonly title: string;
+  /**
+   * Omitida, la tarea se crea con `description` NULL, que es lo que hace el
+   * QuickAdd. Se declara en las pocas que la necesitan: el panel de detalle la
+   * EDITA, y para probar que vaciarla la borra hace falta una que la tenga, igual
+   * que para probar que editar otro campo la deja intacta.
+   */
+  readonly description?: string;
   readonly priority: Priority;
   /**
    * Dias respecto de HOY (UTC). Negativo es pasado, `0` es hoy, positivo futuro,
@@ -190,6 +197,15 @@ export const TITULO_MEDIA = "Revisar el contrato OpenAPI";
 export const TITULO_BAJA = "Ordenar el backlog por valor";
 
 /**
+ * Las DOS descripciones sembradas. Son las unicas tareas con `description` no
+ * nula, y estan puestas para el panel de detalle: una para comprobar que vaciar
+ * el campo BORRA, y otra para comprobar que editar OTRO campo la deja intacta.
+ * Las dos mitades de la distincion ausente-vs-null necesitan un valor previo.
+ */
+export const DESCRIPCION_DE_SOPORTE = "Hay que contestarle antes del viernes.";
+export const DESCRIPCION_DE_CONTRATO = "Comparar openapi.json con la tabla de la 6.3.";
+
+/**
  * Las cuatro columnas de la 4.3 sin tareas. Base de las dos semillas: asi la
  * diferencia entre `principal` y `vacio` es exactamente el contenido, y ninguna
  * de las dos puede quedarse sin una columna por descuido.
@@ -234,7 +250,12 @@ export const SEMILLAS = {
         // El orden de cada lista ES el orden que se espera en pantalla.
         columnas: conTareas({
           BACKLOG: [
-            { title: TITULO_MEDIA, priority: "MEDIUM", vence: null },
+            {
+              title: TITULO_MEDIA,
+              description: DESCRIPCION_DE_CONTRATO,
+              priority: "MEDIUM",
+              vence: null,
+            },
             { title: TITULO_URGENTE, priority: "URGENT", vence: null },
             { title: TITULO_ALTA, priority: "HIGH", vence: null },
             { title: TITULO_BAJA, priority: "LOW", vence: null },
@@ -242,7 +263,12 @@ export const SEMILLAS = {
           TODO: [
             { title: TITULO_LARGO, priority: "MEDIUM", vence: null },
             { title: TITULO_CORTO, priority: "MEDIUM", vence: null },
-            { title: TITULO_VENCIDA_FUERA, priority: "MEDIUM", vence: -3 },
+            {
+              title: TITULO_VENCIDA_FUERA,
+              description: DESCRIPCION_DE_SOPORTE,
+              priority: "MEDIUM",
+              vence: -3,
+            },
             { title: TITULO_VENCE_HOY, priority: "MEDIUM", vence: 0 },
           ],
           IN_PROGRESS: [{ title: "Montar Playwright", priority: "HIGH", vence: 5 }],
@@ -339,6 +365,11 @@ export async function sembrar(nombre: NombreDeSemilla, hoy: Date): Promise<Semil
             boardId: creado.id,
             columnKey: columna.key,
             title: tarea.title,
+            // Ausente se omite en vez de mandarse en null, que es la misma
+            // distincion del PATCH: el servicio pone NULL por defecto, y una
+            // clave presente en undefined no es lo mismo que una ausente con
+            // `exactOptionalPropertyTypes`.
+            ...(tarea.description === undefined ? {} : { description: tarea.description }),
             priority: tarea.priority,
             dueDate: tarea.vence === null ? null : fechaRelativa(hoy, tarea.vence),
           },

@@ -97,6 +97,27 @@ export function campoNuevaTarea(page: Page, nombreColumna: string): Locator {
   });
 }
 
+// --- Panel de detalle --------------------------------------------------------
+
+/**
+ * El panel de detalle. Por CLASE y no por su nombre accesible, que lleva el
+ * titulo de la tarea: eso lo haria cambiar justo en la prueba que edita el
+ * titulo. El nombre se afirma aparte, donde interesa.
+ */
+export function panel(page: Page): Locator {
+  return page.locator(".panel");
+}
+
+/**
+ * Un campo del panel por su ETIQUETA, que es como lo encuentra una persona. Cada
+ * control esta dentro de su `<label>`, asi que el nombre accesible sale del texto
+ * de la etiqueta: si ese `<label>` se rompiera, la prueba deja de encontrar el
+ * campo en vez de seguir andando por la clase CSS.
+ */
+export function campoDelPanel(page: Page, etiqueta: string): Locator {
+  return panel(page).getByLabel(etiqueta, { exact: true });
+}
+
 // --- Lectura del render ------------------------------------------------------
 
 /**

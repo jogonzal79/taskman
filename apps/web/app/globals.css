@@ -337,6 +337,25 @@ body {
 
 /* --- TaskCard (9.3): titulo, prioridad, fecha y marca de vencida ---------- */
 
+/*
+ * La tarjeta entera es un enlace al panel (`/?tarea=<id>`). El `<a>` no aporta
+ * apariencia: hereda la tinta y no subraya, porque una tarjeta subrayada en azul
+ * dentro de un tablero gris se leeria como un enlace a otro sitio y no como la
+ * tarjeta que ya se ve. Lo que si tiene es foco visible, que es lo unico que
+ * delata que se puede abrir con el teclado.
+ */
+.tarjeta-enlace {
+  display: block;
+  border-radius: 6px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.tarjeta-enlace:focus-visible {
+  outline: 2px solid var(--texto-tenue);
+  outline-offset: 1px;
+}
+
 .tarjeta {
   padding: 8px 10px;
   border: 1px solid var(--borde);
@@ -358,6 +377,16 @@ body {
 
 .tarjeta--alta {
   border-left-color: var(--alta-borde);
+}
+
+/*
+ * La tarjeta que el panel esta mostrando. Con `outline` y NO con el borde: el
+ * borde izquierdo es la senal de prioridad, y pisarlo aca borraria la unica
+ * diferencia que se ve a nivel columna justo en la tarjeta que se esta mirando.
+ */
+.tarjeta--abierta {
+  outline: 2px solid var(--texto-tenue);
+  outline-offset: 1px;
 }
 
 /*
@@ -435,6 +464,205 @@ body {
  */
 .fecha--vencida {
   color: var(--vencida);
+  font-weight: 600;
+}
+
+/* --- TaskDetailPanel (9.3): panel LATERAL, no modal ----------------------- */
+
+/*
+ * Hermano del `<main>` dentro de `.marco`, que es flex: al aparecer, las columnas
+ * se estrechan y ninguna queda tapada. Eso es lo que lo hace un panel y no un
+ * modal, y es una decision de producto: un modal obliga a cerrarlo para ver donde
+ * estabas, y donde estabas es justo lo que hace falta mirar mientras se edita.
+ *
+ * `flex: 0 0 320px` y no un porcentaje: el ancho del panel no tiene que depender
+ * del de la ventana, porque lo que hay dentro son campos de formulario con un
+ * ancho comodo propio. Lo que se estrecha es el tablero, que para eso desplaza.
+ */
+.panel {
+  flex: 0 0 320px;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border-left: 1px solid var(--borde);
+  background: var(--lienzo);
+}
+
+.panel__cabecera {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 20px 16px 16px;
+  border-bottom: 1px solid var(--borde);
+}
+
+.panel__titulo {
+  margin: 0;
+  color: var(--texto-apagado);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.panel__cerrar {
+  color: var(--texto-tenue);
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.panel__cerrar:hover,
+.panel__cerrar:focus-visible {
+  color: var(--texto);
+  text-decoration: underline;
+}
+
+.panel__cuerpo {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 0;
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.panel__campo {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+/*
+ * Es un `label` asociado por `for` y HERMANO del control, no un envoltorio: ver
+ * el comentario de `Etiqueta` en task-editor.tsx. `display: block` porque un
+ * label es inline por defecto y aca el campo se apila.
+ */
+.panel__etiqueta {
+  display: block;
+  color: var(--texto-apagado);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/*
+ * Los tres controles comparten reglas —campo, area de texto y selector— para que
+ * no haya tres formas de la misma cosa en una columna de 320 px. A diferencia del
+ * QuickAdd, aca SI se dibuja el borde en reposo: el QuickAdd es una invitacion
+ * que no tiene que competir con las tarjetas, y esto es un formulario donde hay
+ * que ver de un vistazo cuantos campos hay y donde empieza cada uno.
+ */
+.panel__control {
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid var(--borde);
+  border-radius: 6px;
+  background: var(--tarjeta);
+  color: var(--texto);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+textarea.panel__control {
+  resize: vertical;
+}
+
+.panel__control:focus-visible {
+  outline: 2px solid var(--texto-tenue);
+  outline-offset: -1px;
+}
+
+/* De que columna es. Es LECTURA: cambiarla requiere move (5.2). */
+.panel__columna {
+  margin: 2px 0 0;
+  color: var(--texto-apagado);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.panel__columna strong {
+  color: var(--texto-tenue);
+  font-weight: 600;
+}
+
+/* Mismo rojo que la marca de vencida y que el error del QuickAdd. */
+.panel__error {
+  margin: 0;
+  color: var(--urgente);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+/*
+ * El borrado, abajo y separado del resto: `margin-top: auto` lo empuja al pie del
+ * panel, lejos de los campos que se editan a diario. Que el boton mas peligroso
+ * este a un tabulador del menos peligroso es la forma de que se pulse sin querer.
+ */
+.panel__borrado {
+  margin-top: auto;
+  padding-top: 14px;
+  border-top: 1px solid var(--borde-suave);
+}
+
+.panel__aviso-borrado {
+  margin: 0 0 8px;
+  color: var(--texto-tenue);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.panel__aviso-borrado strong {
+  color: var(--texto);
+  font-weight: 600;
+}
+
+.panel__botones {
+  display: flex;
+  gap: 8px;
+}
+
+.boton {
+  padding: 6px 11px;
+  border: 1px solid var(--borde);
+  border-radius: 6px;
+  background: var(--tarjeta);
+  color: var(--texto);
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.boton:disabled {
+  color: var(--texto-apagado);
+  cursor: default;
+}
+
+/*
+ * DOS PESOS PARA EL BORRADO, y la diferencia es el punto: el primer clic es sobre
+ * un boton discreto —solo el texto en rojo— y el segundo sobre uno con relleno
+ * solido. Asi el estado armado se ve sin leer, que es lo que hace que el segundo
+ * clic sea una decision y no la continuacion del primero.
+ */
+.boton--peligro-suave {
+  border-color: transparent;
+  background: transparent;
+  color: var(--urgente);
+}
+
+.boton--peligro-suave:hover {
+  border-color: var(--borde);
+  background: var(--tarjeta);
+}
+
+.boton--peligro {
+  border-color: var(--urgente);
+  background: var(--urgente);
+  color: #ffffff;
   font-weight: 600;
 }
 

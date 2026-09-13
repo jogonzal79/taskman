@@ -24,15 +24,28 @@ export function ColumnList({
   boardId,
   columnas,
   hoy,
+  tareaAbierta,
 }: {
   boardId: string;
   columnas: ColumnaEnTablero[];
   hoy: Date;
+  /**
+   * La tarea que el panel esta mostrando, para que su tarjeta se distinga. Pasa
+   * de largo como `boardId`: sale del parametro de consulta que ya leyo la
+   * pagina, no de un estado de cliente que habria que sincronizar.
+   */
+  tareaAbierta: string | undefined;
 }) {
   return (
     <div className="columnas">
       {columnas.map((columna) => (
-        <ColumnCard key={columna.id} boardId={boardId} columna={columna} hoy={hoy} />
+        <ColumnCard
+          key={columna.id}
+          boardId={boardId}
+          columna={columna}
+          hoy={hoy}
+          tareaAbierta={tareaAbierta}
+        />
       ))}
     </div>
   );
