@@ -23,6 +23,54 @@ export interface CamposDeLog {
   readonly [clave: string]: unknown;
 }
 
+/**
+ * Los cuatro niveles de LOG_LEVEL (11.2). pino admite mas; el contrato son estos.
+ *
+ * El vocabulario y su validacion viven aca —y no en cada app— por lo mismo que
+ * `leerPoliticaDestructiva` de `mcp/politica.ts`: es la forma de un valor de
+ * configuracion, la misma para todos los bordes, y tenerla dos veces es tenerla
+ * dos veces mal el dia que cambie. Lo que NO vive aca es leer `process.env`, que
+ * es de cada app, ni ELEGIR EL DESTINO, que es de cada app y por buenos motivos:
+ * en `apps/mcp-stdio` el fd 1 es el canal del protocolo MCP y el log tiene que ir
+ * al fd 2, mientras en `apps/web` el fd 1 es exactamente donde va.
+ *
+ * Estaban en `apps/mcp-stdio/src/log.ts`, que fue el primer borde con log, y ese
+ * modulo los reexporta para no cambiarle la superficie a nadie.
+ */
+export const NIVELES_LOG = ["debug", "info", "warn", "error"] as const;
+
+export type NivelLog = (typeof NIVELES_LOG)[number];
+
+/** La 11.2 fija `info`: sin configurar se registra la actividad, no el detalle. */
+export const NIVEL_LOG_POR_DEFECTO: NivelLog = "info";
+
+/**
+ * Valida el valor crudo de LOG_LEVEL.
+ *
+ * Mismo criterio que `leerPoliticaDestructiva`: ausente o vacia es el valor por
+ * defecto, cualquier otra cosa LANZA. La 11.2 lo pide en general, y aca tiene su
+ * motivo propio: quien escribio `LOG_LEVEL=verbose` esta buscando un problema, y
+ * arrancar en `info` le daria menos lineas de las que cree tener justo cuando
+ * esta diagnosticando.
+ */
+export function leerNivelLog(valor: string | undefined): NivelLog {
+  const bruto = (valor ?? "").trim().toLowerCase();
+  if (bruto === "") {
+    return NIVEL_LOG_POR_DEFECTO;
+  }
+
+  const nivel = NIVELES_LOG.find((candidato) => candidato === bruto);
+  if (nivel === undefined) {
+    throw new Error(
+      `LOG_LEVEL="${valor ?? ""}" no es un valor valido. ` +
+        `Los valores posibles son: ${NIVELES_LOG.join(", ")}. ` +
+        `Sin definir equivale a "${NIVEL_LOG_POR_DEFECTO}".`,
+    );
+  }
+
+  return nivel;
+}
+
 export interface Logger {
   debug(campos: CamposDeLog, mensaje: string): void;
   info(campos: CamposDeLog, mensaje: string): void;

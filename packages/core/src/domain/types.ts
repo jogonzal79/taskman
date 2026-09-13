@@ -32,6 +32,25 @@ export interface BoardDetail extends Board {
   columns: Column[];
 }
 
+/** Una columna con cuantas tareas tiene. Ver `BoardWithTaskCounts`. */
+export interface ColumnWithTaskCount extends Column {
+  taskCount: number;
+}
+
+/**
+ * Lo que devuelve GET /api/boards/{id} (6.2): el tablero, sus columnas en
+ * orden y el recuento de tareas de cada una, mas el total.
+ *
+ * Es un tipo aparte y no un campo agregado a `Column` porque el recuento no es
+ * un atributo de la columna: es una agregacion que solo esta vista pide. Meterlo
+ * en `Column` obligaria a calcularlo (o a mentir con un cero) en cada uno de los
+ * caminos que hoy devuelven columnas sin contar nada.
+ */
+export interface BoardWithTaskCounts extends Board {
+  columns: ColumnWithTaskCount[];
+  taskCount: number;
+}
+
 export interface CreateBoardInput {
   name: string;
   description?: string | null;
@@ -103,6 +122,23 @@ export type MoveTarget = ColumnReference & {
 export interface ColumnOrder {
   columnId: string;
   taskOrder: string[];
+}
+
+/**
+ * Lo que produce crear una columna: la columna creada y TODAS las del tablero
+ * en el orden que quedo.
+ *
+ * `ColumnService.create` sigue DEVOLVIENDO solo la columna —es lo que necesitan
+ * sus llamadores, y el borde MCP no publica el orden— pero se lo pasa entero al
+ * participante de la 6.5, porque el cuerpo que POST /api/boards/{id}/columns
+ * responde son las dos cosas. El orden solo existe DESPUES de reescribir las
+ * positions, y quien lo lea fuera de la transaccion puede ver el de otro
+ * momento, asi que el registro de idempotencia tiene que guardar el que ESTA
+ * transaccion produjo.
+ */
+export interface ColumnWithOrder {
+  column: Column;
+  columns: Column[];
 }
 
 export interface MoveResult {

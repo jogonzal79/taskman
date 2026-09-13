@@ -10,6 +10,8 @@ import type {
 } from "../domain/types.js";
 import type { AuditRow, AuditTransaction } from "./audit-repository.js";
 import { insertAuditRow } from "./audit-repository.js";
+import type { EscrituraIdempotente, IdempotencyRow } from "./idempotency-repository.js";
+import { insertIdempotencyRow } from "./idempotency-repository.js";
 import type { OrdenSql } from "./pagination.js";
 import { clausulaOrden, condicionCursor, decodificarCursor, normalizarLimite, paginar } from "./pagination.js";
 import type { TransactionRunner } from "./transaction-runner.js";
@@ -80,7 +82,12 @@ export interface MoveTransaction extends AuditTransaction {
   readTask(taskId: string): Promise<Task | undefined>;
 }
 
-export interface TaskTransaction extends MoveTransaction {
+/**
+ * `EscrituraIdempotente` va en esta y NO en `MoveTransaction`: la 6.5 aplica a
+ * los tres POST, y dice explicitamente que move —como PATCH y DELETE— ya es
+ * idempotente por naturaleza en su efecto final y no necesita la cabecera.
+ */
+export interface TaskTransaction extends MoveTransaction, EscrituraIdempotente {
   /** Bloquea las filas de una columna. Para `create`, que todavia no tiene tarea. */
   lockColumnTasks(columnId: string): Promise<LockedTask[]>;
   /**
@@ -312,6 +319,10 @@ function crearTaskTransaction(tx: Prisma.TransactionClient): TaskTransaction {
 
     async insertAudit(row: AuditRow) {
       await insertAuditRow(tx, row);
+    },
+
+    async insertIdempotency(row: IdempotencyRow) {
+      await insertIdempotencyRow(tx, row);
     },
   };
 }

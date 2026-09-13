@@ -7,30 +7,48 @@ directorio son ese original binario; no intentes leerlos.
 
 ## Estado
 
-Construido y verificado:
+Acá NO hay inventario, y es a propósito. Un contador de pruebas y una lista de
+endpoints caducan en cada commit, ningún paso tiene motivo para volver a
+tocarlos, y entonces mienten por defecto: la lista de endpoints quedó vieja tres
+veces seguidas, y las tres anunció como faltante algo que ya estaba construido.
+Si estás por escribir acá un número o una enumeración de lo que ya existe, lo que
+hace falta es el comando que lo averigua, no el dato.
 
-- `packages/db`: esquema, migracion inicial y las restricciones por SQL crudo.
-- `packages/core`: errores de dominio, repositorios, BoardService, ColumnService
-  y TaskService completos, mas el registro de herramientas MCP (`src/mcp`).
-- Auditoria (RF-10): `ActorContext`, `AuditService` y los eventos de la 7.4. El
-  registro se escribe en la MISMA transaccion que la operacion auditada, y toda
-  operacion de escritura de los tres servicios recibe `ctx`.
-- `apps/mcp-stdio`: servidor MCP por stdio en modo `core`, con las ONCE
-  herramientas del catalogo de la 8.2 y la politica de operaciones destructivas
-  de la 8.3.2 (MCP_DESTRUCTIVE_POLICY).
+- **Cuántas pruebas hay y si pasan**: `pnpm run verify`. Levanta la base, migra y
+  corre las suites contra PostgreSQL real; cada paquete imprime su total.
+- **Qué endpoints existen**, con su verbo y su scope, uno por línea:
 
-208 pruebas contra PostgreSQL real.
+  ```
+  grep -rnE "^export (const|async function) (GET|POST|PATCH|PUT|DELETE)" apps/web/app --include=route.ts
+  ```
 
-Todavia NO existen: scopes (7.2), herramienta MCP ni endpoint para CONSULTAR la
-auditoria, `packages/contracts`, la API REST, HttpPort, el transporte Streamable
-HTTP ni la UI.
+  El `conAuth("…")` de cada línea es el scope que ese endpoint exige (7.2).
+  `/api/health` sale sin `conAuth` porque es el único sin autenticación (6.2), y
+  eso es TODO lo que lo hace distinto: no tiene 401, 403 ni el 429 de la 7.3, que
+  se cobra por clave. El X-Request-Id SÍ lo lleva, como toda respuesta (6.1);
+  genera el suyo con la misma `nuevoRequestId()` que usa `conAuth`.
+- **Qué endpoints faltan**: la tabla de la 6.2 es el objetivo y el comando de
+  arriba es el estado; la resta de los dos es la lista. Cualquier copia escrita
+  acá empieza a envejecer el mismo día.
+- **Qué herramientas MCP hay**: un archivo por herramienta en
+  `packages/core/src/mcp/tools/`, montadas en `registry.ts`. El catálogo que
+  tienen que cubrir es el de la 8.2.
+- **En qué rama y fase estás**: `git branch --show-current` y `git log --oneline`.
+  Los nombres de fase (F1b, F3, F4…) salen del plan de la 12.
 
-Fase en curso: F3 cerrada — auditoria con ActorContext.
+Lo que no caduca está en las secciones de abajo, que son las que valen: la deuda
+conocida, las trampas del entorno, las reglas que no se negocian y los
+invariantes del servidor MCP.
 
 ## Deuda conocida
 
 Salio del uso real, no de la especificacion. Ninguna esta arreglada; anotarlas
 aca es para que no se redescubran de cero.
+
+Esta lista SÍ va escrita a mano, a diferencia del inventario de arriba, y la
+diferencia no es el formato: una entrada de acá se borra en el mismo commit que
+arregla lo que describe, así que el trabajo que la invalida es el que la toca. Un
+contador de pruebas no tiene ese commit.
 
 - `ubicarTarea` no verifica que un id de tarea pertenezca al `board` indicado:
   la resolucion por id no busca, asi que un id valido de OTRO tablero se acepta.
@@ -42,10 +60,105 @@ aca es para que no se redescubran de cero.
   encuentra "autenticacion". Es como funciona `to_tsvector('spanish', ...)`, no
   un bug del query. La salida es `pg_trgm` en una migracion aditiva, sin tocar
   el indice que ya existe.
+- Los ACENTOS no se normalizan de forma uniforme, y eso no se deduce leyendo el
+  query: depende de la palabra. Si la forma acentuada solo pierde el acento, los
+  dos lados convergen y se encuentran —"revisión" y "revision" dan los dos
+  `revision`, "código" y "codigo" dan `codig`—. Pero si el acento dispara una
+  regla del stemmer, NO convergen: "aceptación" da `acept` porque reconoce el
+  sufijo -ación y lo quita, mientras "aceptacion" sin tilde da `aceptacion`. Son
+  lexemas distintos, asi que buscar "aceptacion" NO encuentra "aceptación". Lo
+  mismo con "documentación"/"documentacion" y "validación"/"validacion". O sea
+  que la insensibilidad a acentos que se ve en algunos casos es ACCIDENTAL y no
+  una garantia: no hay `unaccent` en el pipeline. La salida es `unaccent` en la
+  CONFIGURACION de busqueda —una configuracion propia que encadene unaccent con
+  el stemmer, y el indice de la 4.2 reconstruido sobre ella— y NO un cambio en el
+  query, que es donde uno lo buscaria primero. Consecuencia de producto, para
+  cuando se escriba la UI: sin eso, un buscador libre donde la gente tipea sin
+  tildes se lee como roto; y la busqueda incremental mientras se escribe no es
+  viable de entrada, porque `plainto_tsquery` no agrega `:*` y un prefijo no
+  matchea (ver la entrada de arriba).
+- Un parametro de consulta DESCONOCIDO se ignora en silencio en los CINCO
+  endpoints de listado (GET /api/boards, GET /api/tasks, GET /api/tasks/search,
+  GET /api/audit y el listado por columna). No es que el `strictObject` lo
+  acepte: es que nunca lo ve, porque el handler arma el objeto a validar leyendo
+  SOLO los parametros que conoce, uno por uno. Lo peligroso no es el 200 sino
+  creer que el parametro acoto cuando quedo INERTE: `?column_key=TODO` en la
+  busqueda devuelve el tablero entero, y quien lo mando no se entera. Esta atado
+  con un test que afirma justamente eso. Cambiarlo —comparar las claves
+  recibidas contra las declaradas y devolver 400— afecta a los cinco endpoints a
+  la vez, asi que es su propio paso y no un arreglo al pasar.
 - `list_boards` y `list_tasks` devuelven `has_more` pero no el `cursor` (y
   `search_tasks` tiene el mismo hueco). El nucleo lo tiene —`Page.nextCursor`, y
   las herramientas lo leen para calcular `has_more`— pero lo descartan al
   proyectar: el agente sabe que hay mas y no tiene con que pedirlo.
+- `aFecha` (`packages/core/src/mcp/tools/campos.ts`) acepta dias que no existen.
+  Valida el formato con una regex y despues con `Number.isNaN`, y eso NO alcanza:
+  `new Date("2026-02-30T00:00:00.000Z")` no da invalida, se corre sola al 2 de
+  marzo. O sea que hoy, por MCP, un `due_date` de "2026-02-30" crea una tarea que
+  vence el 2 de marzo sin avisar. El mes 13 SI se atrapa —ahi la fecha si sale
+  invalida— pero el dia no, que es el caso que alguien escribe de verdad. El
+  contrato REST no comparte ese helper: `fechaSola` de `packages/contracts`
+  valida con un ida y vuelta —reconstruye la fecha y la compara con lo que
+  entro— y eso si lo atrapa. El arreglo es el mismo ida y vuelta dentro de
+  `aFecha`, y conviene hacerlo ahi y no duplicar el de contracts, porque el borde
+  MCP no puede importar del paquete de contratos HTTP.
+- GET /api/audit NO se puede filtrar por `request_id`, y es el filtro que mas se
+  va a extra~nar: correlacionar el `X-Request-Id` que devolvio una respuesta con
+  lo que esa peticion escribio es el uso mas natural del log, y es exactamente lo
+  que la 6.1 promete al hacer coincidir los dos valores. No esta porque
+  `audit_log` no tiene indice por esa columna (4.1 declara solo
+  `(entity_type, entity_id, created_at)` y `(created_at)`), y es la tabla que
+  crece con CADA escritura del sistema: un filtro sin indice ahi es un seq scan
+  que empeora solo, y ofrecerlo seria peor que no tenerlo porque funcionaria bien
+  el primer mes. Lo mismo vale para `action`, `actor_type`, `actor_name` y
+  `client_id`, que tampoco tienen indice, pero ninguno de esos se pide igual. El
+  arreglo es un indice por `request_id` en una migracion ADITIVA —no toca ninguna
+  de las cuatro restricciones que Prisma propone dropear— y despues el filtro en
+  el contrato y en `ListAuditQuery`. Es su propio paso.
+- La PURGA diaria de `idempotency_record` que pide la 6.5 NO existe, y no
+  hay scheduler en el proyecto. Hoy no molesta: la tabla crece como mucho una
+  fila por POST con cabecera, que en uso personal son unas pocas. El
+  disparador para hacerla es que la tabla crezca de verdad o que el sistema deje
+  de ser personal. La opcion mas barata entonces es un script en `packages/db`
+  enganchado al planificador del sistema operativo, como se hace con
+  `apikey:create`. DESCARTADA explicitamente la de un `setInterval` en el proceso
+  de Next: se duplica por instancia y el hot reload la multiplica, asi que borra
+  filas desde varios relojes a la vez y ninguno es observable.
+- `last_used_at` de la 7.1 NO se actualiza, y el problema es mas grande de lo que
+  suena: LA COLUMNA NO EXISTE. La 4.1 declara `lastUsedAt` en el modelo `ApiKey` y
+  `schema.prisma` no la tiene, asi que esto no es agregar una escritura sino una
+  MIGRACION ADITIVA primero —y con el procedimiento de siempre: `--create-only`,
+  borrar los DROP que Prisma propone sobre las cuatro restricciones de SQL crudo, y
+  verificar despues con `pg_constraint`—. Lo que pide la 7.1 encima es que se
+  actualice como maximo una vez por minuto por clave, o sea un throttle, para no
+  convertir cada lectura en una escritura; el gancho natural es el cache de claves
+  que ya existe, que sabe cuando una entrada se refresco. El disparador para
+  hacerlo es querer saber que claves estan vivas —auditar claves sin uso, o
+  revocar por abandono— que en uso personal con dos claves no se pregunta. Hasta
+  entonces el dato no existe y ninguna consulta lo puede suponer.
+- DIVERGENCIAS CONOCIDAS entre la 4.1 y `schema.prisma` en el modelo `ApiKey`. No
+  son deuda a arreglar: son decisiones de F1 que el documento no refleja, y estan
+  escritas para que nadie las lea como un error al comparar los dos. `prefix` es
+  VarChar(24) y la 4.1 dice (16) —`tmk_live_` mas 6 caracteres son 15, asi que 16
+  alcanza justo y 24 deja aire—; `hash Char(64)` es `keyHash VarChar(64)` y ADEMAS
+  `@unique`; `scopes String[]` es el enum `Scope[]`, que es mas estricto; y hay un
+  `updatedAt` que la 4.1 no declara. La que SI falta es `lastUsedAt`, y esa tiene
+  su entrada arriba.
+- La VENTANA DE REVOCACION del cache de claves de la 7.1: una clave revocada
+  sigue autenticando hasta 60 s. Es la consecuencia aceptada de cachear la fila
+  de `api_key` y esta MEDIDA de punta a punta, no supuesta: con el servidor
+  arriba, 200 antes de revocar, 200 justo despues del UPDATE, 401 a los 65 s.
+  NO se eligio por comodidad: hoy no hay donde enganchar la invalidacion. La
+  revocacion es un `UPDATE api_key SET revoked_at = now()` que una persona tipea
+  en psql —no hay endpoint ni script— asi que 'invalidar al revocar' exige
+  construir primero ese camino, y ademas el script correria en OTRO proceso, que
+  no comparte el cache. La salida barata mientras tanto: reiniciar el proceso lo
+  vacia, porque esta en memoria, asi que una revocacion urgente es el UPDATE mas
+  un reinicio. El orden para cerrarla de verdad es (1) un `apikey:revoke`
+  simetrico de `apikey:create`, que falta igual —revocar tipeando SQL a mano es
+  su propio riesgo— y (2) recien entonces LISTEN/NOTIFY o un cache compartido,
+  porque el problema real es entre procesos. `reiniciarCacheDeClaves()` ya existe
+  y es el gancho que usaria cualquiera de las dos.
 
 ## Entorno
 
@@ -53,18 +166,154 @@ aca es para que no se redescubran de cero.
   cualquier ruta en scripts y configuración.
 - Node 20+, pnpm workspaces, TypeScript strict con noUncheckedIndexedAccess.
 - PostgreSQL 16 en Docker Desktop.
+- `pnpm run verify` corre los tests contra la base de desarrollo y la TRUNCA:
+  cualquier dato cargado a mano ahí se pierde en el próximo verify. Y lo que
+  quede después NO es dato real: es el residuo de la última prueba que corrió,
+  porque cada una trunca en su `beforeEach` y siembra lo suyo. Cuál sea ese
+  residuo cambia con el orden de las suites —este archivo decía "fixture de
+  `apps/mcp-stdio`" y dejó de ser cierto en cuanto `apps/web` pasó a correr
+  después—, así que no lo anotes acá: si ves algo y dudás, buscá de dónde sale
+  con `grep -rn "<lo que viste>" --include=*.test.ts .`. Ya engañó una vez, con
+  un título de TAREA leído como nombre de tablero.
+- Eso incluye `api_key`: verify también la vacía, así que cualquier clave
+  emitida a mano desaparece en el próximo verify y hay que reemitirla con
+  `pnpm run apikey:create`.
 - Los scripts de package.json deben ser multiplataforma: nada de `rm`, `cp`,
   `export` ni here-docs.
+- `apps/web` corre con `--webpack`, no con Turbopack, y por eso sus scripts de
+  `dev` y `build` llevan el flag. `packages/core` usa specifiers NodeNext
+  (`./domain/types.js` apunta a `types.ts`); esbuild hace esa sustitución solo
+  —por eso `apps/mcp-stdio` no necesita nada— y los bundlers de Next no. Lo
+  arregla `experimental.extensionAlias`, que Turbopack ignora explícitamente: con
+  Turbopack fallan los ~30 imports del barrel. La salida es que `core` publique
+  JS compilado, en vez de quedarse en webpack para siempre; el plazo que se le
+  habia puesto —antes de F3— ya paso sin saldarla.
+- Un paquete listado en `serverExternalPackages` tiene que ser RESOLUBLE desde
+  `apps/web` o la entrada es inerte: Next declara externo algo que no puede
+  externalizar, lo empaqueta igual, y en dev lo empaqueta partido en
+  vendor-chunks. Con pnpm estricto no alcanza con que lo declare un paquete del
+  workspace —`packages/db` lo resolvía y `apps/web` no—, así que el paquete va
+  también en las dependencias de `apps/web`, apuntando a la MISMA copia física.
+  Comprobalo por realpath de `require.resolve("@prisma/client/runtime/client")`
+  desde los dos paquetes, nunca por número de versión: en el store puede haber
+  dos entradas de la misma versión con hashes de peers distintos, y enganchar la
+  otra deja dos copias reales en vez de una. El síntoma típico si se rompe es
+  PostgreSQL 42601 SOLO en dev, con los fragmentos `Prisma.Sql` anidados
+  bindeados como parámetros en vez de interpolados: son dos copias del runtime
+  en el proceso, y el `Sql` que construye `packages/db` no es `instanceof` el
+  `Sql` que evalúa `$queryRaw`. `pg` dejó de ser inerte cuando entró como
+  devDependency de `apps/web` para la suite de contrato: comprobado por realpath,
+  hay UNA sola copia física vista desde `apps/web`, `packages/db`,
+  `packages/core` y `apps/mcp-stdio`, y el camino de `$queryRaw` con fragmentos
+  `Prisma.Sql` sigue devolviendo 200 en dev, que es donde aparecería el 42601.
+  `pino` entró por lo mismo con el log de la 11.1, y se comprobó igual: una sola
+  copia física vista desde `apps/web` y `apps/mcp-stdio` —el mismo realpath, no el
+  mismo número de versión— y después `next build` más `next start` con
+  GET /api/health devolviendo 200 y escribiendo su línea JSON, que es donde se
+  vería si el bundler lo hubiera partido.
+  Pendiente conocido: `@prisma/adapter-pg` SIGUE inerte y se empaqueta. Hoy no
+  rompe nada —el bug era específico del runtime de `@prisma/client`— y el arreglo
+  sería idéntico.
+- Un typecheck que PASA donde esperabas que fallara puede ser un
+  `tsconfig.tsbuildinfo` viejo, no un mecanismo roto. Pasó una vez con el
+  `Record` exhaustivo de errores de `apps/web/lib/http.ts`: se agregó un código
+  de dominio sin mapear, `tsc --noEmit` dio verde, y borrando
+  `apps/web/tsconfig.tsbuildinfo` apareció el TS2741 que se esperaba. No se
+  pudo reproducir después —con la caché sana lo detecta, y el typecheck del
+  monorepo entero también—, así que es observación y no bug confirmado. El
+  reflejo igual: borrá el tsbuildinfo del paquete y repetí ANTES de concluir
+  que la salvaguarda no funciona. Vale sobre todo para las contrapruebas, que
+  son justamente las que esperan rojo y donde un verde se lee como "el
+  mecanismo no sirve" en vez de como "no se volvió a compilar".
+- El `build` de `packages/contracts` NO ESCRIBE nada: comprueba. Corre el
+  generador con `--check`, que arma el documento en memoria y lo compara con el
+  `openapi.json` versionado, y falla si difieren. El que escribe es
+  `pnpm run openapi:generate`. La asimetria ES el punto: si `build` reescribiera
+  —como hacia al principio— verify pasaria en verde con un contrato
+  desactualizado en el repo, porque lo primero que haria seria taparlo. Y el
+  generador NO tiene modo por defecto, para que nadie lo llame sin decidir cual
+  de los dos quiere: olvidar la bandera es un mensaje de uso, no una escritura.
+- Ese check compara CONTENIDO y no bytes: normaliza CRLF a LF antes de comparar.
+  Con `core.autocrlf=true` un clon fresco deja `openapi.json` en CRLF en disco
+  mientras el generador siempre emite LF, asi que comparar bytes crudos fallaria
+  recien clonado con el contrato perfectamente al dia. Pasar el archivo entero a
+  CRLF NO rompe el check, y esta bien que no lo rompa, pero el estado intermedio
+  engaña y esta medido: con el archivo en CRLF, `git status` lo muestra como
+  ` M` —y `git update-index --refresh` dice `needs update`— mientras `git diff`
+  sale VACIO, porque el blob normalizado es el mismo; un `git add` lo vuelve a
+  dejar limpio sin stagear nada. O sea que ese ` M` no es un cambio de
+  contenido, y buscarle uno es perder la tarde.
+- No mates procesos `node` con un `Stop-Process` amplio en esta máquina: se
+  llevan puestos los servidores MCP de la sesión, que también son `node`.
+  Filtrá por PID o por línea de comando.
+- Contrapruebas hechas con `sed -i`: `sed` reescribe el archivo en LF, y con
+  `core.autocrlf=true` git lo entrega en CRLF. Así que comparar el sha256 justo
+  después del `sed` inverso da MISMATCH sin que haya nada mal —el contenido es
+  idéntico y `git diff` sale vacío—, y es fácil leerlo como "el revert no
+  funcionó" y empezar a tocar cosas. El checksum se compara DESPUÉS de dejar que
+  git reescriba el archivo, con `git checkout -- <archivo>`, no después del
+  `sed`. Y al revés: `git checkout --` sobre un archivo que estaba en LF lo
+  convierte a CRLF, que es churn invisible para git pero real en disco. Si hace
+  falta dejar los bytes exactos que había, mirá primero con qué terminadores
+  estaba (`file <archivo>`), y no uses `grep -c $'\r'` para averiguarlo desde
+  esta herramienta: el `$'\r'` puede llegar como patrón vacío y entonces cuenta
+  TODAS las líneas, que se lee igual que "el archivo es CRLF".
 
 ## Reglas que no se negocian
 
 - Nunca `prisma db push`. Solo `prisma migrate dev` / `prisma migrate deploy`.
+- Una `Idempotency-Key` identifica un INTENTO DE OPERACION, no un cuerpo. O sea
+  que reusarla en OTRO endpoint, desde el mismo cliente, devuelve 422 aunque el
+  cuerpo sea otro: la PK es `(key, client_id)` y el endpoint entra en el HASH, no
+  como columna, asi que el segundo endpoint encuentra la fila del primero, ve un
+  hash distinto y rechaza. Es DECISION TOMADA y no un efecto colateral: reusar
+  una clave para otra operacion es un error del cliente —el que se paga tras un
+  timeout, reintentando lo que no era— y el 422 se lo dice; sumar `endpoint` a la
+  PK lo dejaria mudo, porque las dos peticiones convivirian sin que nadie se
+  entere. Entre clientes DISTINTOS cada uno hace lo suyo, que es justo lo que la
+  PK compuesta separa. Cambiar esta semantica NO es tocar el hash: es migrar la
+  PK a `(key, client_id, endpoint)`.
+- El metodo y la ruta entran en el hash de la 6.5. El caso que lo justifica no es
+  el de dos cuerpos distintos —ahi los hashes difieren igual— sino el del MISMO
+  cuerpo en dos endpoints, y la idempotencia se resuelve ANTES del esquema, asi
+  que el cuerpo ni siquiera tiene que ser valido en el segundo. Medido sacandolos:
+  POST /api/tasks devuelve 201 con `Idempotency-Replayed: true` y un TABLERO con
+  sus cuatro columnas en el cuerpo, y cero tareas creadas.
 - Las restricciones `UNIQUE ... DEFERRABLE` sobre `position` se declaran SOLO en
   SQL crudo dentro de la migración. No las declares como `@@unique` en
   `schema.prisma`: Prisma generaría una versión no diferible.
+- NUNCA apliques lo que genera `prisma migrate dev` sin leerlo entero. Los
+  invariantes que viven solo en SQL crudo —la FK compuesta
+  `task_column_same_board`, la UNIQUE `column_board_pair` que esa FK
+  referencia, y las UNIQUE DEFERRABLE `task_column_position_uniq` y
+  `column_board_position_uniq`— no están en `schema.prisma`, así que Prisma
+  los toma por drift y propone un DROP de cada uno en CADA migración nueva, sin
+  que la migración tenga nada que ver con ellos. Aplicarlos se lleva puestos el
+  orden denso 0..n-1 (ADR-004) y la garantía de que una tarea no apunte a la
+  columna de otro tablero (4.2). El procedimiento es: generar SIEMPRE con
+  `--create-only`, borrar a mano todo DROP que toque esas cuatro, y verificar
+  con una consulta a `pg_constraint` / `pg_indexes` que las cuatro siguen
+  presentes DESPUÉS de aplicar, con `condeferrable = t` en las dos de
+  `position`. Que la migración corra sin error no prueba nada: los DROP se
+  aplican limpiamente, y lo que se pierde no se nota hasta que falla un
+  reordenamiento o entra una tarea en la columna de otro tablero.
 - La FK `task → board_column` es `ON DELETE NO ACTION`, no `RESTRICT`. RESTRICT
   se evalúa fila a fila y rompe el borrado en cascada de un tablero.
 - Los UUID los genera la aplicación, no la base.
+- `packages/db/src/client.ts` exporta un Proxy, no el cliente. El `PrismaClient`
+  se construye en el PRIMER acceso a una propiedad y ahí se valida
+  `DATABASE_URL`; importar el módulo no construye nada, y de eso depende que una
+  herramienta pueda cargar un módulo del árbol sólo para inspeccionarlo sin una
+  base configurada —el caso que lo destapó fue el "Collecting page data" de
+  `next build`—. El invariante "un cliente por proceso" descansa en DOS caches y
+  las dos hacen falta: el global, que se escribe sólo fuera de producción para
+  el hot reload, y una variable de módulo. Sacar la segunda abre un pool por
+  acceso en producción. Los métodos se devuelven con `bind` al cliente real,
+  porque invocarlos con el proxy como `this` revienta en el primer campo
+  privado. Consecuencia: `prisma.$transaction` NO es idéntico entre accesos, y
+  `prisma instanceof PrismaClient` da false. Si algún día hace falta el
+  instanceof, la salida es exponer el cliente por una función, no ampliar las
+  trampas del proxy.
 - El orden de tareas es entero denso 0..n-1 por columna, sin huecos. Toda
   operación que altere el orden reescribe la secuencia completa dentro de una
   transacción.
@@ -84,6 +333,45 @@ aca es para que no se redescubran de cero.
 - (A partir de F1b) `packages/core` no importa Next, ni el SDK de MCP, ni nada
   de HTTP. Los adaptadores (REST, MCP) no contienen reglas de negocio. Ningún
   adaptador importa Prisma directamente.
+- `packages/contracts` es una HOJA del grafo de dependencias (3.3): no importa
+  NADA del proyecto, ni siquiera el núcleo. Por eso sus límites —los de nombre,
+  descripción y paginación— están escritos ahí otra vez en vez de leerse de
+  `packages/core`: que hoy coincidan con los del dominio no los hace el mismo
+  dato, estos son los que documenta el borde. Si alguna vez hace falta que
+  coincidan por construcción, la salida es generar unos de los otros, no importar
+  el núcleo.
+- `packages/core/src/domain/api-key.ts` NO puede importar nada del resto del
+  núcleo: solo `node:crypto`. El script de administración lo carga por ruta
+  directa (`../src/domain/api-key.ts`) apoyándose en el stripping de tipos
+  nativo de Node, que NO resuelve los specifiers NodeNext del proyecto
+  (`./x.js` -> `x.ts`), así que un solo import interno lo rompe. Se comparte en
+  vez de recalcular el hash en el script porque, si los dos difirieran, se
+  emitirían claves que no validan y el síntoma sería un 401 indistinguible de
+  una clave mal tipeada. Consecuencia: ese comando requiere Node 22.6+, por
+  encima del Node 20+ que declara el resto del proyecto; afecta solo al script,
+  no a la app. Si algún día hace falta importar algo ahí, la salida es
+  empaquetar el script con esbuild como `apps/mcp-stdio`, no relajar la regla.
+- El pepper llega INYECTADO al `ApiKeyService`, nunca leído de `process.env`
+  dentro del núcleo: el núcleo recibe datos ya validados (3.2), y así el
+  servicio se prueba con dos peppers distintos en un mismo test. El constructor
+  falla con un pepper vacío, y falla al construir y no en la primera petición:
+  un pepper vacío hashea sin protestar y produce claves cuyo hash no depende de
+  ningún secreto, o sea un fallo silencioso del peor tipo.
+- El `ApiKeyService` se construye POR PETICIÓN, no a nivel de módulo como
+  `crearCorePort()`. Su constructor exige el pepper, y leerlo al importar el
+  módulo rompe el "Collecting page data" de `next build`: es la misma trampa que
+  resolvió el proxy perezoso de `packages/db`.
+- El spread condicional de `description` en PATCH /api/boards/{id} lo defiende el
+  TYPECHECK —`exactOptionalPropertyTypes`— y NO la suite. `BoardService.update`
+  decide con `patch.description === undefined`, así que una clave PRESENTE en
+  undefined se comporta igual que una ausente: cambiarlo por
+  `description: entrada.data.description` deja la suite de `apps/web` ENTERA en
+  verde y falla con TS2375. O sea que el reflejo de "si no rompe ningún test, no
+  protege nada" acá se lee al revés: borrar el spread rompe `verify` un paso
+  antes, en `typecheck`. Lo que la suite SÍ atrapa son los dos colapsos que
+  compilan, y cada uno tiene su prueba: `?? null` hace que una descripción
+  ausente pase a borrar (falla "ausente conserva") y `== null` en vez de
+  `=== undefined` hace que `null` deje de borrar (falla "null borra").
 - Los errores de PostgreSQL llegan por dos caminos distintos segun donde
   falle la sentencia, y hay que cubrir los dos. Si la viola una sentencia
   concreta, Prisma la envuelve en un `PrismaClientKnownRequestError` y la
@@ -156,8 +444,28 @@ aca es para que no se redescubran de cero.
   compatibilidad de modos de bloqueo en `packages/core` usa una operacion de
   cada tipo y no cuatro.
 - No se reintenta NUNCA ante 40P01. Un interbloqueo significa que el orden de
-  bloqueo esta mal, y reintentarlo esconde el bug que detecta la prueba C2 de
-  `packages/core` en vez de arreglarlo.
+  bloqueo esta mal, y reintentarlo esconde el bug en vez de arreglarlo. Es
+  ademas lo que lo hace distinguible de un reintento: un 40P01 sube como
+  rechazo, con la firma de ~1150 ms del `deadlock_timeout`, y nunca se absorbe.
+  El reintento que SI se observa en los tres casos de concurrencia de la 10.1
+  absorbe un 40001, no una UNIQUE diferida; verificado corriendo los mismos
+  escenarios con `maxRetries: 0`.
+- El orden de bloqueo canonico de la 5.4 —`ORDER BY column_id, id`, el MISMO
+  para los dos movimientos— esta MEDIDO y no supuesto: rompiendolo a proposito
+  (ordenando la columna de ORIGEN primero, que es distinto para cada
+  movimiento) aparecen interbloqueos reales, 3 en 300 rondas —~1% por ronda—
+  contra 0 en 200 rondas con el orden canonico. O sea que esa linea hace algo.
+  PERO la prueba C2 de `packages/core`, con sus 5 rondas, atrapa esa regresion
+  cerca del 5% de las veces: no es inestable —con el codigo correcto da 0
+  interbloqueos siempre— es INSENSIBLE, que es otra cosa y no se nota
+  mirandola. El detector real es `packages/core/test/orden-de-bloqueo.test.ts`,
+  460 rondas (~55 s), que NO corre en verify y se invoca a mano:
+
+  ```
+  pnpm --filter @taskman/core run test:orden-de-bloqueo
+  ```
+
+  Si tocas el orden de bloqueo, corre ese. Que verify pase no prueba nada ahi.
 
 ## Servidor MCP
 
@@ -174,6 +482,10 @@ aca es para que no se redescubran de cero.
   titulo.
 - Una coincidencia ambigua NUNCA se resuelve eligiendo la primera. Devuelve
   AMBIGUOUS_MATCH con todos los candidatos y un `hint` que dice que hacer.
+- `apps/mcp-stdio` corre en modo `core` (MCP_PORT_MODE de la 8.1): habla con la
+  base por los servicios, en el mismo proceso, sin pasar por HTTP. La politica de
+  operaciones destructivas de la 8.3.2 se controla con MCP_DESTRUCTIVE_POLICY, y
+  el log estructurado es el de la 11.1: a stderr, nunca a stdout.
 - stdout es el canal del protocolo: en `apps/mcp-stdio` todo diagnostico va a
   stderr. Un `console.log` suelto rompe la sesion MCP entera.
 - `apps/mcp-stdio` se empaqueta con esbuild porque `@taskman/core` y

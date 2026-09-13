@@ -3,6 +3,8 @@ import { Prisma, type PrismaClient } from "@taskman/db";
 import type { Board, Column, ListBoardsQuery } from "../domain/types.js";
 import type { AuditRow, AuditTransaction } from "./audit-repository.js";
 import { insertAuditRow } from "./audit-repository.js";
+import type { EscrituraIdempotente, IdempotencyRow } from "./idempotency-repository.js";
+import { insertIdempotencyRow } from "./idempotency-repository.js";
 import type { OrdenSql } from "./pagination.js";
 import { clausulaOrden, condicionCursor, decodificarCursor, normalizarLimite, paginar } from "./pagination.js";
 import type { LockedTask } from "./task-repository.js";
@@ -33,8 +35,14 @@ export interface NewColumnRow {
 /**
  * Extiende `AuditTransaction` a proposito: el registro de auditoria de una
  * operacion sobre tableros o columnas se escribe con ESTA transaccion (7.4).
+ *
+ * Y `EscrituraIdempotente` por lo mismo, para la 6.5: el registro de
+ * idempotencia se guarda con ESTA transaccion o no se guarda. La diferencia
+ * entre las dos es quien las llama: `insertAudit` lo llama el nucleo a traves de
+ * `AuditService`, e `insertIdempotency` lo llama un participante externo, que
+ * por eso recibe SOLO esa interfaz y nunca esta.
  */
-export interface BoardTransaction extends AuditTransaction {
+export interface BoardTransaction extends AuditTransaction, EscrituraIdempotente {
   findBoard(boardId: string): Promise<Board | undefined>;
   insertBoard(row: NewBoardRow): Promise<void>;
   updateBoardFields(
@@ -238,6 +246,10 @@ function crearBoardTransaction(tx: Prisma.TransactionClient): BoardTransaction {
     async insertAudit(row: AuditRow) {
       await insertAuditRow(tx, row);
     },
+
+    async insertIdempotency(row: IdempotencyRow) {
+      await insertIdempotencyRow(tx, row);
+    },
   };
 }
 
@@ -281,6 +293,28 @@ export class BoardRepository {
       orderBy: { position: "asc" },
     });
     return filas.map(aColumn);
+  }
+
+  /**
+   * Cuantas tareas tiene cada columna del tablero, en UNA sola consulta.
+   *
+   * Con GROUP BY y no cargando las tareas para contarlas en memoria, que es lo
+   * que hace hoy la herramienta MCP get_board: para el recuento no hace falta
+   * traer ni una fila de `task`, y traerlas convierte una agregacion de coste
+   * fijo en una transferencia proporcional al tamaño del tablero.
+   *
+   * Las columnas sin tareas NO aparecen en el resultado: un GROUP BY no inventa
+   * grupos vacios. Quien lo consuma tiene que resolver la ausencia como cero,
+   * y por eso devuelve un Map y no un array: el .get() ?? 0 es explicito.
+   */
+  async countTasksByColumn(boardId: string): Promise<Map<string, number>> {
+    const filas = await this.#prisma.task.groupBy({
+      by: ["columnId"],
+      where: { boardId },
+      _count: { _all: true },
+    });
+
+    return new Map(filas.map((fila) => [fila.columnId, fila._count._all]));
   }
 
   async listBoards(query: ListBoardsQuery): Promise<{ items: Board[]; nextCursor: string | null }> {

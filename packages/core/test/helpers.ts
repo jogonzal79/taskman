@@ -5,7 +5,7 @@ import { expect } from "vitest";
 
 import type { ActorContext, Column } from "../src/index.js";
 
-const ALL_TABLES = ["task", "board_column", "board", "audit_log"] as const;
+const ALL_TABLES = ["task", "board_column", "board", "audit_log", "api_key"] as const;
 
 /**
  * La suite hace TRUNCATE. Si DATABASE_URL apunta a algo que no sea la instancia

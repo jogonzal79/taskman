@@ -3,6 +3,8 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     include: ["test/**/*.test.ts"],
+    // Vacia el cache de claves de la 7.1 entre pruebas. Ver test/setup.ts.
+    setupFiles: ["./test/setup.ts"],
     // Misma base que packages/db y cada test la limpia con TRUNCATE: un solo
     // worker, de a un archivo por vez. Los tests de concurrencia levantan sus
     // transacciones simultaneas dentro de un mismo test, no entre archivos.

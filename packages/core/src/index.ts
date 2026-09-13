@@ -4,8 +4,11 @@ export type { DomainErrorCode, DomainErrorOptions } from "./domain/errors.js";
 export type {
   Board,
   BoardDetail,
+  BoardWithTaskCounts,
   Column,
   ColumnOrder,
+  ColumnWithOrder,
+  ColumnWithTaskCount,
   CreateBoardInput,
   CreateColumnInput,
   CreateTaskInput,
@@ -28,8 +31,13 @@ export type {
 export { LIMITE_PAGINA_DEFECTO, LIMITE_PAGINA_MAXIMO } from "./domain/types.js";
 
 export type { ActorContext, ActorType } from "./domain/actor.js";
-export { LOGGER_NULO } from "./domain/logger.js";
-export type { CamposDeLog, Logger } from "./domain/logger.js";
+export {
+  leerNivelLog,
+  LOGGER_NULO,
+  NIVEL_LOG_POR_DEFECTO,
+  NIVELES_LOG,
+} from "./domain/logger.js";
+export type { CamposDeLog, Logger, NivelLog } from "./domain/logger.js";
 export {
   actualizacion,
   borrado,
@@ -48,8 +56,10 @@ export {
 export type {
   AuditAction,
   AuditEntityType,
+  AuditEntry,
   AuditEvent,
   AuditPayload,
+  ListAuditQuery,
   Cambios,
   CampoAuditado,
   ValorJson,
@@ -66,6 +76,7 @@ export {
   COLUMN_KEY_CONSTRAINT,
   COLUMN_POSITION_CONSTRAINT,
   DEADLOCK_DETECTED,
+  IDEMPOTENCY_PK_CONSTRAINT,
   SERIALIZATION_FAILURE,
   TASK_POSITION_CONSTRAINT,
 } from "./db/db-error.js";
@@ -81,6 +92,7 @@ export type {
   TaskTransaction,
 } from "./db/task-repository.js";
 
+export { AuditQueryService } from "./services/audit-query-service.js";
 export { AuditService } from "./services/audit-service.js";
 export { TaskService } from "./services/task-service.js";
 export { BoardService, COLUMNAS_POR_DEFECTO, LIMITE_BOARD_DESCRIPTION, LIMITE_BOARD_NAME } from "./services/board-service.js";
@@ -88,15 +100,54 @@ export { ColumnService } from "./services/column-service.js";
 export { resolverColumna } from "./services/column-reference.js";
 export type { BuscadorDeColumnas } from "./services/column-reference.js";
 
-export { insertAuditRow } from "./db/audit-repository.js";
+export { AuditRepository, insertAuditRow } from "./db/audit-repository.js";
 export type { AuditRow, AuditTransaction } from "./db/audit-repository.js";
+
+// --- Idempotencia (6.5) ------------------------------------------------------
+
+export { IdempotencyRepository, insertIdempotencyRow } from "./db/idempotency-repository.js";
+export type {
+  EscrituraIdempotente,
+  IdempotencyRecord,
+  IdempotencyRow,
+} from "./db/idempotency-repository.js";
+export type { ParticipanteIdempotente } from "./services/participante.js";
 export { BoardRepository } from "./db/board-repository.js";
 export type { BoardTransaction, LockedColumn, NewBoardRow, NewColumnRow } from "./db/board-repository.js";
 export { TransactionRunner } from "./db/transaction-runner.js";
+export { comprobarConexion } from "./db/health.js";
 
 export { LIMITE_COLUMN_KEY, LIMITE_COLUMN_NAME, normalizarColumnKey } from "./domain/column-key.js";
 export type { ColumnReference } from "./domain/column-key.js";
 export { normalizarTexto, recortarBlancos } from "./domain/text.js";
+
+// --- API keys (ADR-005, 7.1 y 7.2) ------------------------------------------
+
+export {
+  esScope,
+  generarClave,
+  hashearClave,
+  hashesIguales,
+  prefijoDe,
+  LARGO_PREFIJO_VISIBLE,
+  PREFIJO_CLAVE,
+  SCOPES,
+} from "./domain/api-key.js";
+export type { Scope } from "./domain/api-key.js";
+export { buscarClavePorPrefijo } from "./db/api-key-repository.js";
+export type { ApiKeyRow } from "./db/api-key-repository.js";
+export {
+  conCache,
+  reiniciarCacheDeClaves,
+  VENTANA_CACHE_MS,
+} from "./services/api-key-cache.js";
+export { ApiKeyService } from "./services/api-key-service.js";
+export type {
+  BuscadorDeClaves,
+  ClaveAutenticada,
+  OpcionesApiKeyService,
+  ResultadoAutenticacion,
+} from "./services/api-key-service.js";
 
 // --- MCP: registro unico de herramientas y puerto (8.1) ----------------------
 // El nucleo declara las herramientas como dato y NO importa el SDK de MCP: cada

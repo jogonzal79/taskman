@@ -10,7 +10,9 @@
   },
   "scripts": {
     "test": "dotenv -e ../../.env -- vitest run",
-    "typecheck": "tsc --noEmit"
+    "test:orden-de-bloqueo": "dotenv -e ../../.env -v TASKMAN_ORDEN_DE_BLOQUEO=1 -- vitest run test/orden-de-bloqueo.test.ts",
+    "typecheck": "tsc --noEmit",
+    "apikey:create": "dotenv -e ../../.env -- node scripts/create-api-key.mjs"
   },
   "dependencies": {
     "@taskman/db": "workspace:*",

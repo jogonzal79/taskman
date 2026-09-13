@@ -272,8 +272,19 @@ describe("concurrencia", () => {
   });
 
   it("C2: movimientos cruzados A->B y B->A no se interbloquean", async () => {
-    // Varias rondas: un interbloqueo depende del entrelazado, y una sola ronda
-    // podria pasar por casualidad aun con un orden de bloqueo incorrecto.
+    // QUE AFIRMA ESTE TEST: que el camino feliz de dos movimientos cruzados
+    // funciona. NO es el detector de regresion del orden de bloqueo de la 5.4,
+    // aunque lo parezca.
+    //
+    // Medido rompiendo el orden a proposito: con la columna de ORIGEN bloqueada
+    // primero —distinto para cada movimiento— aparecen ~1% de interbloqueos por
+    // ronda (3 en 300), contra 0 en 200 con el `column_id, id` canonico. Con esa
+    // tasa, estas 5 rondas atrapan la regresion cerca del 5% de las veces. El
+    // test no es inestable —con el codigo correcto da 0 interbloqueos siempre—
+    // es INSENSIBLE, que es otra cosa.
+    //
+    // El detector de verdad es `orden-de-bloqueo.test.ts`, 460 rondas fuera de
+    // verify:  pnpm --filter @taskman/core run test:orden-de-bloqueo
     for (let ronda = 0; ronda < 5; ronda += 1) {
       await truncateAll(db);
       const t = await sembrar();
@@ -342,5 +353,61 @@ describe("concurrencia", () => {
     expect(new Set(orden).size).toBe(5);
     expect(await leerOrden(db, t.todo)).toEqual([]);
     await expectColumnaDensa(db, t.doing);
+  });
+
+  /**
+   * C6, el tercer caso de la 10.1: "eliminacion de una tarea mientras se mueve
+   * otra de la misma columna: el orden final es denso".
+   *
+   * Es distinto del "delete y create simultaneos" que ya cubre crud.test.ts:
+   * ahi las dos operaciones tocan UNA columna, y aca el move ademas escribe una
+   * segunda. Las dos contienden sobre las filas de `todo` —el delete las bloquea
+   * con `lockColumnOfTask` y el move con `lockTaskAndColumns`— asi que una de
+   * las dos despierta con el snapshot viejo y reintenta.
+   *
+   * El estado final es DETERMINISTA aunque el orden de llegada no lo sea: corra
+   * quien corra primero, `todo` pierde la borrada y la movida, y `doing` recibe
+   * la movida en la posicion pedida. Por eso las aserciones son de igualdad
+   * exacta y no solo de densidad.
+   */
+  it("C6: borrar una tarea mientras se mueve otra de la misma columna", async () => {
+    const t = await sembrar();
+    const [borrada, movida, queda] = t.tareasTodo as [string, string, string];
+    const [primeraDoing, segundaDoing] = t.tareasDoing as [string, string];
+
+    const resultados = await Promise.allSettled([
+      servicio.delete(borrada, ctx()),
+      servicio.move(movida, { columnId: t.doing, position: 0 }, ctx()),
+    ]);
+
+    expect(resultados.map((r) => r.status)).toEqual(["fulfilled", "fulfilled"]);
+
+    // La columna que quedo a medias entre las dos operaciones.
+    expect(await leerOrden(db, t.todo)).toEqual([queda]);
+    // Y la de destino, con la movida donde se pidio.
+    expect(await leerOrden(db, t.doing)).toEqual([movida, primeraDoing, segundaDoing]);
+    await expectColumnaDensa(db, t.todo);
+    await expectColumnaDensa(db, t.doing);
+
+    // La borrada no quedo en ninguna de las dos.
+    expect(await leerOrden(db, t.todo)).not.toContain(borrada);
+    expect(await leerOrden(db, t.doing)).not.toContain(borrada);
+  });
+
+  it("C6 bis: lo mismo con un move DENTRO de la columna del borrado", async () => {
+    // La otra lectura de "otra de la misma columna": el move no sale de `todo`,
+    // asi que las dos operaciones reescriben exactamente las mismas filas.
+    const t = await sembrar();
+    const [borrada, enMedio, ultima] = t.tareasTodo as [string, string, string];
+
+    const resultados = await Promise.allSettled([
+      servicio.delete(borrada, ctx()),
+      servicio.move(ultima, { columnId: t.todo, position: 0 }, ctx()),
+    ]);
+
+    expect(resultados.map((r) => r.status)).toEqual(["fulfilled", "fulfilled"]);
+
+    expect(await leerOrden(db, t.todo)).toEqual([ultima, enMedio]);
+    await expectColumnaDensa(db, t.todo);
   });
 });

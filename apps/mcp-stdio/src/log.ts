@@ -1,4 +1,4 @@
-import type { Logger } from "@taskman/core";
+import type { Logger, NivelLog } from "@taskman/core";
 import pino from "pino";
 
 /**
@@ -31,40 +31,23 @@ import pino from "pino";
  * se escribe nunca, y las lineas que mas interesan son las del final.
  */
 
-/** Los cuatro niveles de la 11.2. pino admite mas; el contrato son estos. */
-export const NIVELES_LOG = ["debug", "info", "warn", "error"] as const;
-
-export type NivelLog = (typeof NIVELES_LOG)[number];
-
-/** La 11.2 fija `info`: sin configurar se registra la actividad, no el detalle. */
-export const NIVEL_LOG_POR_DEFECTO: NivelLog = "info";
-
 /**
- * Valida el valor crudo de LOG_LEVEL.
+ * El vocabulario de LOG_LEVEL y su validacion VIVEN EN EL NUCLEO
+ * (`domain/logger.ts`), al lado de la interfaz `Logger`: son la forma de un valor
+ * de configuracion, igual para todos los bordes, y desde que `apps/web` tambien
+ * registra una linea por peticion (11.1) habria dos copias de lo mismo. Se
+ * reexportan para que este modulo siga siendo el unico sitio del que depende el
+ * resto de esta app.
  *
- * Mismo criterio que `leerPoliticaDestructiva`: ausente o vacia es el valor por
- * defecto, cualquier otra cosa LANZA. La 11.2 lo pide en general, y aca tiene
- * su motivo propio: quien escribio `LOG_LEVEL=verbose` esta buscando un
- * problema, y arrancar en `info` le daria menos lineas de las que cree tener
- * justo cuando esta diagnosticando.
+ * Lo que NO se comparte es `crearLogger`, por lo que explica el bloque de arriba:
+ * el destino es una decision de cada app, y aca es load-bearing.
  */
-export function leerNivelLog(valor: string | undefined): NivelLog {
-  const bruto = (valor ?? "").trim().toLowerCase();
-  if (bruto === "") {
-    return NIVEL_LOG_POR_DEFECTO;
-  }
-
-  const nivel = NIVELES_LOG.find((candidato) => candidato === bruto);
-  if (nivel === undefined) {
-    throw new Error(
-      `LOG_LEVEL="${valor ?? ""}" no es un valor valido. ` +
-        `Los valores posibles son: ${NIVELES_LOG.join(", ")}. ` +
-        `Sin definir equivale a "${NIVEL_LOG_POR_DEFECTO}".`,
-    );
-  }
-
-  return nivel;
-}
+export {
+  leerNivelLog,
+  NIVEL_LOG_POR_DEFECTO,
+  NIVELES_LOG,
+  type NivelLog,
+} from "@taskman/core";
 
 /**
  * El `Logger` que consume el nucleo, escrito a mano sobre pino.

@@ -16,12 +16,14 @@ import { normalizarTexto } from "../domain/text.js";
 import type {
   Board,
   BoardDetail,
+  BoardWithTaskCounts,
   CreateBoardInput,
   ListBoardsQuery,
   Page,
   UpdateBoardInput,
 } from "../domain/types.js";
 import { AuditService } from "./audit-service.js";
+import type { ParticipanteIdempotente } from "./participante.js";
 
 /** Iguales a los VARCHAR de `board`. */
 export const LIMITE_BOARD_NAME = 120;
@@ -108,8 +110,18 @@ export class BoardService {
    * Tablero y columnas se crean en la misma transaccion: un tablero sin
    * columnas no es un estado util, y dejarlo a medias obligaria a todos los
    * llamadores a contemplarlo.
+   *
+   * `participante` es el gancho de la 6.5 y es OPCIONAL: sin el —que es el caso
+   * de todos los llamadores de hoy salvo POST /api/boards con cabecera
+   * `Idempotency-Key`— esta operacion hace exactamente lo mismo que antes de
+   * que existiera. Ver `ParticipanteIdempotente` para que puede y que no puede
+   * hacer quien entra por ahi.
    */
-  async create(input: CreateBoardInput, ctx: ActorContext): Promise<BoardDetail> {
+  async create(
+    input: CreateBoardInput,
+    ctx: ActorContext,
+    participante?: ParticipanteIdempotente<BoardDetail>,
+  ): Promise<BoardDetail> {
     const name = normalizarNombre(input.name, LIMITE_BOARD_NAME, {});
     const description = normalizarDescripcion(input.description, {});
 
@@ -149,6 +161,15 @@ export class BoardService {
       // Dentro de la MISMA transaccion (7.4): si el registro falla, el tablero
       // y sus columnas se van con el.
       await this.#audit.registrar(tx, ctx, creacion("board", boardId, tableroConColumnas(detalle)));
+
+      // Ultimo, y DENTRO del intento: lo que el participante guarda describe lo
+      // que se va a devolver, asi que necesita el detalle ya armado. Si el
+      // intento se aborta y se reintenta, su fila se va con la transaccion,
+      // igual que la de auditoria.
+      if (participante !== undefined) {
+        await participante(detalle, tx);
+      }
+
       return detalle;
     });
   }
@@ -159,6 +180,34 @@ export class BoardService {
       throw tableroNoEncontrado(boardId);
     }
     return { ...tablero, columns: await this.#boards.readBoardColumns(boardId) };
+  }
+
+  /**
+   * El tablero con sus columnas y el recuento de tareas de cada una (6.2).
+   *
+   * Metodo aparte y no un parametro de `get`: los llamadores que ya existen no
+   * necesitan el recuento, y pagarlo siempre seria una consulta de mas en el
+   * camino que mas se usa —resolver una columna por key— por un dato que ahi
+   * nadie mira.
+   */
+  async getWithTaskCounts(boardId: string): Promise<BoardWithTaskCounts> {
+    const tablero = await this.get(boardId);
+    const cuentas = await this.#boards.countTasksByColumn(boardId);
+
+    const columns = tablero.columns.map((columna) => ({
+      ...columna,
+      // Una columna vacia no sale del GROUP BY: la ausencia es cero.
+      taskCount: cuentas.get(columna.id) ?? 0,
+    }));
+
+    return {
+      ...tablero,
+      columns,
+      // Se suma lo ya contado en vez de pedir un total aparte: dos consultas
+      // distintas podrian ver estados distintos y devolver un total que no
+      // cuadra con la suma de las columnas que se muestran al lado.
+      taskCount: columns.reduce((total, columna) => total + columna.taskCount, 0),
+    };
   }
 
   async list(query: ListBoardsQuery = {}): Promise<Page<Board>> {

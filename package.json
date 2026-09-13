@@ -15,10 +15,12 @@
     "db:migrate": "pnpm --filter @taskman/db run migrate:deploy",
     "db:migrate:dev": "pnpm --filter @taskman/db run migrate:dev",
     "db:constraints": "pnpm --filter @taskman/db run constraints",
-    "build": "pnpm --filter @taskman/mcp-stdio run build",
+    "build": "pnpm -r run build",
+    "openapi:generate": "pnpm --filter @taskman/contracts run generate",
     "test": "pnpm -r --workspace-concurrency=1 run test",
     "typecheck": "pnpm -r run typecheck",
-    "verify": "pnpm run db:up && pnpm run db:generate && pnpm run db:migrate && pnpm run build && pnpm run test"
+    "verify": "pnpm run db:generate && pnpm run typecheck && pnpm run build && pnpm run db:up && pnpm run db:migrate && pnpm run test",
+    "apikey:create": "pnpm --filter @taskman/core run apikey:create"
   },
   "devDependencies": {
     "typescript": "7.0.2"

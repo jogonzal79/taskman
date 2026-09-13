@@ -27,6 +27,20 @@ export const COLUMN_POSITION_CONSTRAINT = "column_board_position_uniq";
 export const COLUMN_KEY_CONSTRAINT = "board_column_board_id_key_key";
 
 /**
+ * PK compuesta `(key, client_id)` de `idempotency_record`.
+ *
+ * TAMPOCO es reintentable, y por un motivo distinto al de la anterior: la viola
+ * la perdedora de dos peticiones simultaneas con la misma Idempotency-Key (6.5),
+ * y reintentar solo repetiria el choque. Lo que hay que hacer con ella es leer
+ * el registro que acaba de commitear la ganadora —para cuando este error llega,
+ * ya esta commiteado: PostgreSQL bloquea el INSERT en conflicto hasta que la
+ * otra transaccion termina— y reproducir su respuesta. Esa decision es del
+ * borde, no del runner; el nombre vive aca para que el borde no lo escriba a
+ * mano.
+ */
+export const IDEMPOTENCY_PK_CONSTRAINT = "idempotency_record_pkey";
+
+/**
  * Las dos UNIQUE diferidas de orden, por nombre explicito. La lista se enumera
  * a proposito en vez de aceptar cualquier unicidad: `board_column_board_id_key_key`
  * tambien es una UNIQUE y reintentarla seria reintentar para siempre un error

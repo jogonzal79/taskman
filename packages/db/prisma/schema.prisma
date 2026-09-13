@@ -37,6 +37,14 @@ enum ActorType {
   API
 }
 
+/// Scopes de la 7.2. En mayusculas como Priority y ActorType; la forma en
+/// minuscula (read/write/delete) es la del borde HTTP y la traduce el adaptador.
+enum Scope {
+  READ
+  WRITE
+  DELETE
+}
+
 model Board {
   id          String   @id @db.Uuid
   name        String   @db.VarChar(120)
@@ -104,4 +112,47 @@ model AuditLog {
   @@index([entityType, entityId, createdAt])
   @@index([createdAt])
   @@map("audit_log")
+}
+
+model ApiKey {
+  id        String    @id @db.Uuid
+  label     String    @db.VarChar(80)
+  prefix    String    @unique @db.VarChar(24)
+  keyHash   String    @unique @map("key_hash") @db.VarChar(64)
+  scopes    Scope[]
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("api_key")
+}
+
+/// Registros de idempotencia de la 6.5: el cuerpo de respuesta ya emitido para
+/// una Idempotency-Key, para devolverlo tal cual si la peticion se repite.
+///
+/// DOS DESVIOS DECLARADOS de la 4.1, los dos en la clave primaria:
+///
+///   - la 4.1 hace PK a `key` sola. Aca la PK es COMPUESTA, `(key, client_id)`.
+///     Sin el cliente, dos claves de API que elijan el mismo valor de cabecera
+///     —"req-1" lo elige cualquiera— comparten fila, y la segunda se lleva de
+///     vuelta el cuerpo de respuesta que guardo la primera. El mecanismo esta
+///     pensado para clientes externos y agentes (ADR-005), asi que la colision
+///     entre dos de ellos no es hipotetica.
+///   - de ahi sale `client_id`, que la 4.1 no tiene. Es el prefijo publico de
+///     la clave, con el MISMO tipo que `api_key.prefix`: son el mismo dato.
+///
+/// La restriccion de que `request_hash` sea hexadecimal NO esta aca: va como
+/// SQL crudo en la migracion, porque Prisma no sabe expresar un CHECK.
+model IdempotencyRecord {
+  key          String   @db.VarChar(128)
+  clientId     String   @map("client_id") @db.VarChar(24)
+  requestHash  String   @map("request_hash") @db.Char(64)
+  statusCode   Int      @map("status_code")
+  responseBody Json     @map("response_body")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@id([key, clientId])
+  /// Para la purga por antiguedad de la 6.5, que todavia no existe.
+  @@index([createdAt])
+  @@map("idempotency_record")
 }
