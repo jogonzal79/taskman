@@ -4,7 +4,7 @@ import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-import { crearLogger, leerNivelLog, NIVEL_LOG_POR_DEFECTO, NIVELES_LOG } from "../src/log.js";
+import { crearLogger, leerNivelLog, NIVEL_LOG_POR_DEFECTO, NIVELES_LOG } from "../src/log";
 
 /**
  * El log de la 11.1 en el proceso real, por donde de verdad importa: que NO

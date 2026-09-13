@@ -41,30 +41,6 @@ const config: NextConfig = {
    * `pino` va tambien en sus dependencies, apuntando a la MISMA copia fisica.
    */
   serverExternalPackages: ["@prisma/client", "@prisma/adapter-pg", "pg", "pino"],
-  experimental: {
-    /**
-     * Lo que queda en el estilo NodeNext de tsconfig.base.json es apps/web
-     * MISMO: sus imports relativos llevan la extension `.js` aunque el archivo
-     * sea `.ts` (`./lib/auth.js` -> lib/auth.ts). esbuild hace esa sustitucion
-     * solo, que es por lo que apps/mcp-stdio no necesita nada; los bundlers de
-     * Next no.
-     *
-     * OJO con el motivo, que YA NO es el barrel: `contracts`, `db` y `core`
-     * migraron a specifiers sin extension y el barrel resuelve sin ayuda. Esta
-     * opcion sigue haciendo falta por los sitios PROPIOS de apps/web, y se va
-     * con ellos. Comprobarlo antes de sacarla, no asumirlo:
-     *
-     *   grep -rnoE 'from "[^"]*[.]js"' app lib --include=*.ts --include=*.tsx
-     *
-     * (el patron pide la comilla de cierre a proposito: sin ella `.js` tambien
-     * matchea dentro de `"../package.json"`, y el conteo sale de mas.)
-     *
-     * OJO: esta opcion la implementa SOLO webpack. Turbopack la ignora
-     * explicitamente (esta en su lista de unsupported), y por eso los scripts
-     * de dev y build pasan `--webpack`. Ver la nota en package.json.
-     */
-    extensionAlias: { ".js": [".ts", ".tsx", ".js"] },
-  },
 };
 
 export default config;

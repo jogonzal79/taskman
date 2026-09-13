@@ -181,27 +181,36 @@ contador de pruebas no tiene ese commit.
   `pnpm run apikey:create`.
 - Los scripts de package.json deben ser multiplataforma: nada de `rm`, `cp`,
   `export` ni here-docs.
-- `apps/web` corre con `--webpack`, no con Turbopack, y por eso sus scripts de
-  `dev` y `build` llevan el flag. El estilo NodeNext (`./x.js` apunta a `x.ts`)
-  está siendo migrado a specifiers sin extensión, en cinco pasos y de a un
-  paquete por vez, porque es lo único que Turbopack sabe resolver: esbuild hace
-  la sustitución solo —por eso `apps/mcp-stdio` no necesita nada— y los
-  bundlers de Next no. Lo tapa `experimental.extensionAlias`, que Turbopack
-  ignora explícitamente, y por eso el flag se queda hasta que `apps/web`
-  migre. OJO con el motivo: YA NO es el barrel del núcleo, que hoy resuelve
-  sin ayuda; son los sitios propios de `apps/web`. Esa migración es la salida
-  elegida, y NO que `core` publique JS compilado como se había anotado antes.
+- `apps/web` corre con TURBOPACK, que es el default de `next`: sus scripts de
+  `dev` y `build` no llevan flag de bundler. Se llegó ahí migrando los
+  specifiers del estilo NodeNext (`./x.js` apunta a `x.ts`) a specifiers SIN
+  extensión, en cinco pasos y de a un paquete por vez, porque lo sin-extensión
+  es lo único que resuelven las cuatro herramientas del proyecto a la vez.
+  Antes eso lo tapaba `experimental.extensionAlias`, que sólo implementa
+  webpack, y por eso los scripts forzaban ese bundler con su flag; ya no queda
+  ni la opción ni el flag.
 
-  Qué paquetes siguen en el estilo viejo, y con cuántos sitios cada uno:
+  Lo que NO hay que leer como pendiente: los `.js` que quedan son de tres
+  clases y ninguna se migra. Subpaths REALES de un paquete
+  (`@modelcontextprotocol/sdk/types.js` y los otros cinco son archivos `.js`
+  publicados, de 1,7 a 73 KB; sacarles la extensión rompe el import), archivos
+  reales en disco (`../dist/index.js`, el bundle de esbuild, y
+  `../package.json`), y la extensión `.ts` DELIBERADA de
+  `core/scripts/create-api-key.mjs`, que es obligatoria. Antes de tocar
+  cualquiera, comprobá contra el disco a qué resuelve; el nombre no alcanza.
+
+  Que no vuelva a entrar un specifier con extensión donde no va:
 
   ```
-  grep -rnoE 'from "[^"]*[.]js"' . --include=*.ts --include=*.tsx \
+  grep -rnoE '"[.][.]?/[^"]*[.]js"' . --include=*.ts --include=*.tsx \
     --exclude-dir=node_modules --exclude-dir=.next --exclude-dir=.next-humo \
-    --exclude-dir=generated | sed -E 's#^./([^/]+/[^/]+)/.*#\1#' | sort | uniq -c
+    --exclude-dir=generated
   ```
 
-  El patrón pide la comilla de cierre a propósito: sin ella `.js` también
-  matchea dentro de `"../package.json"`.
+  Pide `./` o `../` al principio y la comilla de cierre al final a propósito:
+  sin lo primero cuenta los subpaths de paquete, que son legítimos, y sin lo
+  segundo `.js` también matchea dentro de `"../package.json"`. Hoy la única
+  línea que devuelve son los dos `../dist/index.js` de `apps/mcp-stdio`.
 - Un paquete listado en `serverExternalPackages` tiene que ser RESOLUBLE desde
   `apps/web` o la entrada es inerte: Next declara externo algo que no puede
   externalizar, lo empaqueta igual, y en dev lo empaqueta partido en

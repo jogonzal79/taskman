@@ -258,7 +258,7 @@ log(`clave efimera emitida (${clave.slice(0, 15)}...)`);
  * cadena, sin `.cmd` ni shell, y el PID que devuelve `spawn` es el que hay que
  * matar. `detached` solo fuera de Windows, donde habilita matar por grupo.
  */
-hijo = spawn(process.execPath, [require.resolve("next/dist/bin/next"), "dev", "--webpack", "--port", String(PUERTO)], {
+hijo = spawn(process.execPath, [require.resolve("next/dist/bin/next"), "dev", "--port", String(PUERTO)], {
   env: { ...process.env, TASKMAN_DIST_DIR: DIST_DIR },
   stdio: ["ignore", "pipe", "pipe"],
   detached: process.platform !== "win32",
@@ -273,7 +273,7 @@ for (const flujo of [hijo.stdout, hijo.stderr]) {
 
 hijo.on("error", (error) => void fallar(`no se pudo lanzar \`next dev\`: ${error.message}`));
 
-log(`\`next dev --webpack\` en ${BASE} (distDir ${DIST_DIR}, pid ${hijo.pid})`);
+log(`\`next dev\` (Turbopack) en ${BASE} (distDir ${DIST_DIR}, pid ${hijo.pid})`);
 
 await esperarRespuesta();
 

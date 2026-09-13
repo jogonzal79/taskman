@@ -19,8 +19,8 @@ import { fileURLToPath } from "node:url";
 import type { Client as PgClient } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { crearServidorMcp } from "../src/server.js";
-import { connectDb, ctx, truncateAll } from "./helpers.js";
+import { crearServidorMcp } from "../src/server";
+import { connectDb, ctx, truncateAll } from "./helpers";
 
 /**
  * El servidor MCP visto como lo ve un agente: por el protocolo, con un cliente

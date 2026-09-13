@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { validarEntorno } from "../src/config.js";
+import { validarEntorno } from "../src/config";
 
 /**
  * El esquema de configuracion de la 11.2 para apps/mcp-stdio.
