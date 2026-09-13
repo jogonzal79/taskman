@@ -139,20 +139,6 @@ contador de pruebas no tiene ese commit.
   su propio riesgo— y (2) recien entonces LISTEN/NOTIFY o un cache compartido,
   porque el problema real es entre procesos. `reiniciarCacheDeClaves()` ya existe
   y es el gancho que usaria cualquiera de las dos.
-- El ESQUEMA ZOD de configuracion que pide la 11.2 —validar el entorno entero al
-  arrancar, con una variable ausente o invalida impidiendo el arranque— NO
-  existe. Lo que hay en `apps/web/instrumentation.ts` son TRES comprobaciones a
-  mano: `DATABASE_URL`, `RATE_LIMIT_ENABLED` y `LOG_LEVEL`. Es facil leerlas como
-  que la 11.2 ya esta cumplida, y no lo esta: faltan las demas variables de esa
-  tabla, y la que mas importa es `API_KEY_PEPPER`, que hoy se valida RECIEN en la
-  primera peticion autenticada —el `ApiKeyService` se construye por peticion y su
-  constructor falla con un pepper vacio— asi que un despliegue sin pepper arranca
-  bien y devuelve 500 en la primera peticion con clave, que es exactamente el
-  'fallo posterior en tiempo de ejecucion' que la 11.2 prohibe. El arreglo es un
-  esquema Zod en `apps/web` —no en `packages/contracts`, que es una hoja y no
-  valida entornos— consumido desde `register()`. Ojo con una cosa al escribirlo:
-  `register()` corre TAMBIEN en el runtime edge, donde no hay `process.exit`, y
-  por eso la comprobacion de hoy sale temprano si `NEXT_RUNTIME` no es nodejs.
 
 ## Entorno
 

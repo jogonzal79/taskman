@@ -1,4 +1,5 @@
 import type { ScopeHttp } from "./auth.js";
+import { limiteHabilitado } from "./config.js";
 
 /**
  * Limite de peticiones por clave de la 7.3: 120 por minuto para lectura y 30
@@ -110,13 +111,14 @@ function almacen(): Map<string, number[]> {
  * rompe el "Collecting page data" de `next build`. Una lectura de `process.env`
  * por peticion no se mide al lado de la consulta que autentica la clave.
  *
- * FALLA CERRADO: solo el texto "false" apaga el limite. Ausente lo deja
- * ENCENDIDO —un despliegue que se olvide la variable queda protegido— y un valor
- * mal escrito tambien, ademas de impedir el arranque por la comprobacion de
- * `instrumentation.ts`.
+ * La REGLA —solo el texto "false" apaga— no esta escrita aca: sale de
+ * `limiteHabilitado`, que es la misma que usa el esquema de la 11.2 al arrancar.
+ * Dos interpretaciones del mismo valor podrian dejar pasar el arranque y
+ * significar lo contrario en la peticion. Falla cerrado: ausente lo deja
+ * ENCENDIDO, y un valor mal escrito no llega hasta aca porque no deja arrancar.
  */
 function habilitado(): boolean {
-  return process.env["RATE_LIMIT_ENABLED"]?.trim().toLowerCase() !== "false";
+  return limiteHabilitado(process.env["RATE_LIMIT_ENABLED"]);
 }
 
 /**

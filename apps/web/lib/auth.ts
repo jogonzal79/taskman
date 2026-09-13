@@ -55,16 +55,23 @@ function aScopeHttp(scope: Scope): ScopeHttp {
  * misma trampa que resolvio el proxy perezoso de packages/db.
  */
 function crearServicio(): ApiKeyService {
-  const pepper = process.env["API_KEY_PEPPER"];
-
-  if (pepper === undefined || pepper.trim() === "") {
-    // Es un fallo de configuracion del servidor, no de quien llama: se
-    // distingue de un 401 para no decirle a un cliente legitimo que su clave
-    // esta mal cuando el problema es nuestro.
-    throw new Error("API_KEY_PEPPER no esta definida en el entorno del servidor.");
-  }
-
-  return new ApiKeyService({ pepper });
+  /**
+   * El pepper NO se comprueba aca, y antes si: el esquema de la 11.2 lo exige al
+   * arrancar (`lib/config.ts`), asi que un proceso que atiende peticiones ya lo
+   * tiene. Lo que queda es el `?? ""`, que existe para el tipo y no para la
+   * validacion.
+   *
+   * El vacio lo rechaza el CONSTRUCTOR del servicio, con un mensaje que nombra la
+   * variable, y esa es la guarda que no se puede saltear: la ve tambien un script
+   * o una prueba que construya el servicio sin pasar por el arranque. Un `if` aca
+   * seria un tercer sitio diciendo lo mismo, y el unico que se podia borrar sin
+   * perder nada.
+   *
+   * Sigue siendo un fallo de CONFIGURACION y no del llamador: sale por el 500 del
+   * try/catch de `conAuth`, no por un 401, para no decirle a un cliente legitimo
+   * que su clave esta mal cuando el problema es nuestro.
+   */
+  return new ApiKeyService({ pepper: process.env["API_KEY_PEPPER"] ?? "" });
 }
 
 /**
