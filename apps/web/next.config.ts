@@ -1,13 +1,5 @@
 import type { NextConfig } from "next";
 
-/**
- * `@taskman/core` y `@taskman/db` publican TypeScript crudo (su `main` es
- * ./src/index.ts, lo mismo que ve build.mjs de apps/mcp-stdio), asi que Next
- * tiene que compilarlos el mismo: sin esto el server bundle intenta cargar .ts.
- *
- * `@taskman/db` esta en la lista aunque apps/web no lo importe: entra igual por
- * `@taskman/core`, y lo que Next mira es la ruta del modulo, no quien lo pidio.
- */
 const config: NextConfig = {
   /**
    * Next 16 escribe un AGENTS.md y un CLAUDE.md dentro de apps/web en el primer
@@ -30,7 +22,6 @@ const config: NextConfig = {
    * desarrollador, asi que compila en frio y mide siempre lo mismo.
    */
   distDir: process.env["TASKMAN_DIST_DIR"] ?? ".next",
-  transpilePackages: ["@taskman/core", "@taskman/db"],
   /**
    * Binarios y runtime de Prisma: se cargan del disco, no se empaquetan.
    *
