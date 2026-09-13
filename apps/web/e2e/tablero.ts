@@ -81,6 +81,22 @@ export function tituloDe(page: Page, titulo: string): Locator {
   return tarjeta(page, titulo).locator(".tarjeta__titulo");
 }
 
+/**
+ * El campo del QuickAdd de una columna, POR SU NOMBRE ACCESIBLE.
+ *
+ * Hay uno por columna y los cuatro son el mismo marcado, asi que localizarlo por
+ * clase obligaria a contar o a elegir el n-esimo. El `aria-label` que pone
+ * `QuickAdd` lleva el nombre de la columna justamente para que "el campo de Por
+ * hacer" sea una cosa nombrable, y esto lo pide por ahi: si ese nombre se
+ * rompiera, la prueba deja de encontrar el campo, que es lo que hay que saber.
+ */
+export function campoNuevaTarea(page: Page, nombreColumna: string): Locator {
+  return columna(page, nombreColumna).getByRole("textbox", {
+    name: `Nueva tarea en ${nombreColumna}`,
+    exact: true,
+  });
+}
+
 // --- Lectura del render ------------------------------------------------------
 
 /**

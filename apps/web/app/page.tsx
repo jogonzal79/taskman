@@ -4,7 +4,8 @@ import { ColumnList } from "../components/column-list";
 import { cargarVista } from "../lib/tablero";
 
 /**
- * El tablero en modo LECTURA (9.1, 9.3).
+ * El tablero (9.1, 9.3). Lectura, mas la unica escritura que ya existe: el
+ * QuickAdd al pie de cada columna.
  *
  * ES UN SERVER COMPONENT, y se puede comprobar sin creerlo: la funcion es `async`
  * y espera al nucleo, cosa que un Componente de Cliente no puede ser; el modulo
@@ -13,11 +14,13 @@ import { cargarVista } from "../lib/tablero";
  * Del lado empirico: el HTML que devuelve el servidor ya trae las columnas y las
  * tarjetas, sin que el navegador ejecute nada.
  *
- * NO HAY "use client" EN NINGUN ARCHIVO DE ESTE PASO. La unica cosa que en la 9.3
- * lo habria exigido —medir el ancho para el aviso de pantalla angosta— se resolvio
- * con una media query. Lo exigiran dnd-kit y TanStack Query cuando entre la
- * interactividad, y por eso `ColumnList` ya es una pieza aparte: ese limite va a
- * caer ahi.
+ * EL UNICO "use client" DEL PROYECTO es `QuickAdd`, y el limite cae ahi abajo y
+ * no aca: esta pagina, `ColumnList` y `ColumnCard` siguen siendo de servidor, y
+ * lo que cruza son dos ids y un nombre. El aviso de pantalla angosta, que en la
+ * 9.3 habria sido el otro candidato a cliente, se resolvio con una media query y
+ * sigue sin necesitar JavaScript. Lo que va a mover el limite hacia arriba son
+ * dnd-kit y TanStack Query: el contexto de arrastre vive en `ColumnList`, y por
+ * eso `ColumnList` ya es una pieza aparte.
  *
  * UN SOLO INSTANTE PARA TODA LA PAGINA: `hoy` se calcula una vez y baja como
  * propiedad. Si cada tarjeta leyera su propio `new Date()`, una carga que cruzara
@@ -48,7 +51,7 @@ export default async function PaginaTablero() {
       <BoardSidebar tableros={tableros} omitidos={tablerosOmitidos} />
       <main className="pagina">
         <BoardHeader nombre={actual.name} taskCount={actual.taskCount} />
-        <ColumnList columnas={actual.columns} hoy={hoy} />
+        <ColumnList boardId={actual.id} columnas={actual.columns} hoy={hoy} />
       </main>
     </div>
   );

@@ -270,6 +270,71 @@ body {
   font-size: 12px;
 }
 
+/* --- QuickAddInput (9.3): el campo al pie de cada columna ----------------- */
+
+/*
+ * Va FUERA del `<ul>` que desplaza (ver ColumnCard), asi que `flex: none` lo
+ * mantiene pegado al pie de la columna incluso cuando la lista se llena.
+ */
+.nueva {
+  flex: none;
+  padding: 0 8px 8px;
+}
+
+/*
+ * En reposo NO parece un campo: sin borde y sobre el fondo de la columna, con el
+ * texto en la tinta apagada. Cuatro cajas de formulario dibujadas al pie de
+ * cuatro columnas compiten con las tarjetas, que son el contenido; el campo se
+ * declara cuando se lo toca. Es el mismo criterio de la paleta —color solo donde
+ * hay senal— aplicado al peso visual.
+ */
+.nueva__campo {
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--texto);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.nueva__campo::placeholder {
+  color: var(--texto-apagado);
+}
+
+.nueva__campo:hover {
+  background: var(--tarjeta);
+}
+
+/*
+ * Al enfocarlo si toma la forma de una tarjeta: mismo fondo y mismo borde que
+ * `.tarjeta`, porque lo que se esta escribiendo ahi es una.
+ *
+ * `:focus-visible` y no `:focus`, con `outline` y no `box-shadow`: el anillo del
+ * sistema respeta el modo de alto contraste, que es donde un borde pintado a
+ * mano desaparece.
+ */
+.nueva__campo:focus-visible {
+  border-color: var(--borde);
+  background: var(--tarjeta);
+  outline: 2px solid var(--texto-tenue);
+  outline-offset: -1px;
+}
+
+/*
+ * El error usa el MISMO rojo que la marca de vencida, y es deliberado: la 9.3
+ * reserva el color saturado para lo que exige atencion, y un titulo rechazado lo
+ * exige. No hay un segundo rojo en la hoja.
+ */
+.nueva__error {
+  margin: 6px 2px 0;
+  color: var(--urgente);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 /* --- TaskCard (9.3): titulo, prioridad, fecha y marca de vencida ---------- */
 
 .tarjeta {

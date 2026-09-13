@@ -14,12 +14,25 @@ import { ColumnCard } from "./column-card";
  *
  * Las columnas llegan EN ORDEN: es el orden que devuelve el nucleo
  * (`readBoardColumns`, por `position`), no uno que este componente reordene.
+ *
+ * `boardId` solo pasa de largo: lo necesita el QuickAdd de cada columna, que es
+ * el unico que escribe. Va por aca y no leido de nuevo mas abajo porque el dato
+ * ya lo tiene la pagina (`cargarVista`), y volver a consultarlo en un componente
+ * abriria un segundo camino a la base desde el arbol de render.
  */
-export function ColumnList({ columnas, hoy }: { columnas: ColumnaEnTablero[]; hoy: Date }) {
+export function ColumnList({
+  boardId,
+  columnas,
+  hoy,
+}: {
+  boardId: string;
+  columnas: ColumnaEnTablero[];
+  hoy: Date;
+}) {
   return (
     <div className="columnas">
       {columnas.map((columna) => (
-        <ColumnCard key={columna.id} columna={columna} hoy={hoy} />
+        <ColumnCard key={columna.id} boardId={boardId} columna={columna} hoy={hoy} />
       ))}
     </div>
   );
