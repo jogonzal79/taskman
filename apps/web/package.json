@@ -9,6 +9,8 @@
     "start": "dotenv -e ../../.env -- next start",
     "test": "dotenv -e ../../.env -- vitest run",
     "humo:dev": "dotenv -e ../../.env -- node scripts/humo-dev.mjs",
+    "e2e:build": "dotenv -e ../../.env -v TASKMAN_DIST_DIR=.next-e2e -- next build",
+    "e2e": "pnpm run e2e:build && dotenv -e ../../.env -v TASKMAN_DIST_DIR=.next-e2e -- playwright test",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -22,6 +24,7 @@
     "zod": "4.5.4"
   },
   "devDependencies": {
+    "@playwright/test": "1.63.0",
     "@types/node": "24.13.3",
     "@types/pg": "8.23.1",
     "@types/react": "19.2.18",

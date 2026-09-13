@@ -15,8 +15,13 @@ Si estás por escribir acá un número o una enumeración de lo que ya existe, l
 hace falta es el comando que lo averigua, no el dato.
 
 - **Cuántas pruebas hay y si pasan**: `pnpm run verify`. Levanta la base, migra y
-  corre las suites contra PostgreSQL real; cada paquete imprime su total, y al
-  final levanta `next dev` y le pide dos rutas (`pnpm run humo:dev`).
+  corre las suites contra PostgreSQL real; cada paquete imprime su total, después
+  levanta `next dev` y le pide tres rutas (`pnpm run humo:dev`) y al final compila
+  y sirve la app para pasarle Playwright (`pnpm run e2e`).
+- **Qué cubre el nivel de extremo a extremo** de la 10, y sobre todo qué NO: los
+  `apps/web/e2e/*.spec.ts`, y al pie de `tablero-lectura.spec.ts` está el mapeo
+  contra los diez escenarios CT de la 10.2 con el motivo de cada hueco. Los datos
+  de los que parte son la siembra determinista de la 10.3, en `e2e/semilla.ts`.
 - **Qué endpoints existen**, con su verbo y su scope, uno por línea:
 
   ```
@@ -175,7 +180,9 @@ contador de pruebas no tiene ese commit.
   `apps/mcp-stdio`" y dejó de ser cierto en cuanto `apps/web` pasó a correr
   después—, así que no lo anotes acá: si ves algo y dudás, buscá de dónde sale
   con `grep -rn "<lo que viste>" --include=*.test.ts .`. Ya engañó una vez, con
-  un título de TAREA leído como nombre de tablero.
+  un título de TAREA leído como nombre de tablero. La búsqueda incluye ahora
+  `apps/web/e2e/`: la siembra de la 10.3 trunca y siembra igual, y es la última
+  que corre.
 - Eso incluye `api_key`: verify también la vacía, así que cualquier clave
   emitida a mano desaparece en el próximo verify y hay que reemitirla con
   `pnpm run apikey:create`.
@@ -204,13 +211,52 @@ contador de pruebas no tiene ese commit.
   ```
   grep -rnoE '"[.][.]?/[^"]*[.]js"' . --include=*.ts --include=*.tsx \
     --exclude-dir=node_modules --exclude-dir=.next --exclude-dir=.next-humo \
-    --exclude-dir=generated
+    --exclude-dir=.next-e2e --exclude-dir=generated
   ```
 
   Pide `./` o `../` al principio y la comilla de cierre al final a propósito:
   sin lo primero cuenta los subpaths de paquete, que son legítimos, y sin lo
   segundo `.js` también matchea dentro de `"../package.json"`. Hoy la única
   línea que devuelve son los dos `../dist/index.js` de `apps/mcp-stdio`.
+
+  La lista de `--exclude-dir` tiene que llevar TODOS los distDir, no sólo
+  `.next`: `next build` genera un `types/validator.ts` lleno de specifiers
+  `"../../app/…/route.js"` que son legítimos y generados, y catorce líneas de
+  ruido tapan la que importa. `.next-e2e` entró por eso cuando se montó
+  Playwright; si aparece otro distDir, va también acá.
+- El navegador de Playwright NO está en el repo y `pnpm install` NO lo baja: un
+  clon nuevo necesita, una vez,
+
+  ```
+  pnpm --filter @taskman/web exec playwright install chromium
+  ```
+
+  Son ~115 MB que van a `%LOCALAPPDATA%\ms-playwright`, FUERA del repo y
+  compartidos con cualquier otro proyecto de la máquina, así que puede que ya
+  estén. No se enganchó a un `postinstall` a propósito: descargar cien megas en
+  cada `pnpm install` para una suite que quizá no se corra es peor que el
+  mensaje que da Playwright cuando falta, que dice exactamente qué comando
+  correr.
+- `pnpm run e2e` compila con `next build` en su PROPIO distDir (`.next-e2e`) y lo
+  sirve con `next start`, nunca con `next dev`. Los tres motivos, en orden de
+  importancia: mide lo que se publica —dev inyecta 6 KB de cliente de HMR y la
+  superposición de errores en el mismo documento, y hay pruebas que miden
+  ALTURAS renderizadas—; `next start` no crea el candado `lock` que vive dentro
+  del distDir y que ya mordió al humo; y arranca en 1,4 s contra los 6,4 s de
+  dev, con el primer GET / en 0,17 s contra 3,08 s (medido). El distDir propio
+  es porque el `.next` del desarrollador puede ser una compilación de dev, y
+  `next start` sobre eso no arranca.
+
+  Eso NO reemplaza a `humo:dev`, que sigue siendo lo único que levanta
+  `next dev`: el fallo del runtime edge de `instrumentation.ts` sólo se ve ahí.
+  Los dos están en verify y cubren cosas distintas.
+
+  Efecto colateral que confunde: `next build` REESCRIBE `next-env.d.ts` para que
+  importe los tipos del distDir que acaba de compilar, así que después de un e2e
+  ese archivo nombra `.next-e2e` y después de un `build` normal nombra `.next`.
+  Está gitignoreado, no genera churn, y borrar el distDir al que apunta no rompe
+  el typecheck (comprobado: `tsc --noEmit` sale 0 sin `.next-e2e` en disco). No
+  es un archivo que haya que "arreglar" cuando se lo ve cambiado.
 - Un paquete listado en `serverExternalPackages` tiene que ser RESOLUBLE desde
   `apps/web` o la entrada es inerte: Next declara externo algo que no puede
   externalizar, lo empaqueta igual, y en dev lo empaqueta partido en
