@@ -15,7 +15,8 @@ Si estás por escribir acá un número o una enumeración de lo que ya existe, l
 hace falta es el comando que lo averigua, no el dato.
 
 - **Cuántas pruebas hay y si pasan**: `pnpm run verify`. Levanta la base, migra y
-  corre las suites contra PostgreSQL real; cada paquete imprime su total.
+  corre las suites contra PostgreSQL real; cada paquete imprime su total, y al
+  final levanta `next dev` y le pide dos rutas (`pnpm run humo:dev`).
 - **Qué endpoints existen**, con su verbo y su scope, uno por línea:
 
   ```
@@ -205,7 +206,12 @@ contador de pruebas no tiene ese commit.
   devDependency de `apps/web` para la suite de contrato: comprobado por realpath,
   hay UNA sola copia física vista desde `apps/web`, `packages/db`,
   `packages/core` y `apps/mcp-stdio`, y el camino de `$queryRaw` con fragmentos
-  `Prisma.Sql` sigue devolviendo 200 en dev, que es donde aparecería el 42601.
+  `Prisma.Sql` devuelve 200 en dev, que es donde aparecería el 42601. OJO con esa
+  frase: es una MEDICIÓN y no una propiedad, y estuvo cuatro commits siendo falsa
+  sin que nadie se enterara —desde 2518c5f `next dev` devolvía 500 en TODA
+  petición, por lo que cuenta la entrada del runtime edge de más abajo—. La
+  vuelve a medir `pnpm run humo:dev` en cada verify; hasta ahora no la medía
+  nada, porque nada del pipeline levantaba `next dev`.
   `pino` entró por lo mismo con el log de la 11.1, y se comprobó igual: una sola
   copia física vista desde `apps/web` y `apps/mcp-stdio` —el mismo realpath, no el
   mismo número de versión— y después `next build` más `next start` con
@@ -214,6 +220,17 @@ contador de pruebas no tiene ese commit.
   Pendiente conocido: `@prisma/adapter-pg` SIGUE inerte y se empaqueta. Hoy no
   rompe nada —el bug era específico del runtime de `@prisma/client`— y el arreglo
   sería idéntico.
+- `instrumentation.ts` se compila TAMBIÉN para el runtime EDGE, donde no existe
+  `fs` y donde `serverExternalPackages` NO aplica. O sea que nada de lo que ese
+  archivo importe, ni directa ni transitivamente, puede terminar en `pg` o en
+  Prisma. Pasó: `lib/config.ts` pedía cuatro símbolos puros al BARREL de
+  `@taskman/core` y se traía los repositorios con ellos, así que `next dev`
+  devolvía 500 en TODA petición con `Module not found: Can't resolve 'fs'`
+  mientras `next build` seguía en verde —sin rutas edge no emite ese bundle— y
+  `verify` no lo veía. La salida fue el subcamino `@taskman/core/logger`, que
+  apunta a un módulo HOJA. La regla para cuando F3 agregue imports: lo que
+  cuelgue de `instrumentation.ts` pide al núcleo por un subcamino sin
+  dependencias, nunca por `"."`. Lo detecta `pnpm run humo:dev`.
 - Un typecheck que PASA donde esperabas que fallara puede ser un
   `tsconfig.tsbuildinfo` viejo, no un mecanismo roto. Pasó una vez con el
   `Record` exhaustivo de errores de `apps/web/lib/http.ts`: se agregó un código

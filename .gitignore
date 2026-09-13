@@ -20,3 +20,9 @@ packages/db/src/generated/
 # --- F4: apps/web (Next.js) ---
 # Lo regenera `next dev` / `next build` en cada corrida.
 next-env.d.ts
+
+# distDir de la comprobacion de humo (apps/web/scripts/humo-dev.mjs). Aparte
+# de .next a proposito: el candado de `next dev` vive DENTRO del distDir, asi
+# que compartirlo haria fallar la comprobacion cada vez que el desarrollador
+# tiene su propio `next dev` abierto.
+.next-humo/

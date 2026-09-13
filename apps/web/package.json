@@ -8,6 +8,7 @@
     "build": "next build --webpack",
     "start": "dotenv -e ../../.env -- next start",
     "test": "dotenv -e ../../.env -- vitest run",
+    "humo:dev": "dotenv -e ../../.env -- node scripts/humo-dev.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

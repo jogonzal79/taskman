@@ -17,6 +17,19 @@ const config: NextConfig = {
    * escrito. Se apaga.
    */
   agentRules: false,
+  /**
+   * Normalmente `.next`. Lo mueve `scripts/humo-dev.mjs`, y NO por higiene: el
+   * candado de `next dev` se llama `lock` y vive DENTRO del distDir
+   * (`setup-dev-bundler.js`: `path.join(distDir, 'lock')`), asi que es POR
+   * DIRECTORIO y no por puerto. Sin esto, un `verify` corrido mientras el
+   * desarrollador tiene su `next dev` abierto muere con "Another next dev server
+   * is already running" aunque el puerto de la comprobacion este libre.
+   * Comprobado: un `dev` en 3000 con otro vivo en 3999 sale con estado 1.
+   *
+   * Efecto colateral querido: la comprobacion nunca reusa la cache del dev del
+   * desarrollador, asi que compila en frio y mide siempre lo mismo.
+   */
+  distDir: process.env["TASKMAN_DIST_DIR"] ?? ".next",
   transpilePackages: ["@taskman/core", "@taskman/db"],
   /**
    * Binarios y runtime de Prisma: se cargan del disco, no se empaquetan.

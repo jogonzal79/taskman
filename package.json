@@ -18,8 +18,9 @@
     "build": "pnpm -r run build",
     "openapi:generate": "pnpm --filter @taskman/contracts run generate",
     "test": "pnpm -r --workspace-concurrency=1 run test",
+    "humo:dev": "pnpm --filter @taskman/web run humo:dev",
     "typecheck": "pnpm -r run typecheck",
-    "verify": "pnpm run db:generate && pnpm run typecheck && pnpm run build && pnpm run db:up && pnpm run db:migrate && pnpm run test",
+    "verify": "pnpm run db:generate && pnpm run typecheck && pnpm run build && pnpm run db:up && pnpm run db:migrate && pnpm run test && pnpm run humo:dev",
     "apikey:create": "pnpm --filter @taskman/core run apikey:create"
   },
   "devDependencies": {
