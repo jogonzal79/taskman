@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { comprobarConexion } from "../src/index.js";
+import { comprobarConexion } from "../src/index";
 
 /**
  * La sonda de conectividad de la 11.1, que es lo unico que hay detras de

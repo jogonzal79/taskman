@@ -9,10 +9,16 @@
 //
 // OJO con el import de abajo: `../src/domain/api-key.ts` se importa por ruta y
 // con extension .ts, y lo ejecuta el stripping de tipos nativo de Node (22.6+).
-// Funciona porque ese modulo no importa nada del resto del nucleo: Node no
-// resuelve los specifiers NodeNext del proyecto (./x.js -> x.ts), asi que un
-// solo import interno alli romperia este script. La alternativa, si algun dia
-// hace falta, es empaquetarlo con esbuild como hace apps/mcp-stdio.
+// Funciona porque ese modulo no importa nada del resto del nucleo: los imports
+// relativos del nucleo van SIN extension (./x apunta a x.ts) y el ESM de Node
+// exige el specifier completo, asi que un solo import interno alli romperia
+// este script. La alternativa, si algun dia hace falta, es empaquetarlo con
+// esbuild como hace apps/mcp-stdio.
+//
+// Antes el motivo era el CONTRARIO y conviene no confundirlos: los specifiers
+// eran NodeNext (./x.js -> x.ts) y lo que Node no hacia era esa SUSTITUCION.
+// Se dejaron sin extension para que Turbopack pueda resolverlos, porque no
+// implementa `extensionAlias`. La regla sobrevive igual, por la razon opuesta.
 //
 // Se comparte a proposito en vez de recalcular el hash aca: si el script y el
 // verificador difirieran, emitiria claves que no validan.

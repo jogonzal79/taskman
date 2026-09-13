@@ -1,6 +1,6 @@
 import { Prisma, type PrismaClient } from "@taskman/db";
 
-import type { TransactionRunner } from "./transaction-runner.js";
+import type { TransactionRunner } from "./transaction-runner";
 
 /**
  * La fila fisica de `idempotency_record` (4.1 / 6.5): como se escribe y como se

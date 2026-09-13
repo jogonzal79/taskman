@@ -1,9 +1,9 @@
 import type { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { BoardRepository, BoardService, AuditService, TransactionRunner } from "../src/index.js";
+import { BoardRepository, BoardService, AuditService, TransactionRunner } from "../src/index";
 import { prisma } from "@taskman/db";
-import { connectDb, ctx, insertColumn, insertTask, insertTasks, truncateAll, uuid } from "./helpers.js";
+import { connectDb, ctx, insertColumn, insertTask, insertTasks, truncateAll, uuid } from "./helpers";
 
 /**
  * `BoardService.getWithTaskCounts`: lo que devuelve GET /api/boards/{id} (6.2).

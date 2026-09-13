@@ -1,4 +1,4 @@
-import type { EscrituraIdempotente } from "../db/idempotency-repository.js";
+import type { EscrituraIdempotente } from "../db/idempotency-repository";
 
 /**
  * Un participante en la transaccion de una operacion de escritura.

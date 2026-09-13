@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { Client } from "pg";
 import { expect } from "vitest";
 
-import type { ActorContext, Column } from "../src/index.js";
+import type { ActorContext, Column } from "../src/index";
 
 const ALL_TABLES = ["task", "board_column", "board", "audit_log", "api_key"] as const;
 

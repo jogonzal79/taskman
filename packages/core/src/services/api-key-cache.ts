@@ -1,5 +1,5 @@
-import type { ApiKeyRow } from "../db/api-key-repository.js";
-import type { BuscadorDeClaves } from "./api-key-service.js";
+import type { ApiKeyRow } from "../db/api-key-repository";
+import type { BuscadorDeClaves } from "./api-key-service";
 
 /**
  * El cache de verificacion de la 7.1: "El resultado se cachea en memoria durante

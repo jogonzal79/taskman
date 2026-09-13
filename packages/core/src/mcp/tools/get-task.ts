@@ -1,10 +1,10 @@
-import { ubicarTarea } from "../lookup.js";
-import type { EntornoMcp } from "../llamada.js";
-import type { TaskManagerPort } from "../port.js";
-import { definirHandler, respuesta } from "../respuesta.js";
-import { fechaIso } from "../respuesta.js";
-import type { McpToolDefinition } from "../tool.js";
-import { campoBoardDeTarea, campoTask, columnaJson, tableroJson, tareaJson } from "./campos.js";
+import { ubicarTarea } from "../lookup";
+import type { EntornoMcp } from "../llamada";
+import type { TaskManagerPort } from "../port";
+import { definirHandler, respuesta } from "../respuesta";
+import { fechaIso } from "../respuesta";
+import type { McpToolDefinition } from "../tool";
+import { campoBoardDeTarea, campoTask, columnaJson, tableroJson, tareaJson } from "./campos";
 
 const shape = {
   task: campoTask("a consultar"),

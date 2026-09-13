@@ -1,6 +1,6 @@
 import { beforeEach } from "vitest";
 
-import { reiniciarCacheDeClaves } from "../src/index.js";
+import { reiniciarCacheDeClaves } from "../src/index";
 
 /**
  * Vacia el cache de claves de la 7.1 antes de cada prueba.

@@ -1,15 +1,15 @@
 import { prisma } from "@taskman/db";
 
-import { AuditRepository } from "../db/audit-repository.js";
-import { BoardRepository } from "../db/board-repository.js";
-import { IdempotencyRepository, type IdempotencyRecord } from "../db/idempotency-repository.js";
-import { TaskRepository } from "../db/task-repository.js";
-import { TransactionRunner } from "../db/transaction-runner.js";
-import type { ActorContext } from "../domain/actor.js";
+import { AuditRepository } from "../db/audit-repository";
+import { BoardRepository } from "../db/board-repository";
+import { IdempotencyRepository, type IdempotencyRecord } from "../db/idempotency-repository";
+import { TaskRepository } from "../db/task-repository";
+import { TransactionRunner } from "../db/transaction-runner";
+import type { ActorContext } from "../domain/actor";
 import type {
   AuditEntry,
   ListAuditQuery,
-} from "../domain/audit.js";
+} from "../domain/audit";
 import type {
   Board,
   BoardDetail,
@@ -31,14 +31,14 @@ import type {
   UpdateBoardInput,
   UpdateColumnInput,
   UpdateTaskInput,
-} from "../domain/types.js";
-import { AuditQueryService } from "../services/audit-query-service.js";
-import { AuditService } from "../services/audit-service.js";
-import { BoardService } from "../services/board-service.js";
-import { ColumnService } from "../services/column-service.js";
-import type { ParticipanteIdempotente } from "../services/participante.js";
-import { TaskService } from "../services/task-service.js";
-import type { TaskManagerPort } from "./port.js";
+} from "../domain/types";
+import { AuditQueryService } from "../services/audit-query-service";
+import { AuditService } from "../services/audit-service";
+import { BoardService } from "../services/board-service";
+import { ColumnService } from "../services/column-service";
+import type { ParticipanteIdempotente } from "../services/participante";
+import { TaskService } from "../services/task-service";
+import type { TaskManagerPort } from "./port";
 
 /**
  * `TaskManagerPort` resuelto invocando los servicios en el mismo proceso.

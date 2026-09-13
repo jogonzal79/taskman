@@ -1,5 +1,5 @@
-import type { ActorType } from "./actor.js";
-import type { Board, BoardDetail, Column, Task } from "./types.js";
+import type { ActorType } from "./actor";
+import type { Board, BoardDetail, Column, Task } from "./types";
 
 /**
  * La forma de un evento de auditoria (7.4), como DATO.

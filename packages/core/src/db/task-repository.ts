@@ -7,14 +7,14 @@ import type {
   Task,
   TaskMatch,
   TaskOrderBy,
-} from "../domain/types.js";
-import type { AuditRow, AuditTransaction } from "./audit-repository.js";
-import { insertAuditRow } from "./audit-repository.js";
-import type { EscrituraIdempotente, IdempotencyRow } from "./idempotency-repository.js";
-import { insertIdempotencyRow } from "./idempotency-repository.js";
-import type { OrdenSql } from "./pagination.js";
-import { clausulaOrden, condicionCursor, decodificarCursor, normalizarLimite, paginar } from "./pagination.js";
-import type { TransactionRunner } from "./transaction-runner.js";
+} from "../domain/types";
+import type { AuditRow, AuditTransaction } from "./audit-repository";
+import { insertAuditRow } from "./audit-repository";
+import type { EscrituraIdempotente, IdempotencyRow } from "./idempotency-repository";
+import { insertIdempotencyRow } from "./idempotency-repository";
+import type { OrdenSql } from "./pagination";
+import { clausulaOrden, condicionCursor, decodificarCursor, normalizarLimite, paginar } from "./pagination";
+import type { TransactionRunner } from "./transaction-runner";
 
 /**
  * Unica capa del nucleo que ve Prisma. Todo lo de arriba trabaja contra

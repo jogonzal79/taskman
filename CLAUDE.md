@@ -182,13 +182,26 @@ contador de pruebas no tiene ese commit.
 - Los scripts de package.json deben ser multiplataforma: nada de `rm`, `cp`,
   `export` ni here-docs.
 - `apps/web` corre con `--webpack`, no con Turbopack, y por eso sus scripts de
-  `dev` y `build` llevan el flag. `packages/core` usa specifiers NodeNext
-  (`./domain/types.js` apunta a `types.ts`); esbuild hace esa sustitución solo
-  —por eso `apps/mcp-stdio` no necesita nada— y los bundlers de Next no. Lo
-  arregla `experimental.extensionAlias`, que Turbopack ignora explícitamente: con
-  Turbopack fallan los ~30 imports del barrel. La salida es que `core` publique
-  JS compilado, en vez de quedarse en webpack para siempre; el plazo que se le
-  habia puesto —antes de F3— ya paso sin saldarla.
+  `dev` y `build` llevan el flag. El estilo NodeNext (`./x.js` apunta a `x.ts`)
+  está siendo migrado a specifiers sin extensión, en cinco pasos y de a un
+  paquete por vez, porque es lo único que Turbopack sabe resolver: esbuild hace
+  la sustitución solo —por eso `apps/mcp-stdio` no necesita nada— y los
+  bundlers de Next no. Lo tapa `experimental.extensionAlias`, que Turbopack
+  ignora explícitamente, y por eso el flag se queda hasta que `apps/web`
+  migre. OJO con el motivo: YA NO es el barrel del núcleo, que hoy resuelve
+  sin ayuda; son los sitios propios de `apps/web`. Esa migración es la salida
+  elegida, y NO que `core` publique JS compilado como se había anotado antes.
+
+  Qué paquetes siguen en el estilo viejo, y con cuántos sitios cada uno:
+
+  ```
+  grep -rnoE 'from "[^"]*[.]js"' . --include=*.ts --include=*.tsx \
+    --exclude-dir=node_modules --exclude-dir=.next --exclude-dir=.next-humo \
+    --exclude-dir=generated | sed -E 's#^./([^/]+/[^/]+)/.*#\1#' | sort | uniq -c
+  ```
+
+  El patrón pide la comilla de cierre a propósito: sin ella `.js` también
+  matchea dentro de `"../package.json"`.
 - Un paquete listado en `serverExternalPackages` tiene que ser RESOLUBLE desde
   `apps/web` o la entrada es inerte: Next declara externo algo que no puede
   externalizar, lo empaqueta igual, y en dev lo empaqueta partido en
@@ -360,14 +373,18 @@ contador de pruebas no tiene ese commit.
 - `packages/core/src/domain/api-key.ts` NO puede importar nada del resto del
   núcleo: solo `node:crypto`. El script de administración lo carga por ruta
   directa (`../src/domain/api-key.ts`) apoyándose en el stripping de tipos
-  nativo de Node, que NO resuelve los specifiers NodeNext del proyecto
-  (`./x.js` -> `x.ts`), así que un solo import interno lo rompe. Se comparte en
-  vez de recalcular el hash en el script porque, si los dos difirieran, se
-  emitirían claves que no validan y el síntoma sería un 401 indistinguible de
-  una clave mal tipeada. Consecuencia: ese comando requiere Node 22.6+, por
-  encima del Node 20+ que declara el resto del proyecto; afecta solo al script,
-  no a la app. Si algún día hace falta importar algo ahí, la salida es
-  empaquetar el script con esbuild como `apps/mcp-stdio`, no relajar la regla.
+  nativo de Node, que exige el specifier COMPLETO del ESM y no resuelve los
+  imports sin extensión del núcleo (`./x` -> `x.ts`), así que un solo import
+  interno lo rompe. (Antes la razón era la contraria —los specifiers eran
+  NodeNext y lo que Node no hacía era la sustitución `./x.js` -> `x.ts`—: la
+  regla sobrevivió al cambio con el motivo invertido, así que no la releas al
+  revés.) Se comparte en vez de recalcular el hash en el script porque, si los
+  dos difirieran, se emitirían claves que no validan y el síntoma sería un 401
+  indistinguible de una clave mal tipeada. Consecuencia: ese comando requiere
+  Node 22.6+, por encima del Node 20+ que declara el resto del proyecto; afecta
+  solo al script, no a la app. Si algún día hace falta importar algo ahí, la
+  salida es empaquetar el script con esbuild como `apps/mcp-stdio`, no relajar
+  la regla.
 - El pepper llega INYECTADO al `ApiKeyService`, nunca leído de `process.env`
   dentro del núcleo: el núcleo recibe datos ya validados (3.2), y así el
   servicio se prueba con dos peppers distintos en un mismo test. El constructor

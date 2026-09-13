@@ -2,7 +2,7 @@ import { prisma } from "@taskman/db";
 import type { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { DomainError, TaskRepository, TaskService, TransactionRunner } from "../src/index.js";
+import { DomainError, TaskRepository, TaskService, TransactionRunner } from "../src/index";
 import {
   connectDb,
   ctx,
@@ -13,7 +13,7 @@ import {
   leerOrden,
   truncateAll,
   uuid,
-} from "./helpers.js";
+} from "./helpers";
 
 let db: Client;
 let servicio: TaskService;

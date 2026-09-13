@@ -1,6 +1,6 @@
-import type { AuditRow, AuditTransaction } from "../db/audit-repository.js";
-import type { ActorContext } from "../domain/actor.js";
-import type { AuditEvent } from "../domain/audit.js";
+import type { AuditRow, AuditTransaction } from "../db/audit-repository";
+import type { ActorContext } from "../domain/actor";
+import type { AuditEvent } from "../domain/audit";
 
 /**
  * Escribe el registro de auditoria de la 7.4.

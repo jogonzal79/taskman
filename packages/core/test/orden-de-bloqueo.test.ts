@@ -2,7 +2,7 @@ import { prisma } from "@taskman/db";
 import type { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { TaskRepository, TaskService, TransactionRunner } from "../src/index.js";
+import { TaskRepository, TaskService, TransactionRunner } from "../src/index";
 import {
   connectDb,
   ctx,
@@ -10,7 +10,7 @@ import {
   insertColumn,
   insertTasks,
   truncateAll,
-} from "./helpers.js";
+} from "./helpers";
 
 /**
  * EL DETECTOR DE REGRESION DEL ORDEN DE BLOQUEO DE LA 5.4.

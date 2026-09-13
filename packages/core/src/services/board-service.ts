@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
-import type { BoardRepository, BoardTransaction, NewColumnRow } from "../db/board-repository.js";
-import type { ActorContext } from "../domain/actor.js";
+import type { BoardRepository, BoardTransaction, NewColumnRow } from "../db/board-repository";
+import type { ActorContext } from "../domain/actor";
 import {
   actualizacion,
   borrado,
@@ -9,10 +9,10 @@ import {
   CAMPOS_TABLERO,
   creacion,
   tableroConColumnas,
-} from "../domain/audit.js";
-import { LIMITE_COLUMN_NAME, normalizarColumnKey } from "../domain/column-key.js";
-import { DomainError } from "../domain/errors.js";
-import { normalizarTexto } from "../domain/text.js";
+} from "../domain/audit";
+import { LIMITE_COLUMN_NAME, normalizarColumnKey } from "../domain/column-key";
+import { DomainError } from "../domain/errors";
+import { normalizarTexto } from "../domain/text";
 import type {
   Board,
   BoardDetail,
@@ -21,9 +21,9 @@ import type {
   ListBoardsQuery,
   Page,
   UpdateBoardInput,
-} from "../domain/types.js";
-import { AuditService } from "./audit-service.js";
-import type { ParticipanteIdempotente } from "./participante.js";
+} from "../domain/types";
+import { AuditService } from "./audit-service";
+import type { ParticipanteIdempotente } from "./participante";
 
 /** Iguales a los VARCHAR de `board`. */
 export const LIMITE_BOARD_NAME = 120;

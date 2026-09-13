@@ -1,10 +1,10 @@
-import { DomainError } from "../domain/errors.js";
-import type { BoardDetail, Column, ListTasksQuery, Page, Task } from "../domain/types.js";
-import { LIMITE_PAGINA_MAXIMO } from "../domain/types.js";
-import type { TaskManagerPort } from "./port.js";
-import type { Llamada } from "./llamada.js";
-import type { AmbitoResolucion, Candidato } from "./resolve.js";
-import { esUuid, resolverReferencia } from "./resolve.js";
+import { DomainError } from "../domain/errors";
+import type { BoardDetail, Column, ListTasksQuery, Page, Task } from "../domain/types";
+import { LIMITE_PAGINA_MAXIMO } from "../domain/types";
+import type { TaskManagerPort } from "./port";
+import type { Llamada } from "./llamada";
+import type { AmbitoResolucion, Candidato } from "./resolve";
+import { esUuid, resolverReferencia } from "./resolve";
 
 /**
  * Las tres resoluciones concretas —tablero, columna, tarea— sobre el puerto.

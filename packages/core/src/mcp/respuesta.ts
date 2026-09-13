@@ -1,8 +1,8 @@
 import { z } from "zod";
 
-import { DomainError, isDomainError } from "../domain/errors.js";
-import type { EntornoMcp, Llamada } from "./llamada.js";
-import type { EsquemaEntrada, McpToolResult } from "./tool.js";
+import { DomainError, isDomainError } from "../domain/errors";
+import type { EntornoMcp, Llamada } from "./llamada";
+import type { EsquemaEntrada, McpToolResult } from "./tool";
 
 /**
  * Formato de respuesta de la 8.5.

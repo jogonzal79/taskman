@@ -1,10 +1,10 @@
 import { Prisma, type PrismaClient } from "@taskman/db";
 
-import type { ActorType } from "../domain/actor.js";
-import type { AuditEntry, AuditPayload, ListAuditQuery } from "../domain/audit.js";
-import type { Page } from "../domain/types.js";
-import { normalizarLimite } from "./pagination.js";
-import type { TransactionRunner } from "./transaction-runner.js";
+import type { ActorType } from "../domain/actor";
+import type { AuditEntry, AuditPayload, ListAuditQuery } from "../domain/audit";
+import type { Page } from "../domain/types";
+import { normalizarLimite } from "./pagination";
+import type { TransactionRunner } from "./transaction-runner";
 
 /**
  * La fila fisica de `audit_log` (4.1): como se inserta y como se lee.

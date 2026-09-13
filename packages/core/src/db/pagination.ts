@@ -1,6 +1,6 @@
 import { Prisma } from "@taskman/db";
 
-import { LIMITE_PAGINA_DEFECTO, LIMITE_PAGINA_MAXIMO } from "../domain/types.js";
+import { LIMITE_PAGINA_DEFECTO, LIMITE_PAGINA_MAXIMO } from "../domain/types";
 
 /**
  * Paginacion keyset compartida por los listados del nucleo.

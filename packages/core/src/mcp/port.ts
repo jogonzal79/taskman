@@ -1,4 +1,4 @@
-import type { ActorContext } from "../domain/actor.js";
+import type { ActorContext } from "../domain/actor";
 import type {
   Board,
   BoardDetail,
@@ -15,7 +15,7 @@ import type {
   Task,
   TaskMatch,
   UpdateTaskInput,
-} from "../domain/types.js";
+} from "../domain/types";
 
 /**
  * Lo que las herramientas MCP necesitan del sistema, y nada mas.

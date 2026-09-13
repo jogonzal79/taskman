@@ -1,6 +1,6 @@
 import { prisma, type PrismaClient } from "@taskman/db";
 
-import { esScope, type Scope } from "../domain/api-key.js";
+import { esScope, type Scope } from "../domain/api-key";
 
 /**
  * Lectura de `api_key`. Es lo unico que el nucleo necesita de esa tabla para

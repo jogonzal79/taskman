@@ -13,8 +13,8 @@ import {
   type ApiKeyRow,
   type BuscadorDeClaves,
   type Scope,
-} from "../src/index.js";
-import { connectDb, truncateAll, uuid } from "./helpers.js";
+} from "../src/index";
+import { connectDb, truncateAll, uuid } from "./helpers";
 
 /**
  * El cache de verificacion de claves de la 7.1: 60 s en memoria para no consultar

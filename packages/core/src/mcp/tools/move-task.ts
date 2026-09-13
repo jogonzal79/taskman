@@ -1,8 +1,8 @@
-import { resolverColumnaDelTablero, ubicarTarea } from "../lookup.js";
-import type { EntornoMcp } from "../llamada.js";
-import type { TaskManagerPort } from "../port.js";
-import { definirHandler, respuesta } from "../respuesta.js";
-import type { McpToolDefinition } from "../tool.js";
+import { resolverColumnaDelTablero, ubicarTarea } from "../lookup";
+import type { EntornoMcp } from "../llamada";
+import type { TaskManagerPort } from "../port";
+import { definirHandler, respuesta } from "../respuesta";
+import type { McpToolDefinition } from "../tool";
 import {
   campoBoardDeTarea,
   campoColumn,
@@ -10,7 +10,7 @@ import {
   campoTask,
   cuentaTareas,
   tareaJson,
-} from "./campos.js";
+} from "./campos";
 
 const shape = {
   task: campoTask("a mover"),

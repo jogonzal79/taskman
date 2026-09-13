@@ -1,6 +1,6 @@
-import type { ActorContext } from "../domain/actor.js";
-import type { Logger } from "../domain/logger.js";
-import type { FabricaDeContexto } from "./contexto.js";
+import type { ActorContext } from "../domain/actor";
+import type { Logger } from "../domain/logger";
+import type { FabricaDeContexto } from "./contexto";
 
 /**
  * Lo que sabe UNA invocacion de herramienta, y lo que se pasa hacia adentro.

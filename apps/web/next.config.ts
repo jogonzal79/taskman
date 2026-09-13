@@ -43,11 +43,21 @@ const config: NextConfig = {
   serverExternalPackages: ["@prisma/client", "@prisma/adapter-pg", "pg", "pino"],
   experimental: {
     /**
-     * El nucleo esta escrito en el estilo NodeNext que fija tsconfig.base.json:
-     * sus imports relativos llevan la extension `.js` aunque el archivo sea
-     * `.ts` (`./domain/types.js` -> domain/types.ts). esbuild hace esa
-     * sustitucion solo, que es por lo que apps/mcp-stdio no necesita nada; los
-     * bundlers de Next no, y sin esto fallan los ~30 imports del barrel.
+     * Lo que queda en el estilo NodeNext de tsconfig.base.json es apps/web
+     * MISMO: sus imports relativos llevan la extension `.js` aunque el archivo
+     * sea `.ts` (`./lib/auth.js` -> lib/auth.ts). esbuild hace esa sustitucion
+     * solo, que es por lo que apps/mcp-stdio no necesita nada; los bundlers de
+     * Next no.
+     *
+     * OJO con el motivo, que YA NO es el barrel: `contracts`, `db` y `core`
+     * migraron a specifiers sin extension y el barrel resuelve sin ayuda. Esta
+     * opcion sigue haciendo falta por los sitios PROPIOS de apps/web, y se va
+     * con ellos. Comprobarlo antes de sacarla, no asumirlo:
+     *
+     *   grep -rnoE 'from "[^"]*[.]js"' app lib --include=*.ts --include=*.tsx
+     *
+     * (el patron pide la comilla de cierre a proposito: sin ella `.js` tambien
+     * matchea dentro de `"../package.json"`, y el conteo sale de mas.)
      *
      * OJO: esta opcion la implementa SOLO webpack. Turbopack la ignora
      * explicitamente (esta en su lista de unsupported), y por eso los scripts

@@ -10,8 +10,8 @@ import {
   PREFIJO_CLAVE,
   type ApiKeyRow,
   type Scope,
-} from "../src/index.js";
-import { connectDb, truncateAll, uuid } from "./helpers.js";
+} from "../src/index";
+import { connectDb, truncateAll, uuid } from "./helpers";
 
 /**
  * API keys: ADR-005, 7.1 y 7.2.

@@ -1,5 +1,5 @@
-import { DomainError } from "./errors.js";
-import type { TargetPosition } from "./types.js";
+import { DomainError } from "./errors";
+import type { TargetPosition } from "./types";
 
 /**
  * Calcula el orden final de las columnas afectadas por un movimiento.

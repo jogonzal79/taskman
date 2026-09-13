@@ -14,7 +14,7 @@ import {
   type Page,
   type Task,
   type TaskManagerPort,
-} from "../src/index.js";
+} from "../src/index";
 
 /**
  * El log estructurado de la 11.1: la linea por invocacion de herramienta y la

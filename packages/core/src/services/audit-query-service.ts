@@ -1,6 +1,6 @@
-import type { AuditEntry, ListAuditQuery } from "../domain/audit.js";
-import type { AuditRepository } from "../db/audit-repository.js";
-import type { Page } from "../domain/types.js";
+import type { AuditEntry, ListAuditQuery } from "../domain/audit";
+import type { AuditRepository } from "../db/audit-repository";
+import type { Page } from "../domain/types";
 
 /**
  * Lectura del registro de auditoria (6.2, RF-10).

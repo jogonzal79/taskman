@@ -1,4 +1,4 @@
-import { normalizarTexto, recortarBlancos } from "./text.js";
+import { normalizarTexto, recortarBlancos } from "./text";
 
 /**
  * Igual que el VARCHAR(200) de la columna. Se cuenta en code points, no en
