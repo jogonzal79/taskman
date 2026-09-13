@@ -119,6 +119,7 @@ export { comprobarConexion } from "./db/health";
 
 export { LIMITE_COLUMN_KEY, LIMITE_COLUMN_NAME, normalizarColumnKey } from "./domain/column-key";
 export type { ColumnReference } from "./domain/column-key";
+export { COLUMNA_TERMINAL, esVencida } from "./domain/vencimiento";
 export { normalizarTexto, recortarBlancos } from "./domain/text";
 
 // --- API keys (ADR-005, 7.1 y 7.2) ------------------------------------------

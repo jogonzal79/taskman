@@ -1,0 +1,386 @@
+/*
+ * La 1.2 dice que la especificacion NO define paleta ni tipografia, asi que la
+ * eleccion es de este paso y va justificada:
+ *
+ *   TIPOGRAFIA: la del sistema. Ninguna webfont. Un tablero se lee de un vistazo
+ *   y en diagonal; una fuente remota agrega una peticion bloqueante y un salto de
+ *   texto al cargar, que es exactamente el momento en que se esta mirando.
+ *
+ *   PALETA: una sola escala de grises frios para TODO lo estructural —fondo,
+ *   columnas, tarjetas, bordes, texto— y color saturado unicamente en prioridad
+ *   (URGENT, HIGH) y en la marca de vencida. Es la consigna: si todo tiene color,
+ *   nada resalta. La consecuencia practica es que en una pantalla llena de
+ *   tarjetas grises, las tres o cuatro que importan son las UNICAS con tinta.
+ *
+ * Una sola hoja global y no un modulo CSS por componente: lo que hay que poder
+ * revisar de un vistazo es justamente la lista completa de lo que lleva color, y
+ * repartida en cuatro archivos deja de ser revisable. Los tokens de abajo son esa
+ * lista.
+ */
+
+:root {
+  --fuente: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+
+  /* Estructura: gris, sin excepciones. */
+  --lienzo: #f5f6f8;
+  --columna: #eceef1;
+  --tarjeta: #ffffff;
+  --borde: #dcdfe4;
+  --borde-suave: #e6e8eb;
+  --texto: #1c2024;
+  --texto-tenue: #5c6570;
+  --texto-apagado: #8b929b;
+
+  /* Senal: los unicos colores saturados de la pagina. */
+  --urgente: #b3261e;
+  --urgente-fondo: #fdecea;
+  --alta: #8a5a00;
+  --alta-fondo: #fdf4e3;
+  --alta-borde: #e8c98a;
+  --vencida: #b3261e;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--lienzo);
+  color: var(--texto);
+  font-family: var(--fuente);
+  font-size: 14px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+
+/*
+ * SOLO ESCRITORIO (decision de producto de F3). El responsive de la 9.3 —columnas
+ * de a una con pestanas— queda descartado, asi que por debajo de 1024px no se
+ * sirve una version degradada sino un aviso. Se resuelve con una media query y
+ * NADA de JavaScript: medir el ancho en el cliente obligaria a un "use client" y a
+ * un primer render equivocado.
+ */
+.solo-escritorio {
+  display: block;
+  height: 100%;
+}
+
+.aviso-angosto {
+  display: none;
+}
+
+@media (max-width: 1023px) {
+  .solo-escritorio {
+    display: none;
+  }
+
+  .aviso-angosto {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    margin: 0;
+    padding: 32px;
+    color: var(--texto-tenue);
+    text-align: center;
+    text-wrap: balance;
+  }
+}
+
+/* --- Marco y barra lateral ------------------------------------------------ */
+
+.marco {
+  display: flex;
+  height: 100%;
+}
+
+/*
+ * La barra lateral es el ARMAZON, no una funcionalidad: lista los tableros y
+ * marca cual se esta viendo. No navega y no crea nada —las dos cosas son
+ * interactividad y entran despues— pero ocupa su ancho desde el primer dia, para
+ * que el layout no se rehaga cuando lleguen.
+ *
+ * El tablero activo se distingue SIN COLOR: peso, tinta plena y un fondo apenas
+ * mas claro. El color esta reservado para prioridad y vencimiento, y gastarlo
+ * aca —en algo que siempre esta y siempre es uno solo— le quitaria fuerza justo
+ * a lo que tiene que resaltar.
+ */
+.barra {
+  flex: 0 0 150px;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 20px 0 16px;
+  border-right: 1px solid var(--borde);
+}
+
+.barra__titulo {
+  flex: none;
+  margin: 0 0 8px;
+  padding: 0 12px;
+  color: var(--texto-apagado);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.barra__lista {
+  flex: 1;
+  margin: 0;
+  padding: 0 8px;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.barra__item {
+  padding: 5px 8px;
+  overflow: hidden;
+  border-radius: 5px;
+  color: var(--texto-tenue);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.barra__item--activo {
+  background: var(--columna);
+  color: var(--texto);
+  font-weight: 600;
+}
+
+.barra__resto {
+  padding: 6px 8px 0;
+  color: var(--texto-apagado);
+  font-size: 12px;
+}
+
+/* --- Pagina y cabecera (BoardHeader, 9.3) --------------------------------- */
+
+.pagina {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.cabecera {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid var(--borde);
+  background: var(--lienzo);
+}
+
+.cabecera__nombre {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.cabecera__recuento {
+  color: var(--texto-tenue);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- ColumnList (9.3): contenedor con scroll horizontal ------------------- */
+
+.columnas {
+  flex: 1;
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  min-height: 0;
+  padding: 20px 24px 24px;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+/* --- ColumnCard (9.3): cabecera con nombre y recuento --------------------- */
+
+.columna {
+  flex: 0 0 288px;
+  display: flex;
+  flex-direction: column;
+  max-height: 100%;
+  border-radius: 8px;
+  background: var(--columna);
+}
+
+.columna__cabecera {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 12px 8px;
+}
+
+.columna__nombre {
+  margin: 0;
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.columna__recuento {
+  flex: none;
+  color: var(--texto-tenue);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.columna__tareas {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  margin: 0;
+  padding: 0 8px 12px;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.columna__vacia {
+  padding: 10px 4px 2px;
+  color: var(--texto-apagado);
+  font-size: 13px;
+}
+
+/* El aviso de corte de pagina: ver `LIMITE_PAGINA_MAXIMO` en lib/tablero.ts. */
+.columna__resto {
+  padding: 6px 4px 0;
+  color: var(--texto-apagado);
+  font-size: 12px;
+}
+
+/* --- TaskCard (9.3): titulo, prioridad, fecha y marca de vencida ---------- */
+
+.tarjeta {
+  padding: 8px 10px;
+  border: 1px solid var(--borde);
+  border-left-width: 3px;
+  border-left-color: var(--borde);
+  border-radius: 6px;
+  background: var(--tarjeta);
+  box-shadow: 0 1px 1px rgb(28 32 36 / 5%);
+}
+
+/*
+ * El borde izquierdo es la unica diferencia visible a nivel COLUMNA: se ve sin
+ * leer la tarjeta, que es como se escanea un tablero. Por eso lo llevan solo las
+ * dos prioridades que la 9.3 exige diferenciar.
+ */
+.tarjeta--urgente {
+  border-left-color: var(--urgente);
+}
+
+.tarjeta--alta {
+  border-left-color: var(--alta-borde);
+}
+
+/*
+ * DOS lineas como maximo, con puntos suspensivos. El titulo ES el contenido de la
+ * tarjeta: recortado a una sola linea, dos tareas que empiezan igual se vuelven
+ * indistinguibles, que es peor que la altura variable que el limite evita. Con dos
+ * la altura sigue siendo casi fija y el caso ambiguo se resuelve. El titulo entero
+ * queda igual en el `title` del elemento.
+ */
+.tarjeta__titulo {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.4;
+}
+
+/* No se renderiza si no hay nada que poner, asi que no reserva alto. */
+.tarjeta__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 0;
+}
+
+.prioridad {
+  flex: none;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/*
+ * MEDIUM y LOW NO TIENEN CHIP: no hay `.prioridad--normal`, y la ausencia es la
+ * decision. Una etiqueta gris repetida en la mayoria de las tarjetas es texto
+ * identico que no distingue ninguna de ninguna; lo unico que hace es competir por
+ * la linea con la fecha. Que una tarjeta no diga nada ES la senal de que su
+ * prioridad es la corriente.
+ */
+
+/* La unica pieza con relleno solido de toda la pagina. */
+.prioridad--urgente {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--urgente);
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.prioridad--alta {
+  padding: 1px 6px;
+  border: 1px solid var(--alta-borde);
+  border-radius: 4px;
+  background: var(--alta-fondo);
+  color: var(--alta);
+  font-weight: 600;
+}
+
+.fecha {
+  margin-left: auto;
+  color: var(--texto-tenue);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/*
+ * La marca de vencida NO es solo el color: la palabra "Vencida" va en el texto.
+ * Un tablero que solo tinera la fecha de rojo no dice nada a quien no distingue
+ * el rojo, ni en una captura en escala de grises.
+ */
+.fecha--vencida {
+  color: var(--vencida);
+  font-weight: 600;
+}
+
+/* --- Estado vacio de la pagina -------------------------------------------- */
+
+.sin-tablero {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 32px;
+  color: var(--texto-tenue);
+  text-align: center;
+}
