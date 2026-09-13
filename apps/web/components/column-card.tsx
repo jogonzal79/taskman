@@ -1,3 +1,4 @@
+import { hayFiltros, type Filtros } from "../lib/filtros";
 import type { ColumnaEnTablero } from "../lib/tablero";
 import { QuickAdd } from "./quick-add";
 import { TaskCard } from "./task-card";
@@ -29,6 +30,7 @@ export function ColumnCard({
   columna,
   hoy,
   tareaAbierta,
+  filtros,
 }: {
   /**
    * Baja desde la pagina y no se deduce de la columna: `CreateTaskInput` pide
@@ -41,6 +43,7 @@ export function ColumnCard({
   hoy: Date;
   /** La tarea abierta en el panel, si es alguna de esta columna. */
   tareaAbierta: string | undefined;
+  filtros: Filtros;
 }) {
   return (
     <section className="columna" aria-labelledby={`columna-${columna.id}`}>
@@ -48,7 +51,19 @@ export function ColumnCard({
         <h2 className="columna__nombre" id={`columna-${columna.id}`} title={columna.name}>
           {columna.name}
         </h2>
-        <span className="columna__recuento">{columna.taskCount}</span>
+        {/*
+          CON FILTRO, "1 de 4". Mismo criterio que el recuento del tablero: con
+          solo el total el numero deja de describir lo que se ve, y con solo lo
+          mostrado se pierde cuanto esconde el filtro, que es lo que uno quiere
+          saber justo cuando filtra. El total sigue viniendo del agregado de la
+          base y no de contar tarjetas, que es para lo que estaba desde el
+          principio.
+        */}
+        <span className="columna__recuento">
+          {hayFiltros(filtros)
+            ? `${columna.tasks.length} de ${columna.taskCount}`
+            : columna.taskCount}
+        </span>
       </header>
 
       <ul className="columna__tareas">
@@ -58,15 +73,35 @@ export function ColumnCard({
             tarea={tarea}
             hoy={hoy}
             abierta={tarea.id === tareaAbierta}
+            filtros={filtros}
           />
         ))}
 
-        {/* Una columna vacia es un estado normal de un tablero, no un error. */}
-        {columna.tasks.length === 0 && <li className="columna__vacia">Sin tareas</li>}
+        {/*
+          Una columna vacia es un estado normal de un tablero, no un error. Con
+          filtro puesto, ademas, LA COLUMNA SIGUE ESTANDO: un tablero al que le
+          desaparecen columnas segun el filtro desorienta —cambia la forma de lo
+          que uno esta mirando— y esconde justamente el dato util, que es que ahi
+          no hay nada que cumpla. Por eso el texto cambia y el hueco no.
+        */}
+        {columna.tasks.length === 0 && (
+          <li className="columna__vacia">
+            {hayFiltros(filtros) ? "Ninguna con este filtro" : "Sin tareas"}
+          </li>
+        )}
 
-        {columna.omitidas > 0 && (
+        {/*
+          El aviso de corte de pagina. Sin filtro se sabe cuantas faltan; con
+          filtro solo se sabe QUE faltan (ver `omitidas` en lib/tablero.ts), asi
+          que el texto no inventa un numero.
+        */}
+        {columna.recorte && (
           <li className="columna__resto">
-            {columna.omitidas === 1 ? "1 tarea mas sin mostrar" : `${columna.omitidas} tareas mas sin mostrar`}
+            {columna.omitidas === 0
+              ? "hay mas que no entraron en la pagina"
+              : columna.omitidas === 1
+                ? "1 tarea mas sin mostrar"
+                : `${columna.omitidas} tareas mas sin mostrar`}
           </li>
         )}
       </ul>

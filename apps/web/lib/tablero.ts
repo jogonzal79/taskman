@@ -6,6 +6,8 @@ import {
   type Task,
 } from "@taskman/core";
 
+import { hayFiltros, type Filtros } from "./filtros";
+
 /**
  * La carga del tablero para la UI de la 9.1: "La carga inicial del tablero se
  * hace en un Server Component invocando el nucleo directamente, sin pasar por
@@ -53,16 +55,27 @@ export interface ColumnaEnTablero {
   id: string;
   name: string;
   key: string;
-  /** Recuento REAL de la columna, agregado en la base. Ver `omitidas`. */
+  /**
+   * Recuento REAL de la columna, agregado en la base y SIN FILTRAR. Sigue siendo
+   * el total aunque haya filtro: es el numero que dice cuanto esconde el filtro,
+   * y es la razon por la que este dato viene de la base y no de `tasks.length`.
+   */
   taskCount: number;
+  /** Las que se muestran. Con filtro, solo las que lo cumplen. */
   tasks: TareaEnTablero[];
   /**
-   * Cuantas tareas de la columna no se trajeron. El listado del nucleo pagina
-   * (`LIMITE_PAGINA_MAXIMO`), asi que una columna con mas tareas que el tope se
-   * renderiza incompleta; decirlo es mejor que mostrar un recuento que no cuadra
-   * con lo que se ve. En uso personal esto es cero siempre.
+   * Cuantas tareas de la columna no se trajeron POR EL TOPE DE PAGINA. Sin filtro
+   * es exacto (`taskCount - tasks.length`). CON FILTRO es 0 y no se puede
+   * calcular: la resta daria las que quito el FILTRO, que no es lo mismo y seria
+   * una mentira visible en cada columna filtrada. El corte lo dice `recorte`.
    */
   omitidas: number;
+  /**
+   * El listado se corto por el tope de pagina (`LIMITE_PAGINA_MAXIMO`). Sale del
+   * cursor del nucleo, que es la respuesta autoritativa y vale igual con filtro y
+   * sin el. En uso personal es falso siempre.
+   */
+  recorte: boolean;
 }
 
 export interface TableroEnPantalla {
@@ -98,7 +111,7 @@ export interface VistaDelTablero {
  * no se puede cambiar— asi que hace falta una regla y esta es la unica que no
  * inventa nada: es la misma que veria quien llama a GET /api/boards sin cursor.
  */
-export async function cargarVista(hoy: Date): Promise<VistaDelTablero> {
+export async function cargarVista(hoy: Date, filtros: Filtros): Promise<VistaDelTablero> {
   const listado = await taskman.listBoards({ limit: LIMITE_PAGINA_MAXIMO });
   const activo = listado.items[0];
 
@@ -121,7 +134,7 @@ export async function cargarVista(hoy: Date): Promise<VistaDelTablero> {
   const detalle = await taskman.getBoardWithTaskCounts(activo.id);
 
   const columns = await Promise.all(
-    detalle.columns.map((columna) => cargarColumna(columna, hoy)),
+    detalle.columns.map((columna) => cargarColumna(columna, hoy, filtros)),
   );
 
   return {
@@ -145,12 +158,28 @@ export async function cargarVista(hoy: Date): Promise<VistaDelTablero> {
 async function cargarColumna(
   columna: ColumnWithTaskCount,
   hoy: Date,
+  filtros: Filtros,
 ): Promise<ColumnaEnTablero> {
+  /**
+   * LOS FILTROS VAN EN LA CONSULTA, no en un `.filter()` sobre el resultado. Es
+   * la diferencia entre pedir tres tareas y pedir doscientas para esconder ciento
+   * noventa y siete, y ademas es lo unico que hace que el filtro y la marca de
+   * vencida no puedan discrepar: `overdue` lo resuelve el nucleo con la misma
+   * `COLUMNA_TERMINAL` que usa `esVencida` unas lineas mas abajo.
+   *
+   * `priority` se omite cuando no hay ninguna elegida. Mandar un array vacio
+   * seria inofensivo —el nucleo lo ignora, `length > 0`— pero pasarlo igual
+   * dejaria a esta funcion apoyada en ese detalle del repositorio.
+   */
   const pagina = await taskman.listTasks({
     columnId: columna.id,
     orderBy: "position",
     limit: LIMITE_PAGINA_MAXIMO,
+    ...(filtros.prioridades.length === 0 ? {} : { priority: filtros.prioridades }),
+    ...(filtros.vencidas ? { overdue: true } : {}),
   });
+
+  const filtrando = hayFiltros(filtros);
 
   return {
     id: columna.id,
@@ -165,7 +194,9 @@ async function cargarColumna(
       dueDate: tarea.dueDate,
       vencida: esVencida(tarea, columna, hoy),
     })),
-    omitidas: Math.max(0, columna.taskCount - pagina.items.length),
+    // Ver `ColumnaEnTablero.omitidas`: la resta solo significa algo sin filtro.
+    omitidas: filtrando ? 0 : Math.max(0, columna.taskCount - pagina.items.length),
+    recorte: pagina.nextCursor !== null,
   };
 }
 

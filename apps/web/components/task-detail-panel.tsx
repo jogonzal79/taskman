@@ -43,7 +43,20 @@ import { TaskEditor } from "./task-editor";
  * vez de dejar la pantalla mostrando lo viejo. Y como el `key` cambia solo cuando
  * cambia algun valor, escribir en un campo no remonta nada.
  */
-export function TaskDetailPanel({ ubicada }: { ubicada: TareaUbicada }) {
+export function TaskDetailPanel({
+  ubicada,
+  hrefCerrar,
+}: {
+  ubicada: TareaUbicada;
+  /**
+   * A donde se vuelve al cerrar: el mismo tablero CON LOS FILTROS PUESTOS. Lo
+   * arma la pagina con `enlaceTablero`, que es de donde salen todos los enlaces
+   * de esta pantalla, y baja como cadena para que el editor de cliente —que
+   * tambien cierra, con Escape y despues de borrar— vaya al mismo sitio sin
+   * poder leer los parametros del servidor.
+   */
+  hrefCerrar: string;
+}) {
   const { tarea, columna } = ubicada;
 
   // `AAAA-MM-DD` leido en UTC, que es lo que espera un `<input type="date">`.
@@ -61,7 +74,12 @@ export function TaskDetailPanel({ ubicada }: { ubicada: TareaUbicada }) {
           enlace: funciona con el teclado, con el boton del medio y sin
           JavaScript. El mismo destino que usa Escape dentro del editor.
         */}
-        <Link className="panel__cerrar" href="/" scroll={false} aria-label="Cerrar el detalle">
+        <Link
+          className="panel__cerrar"
+          href={hrefCerrar}
+          scroll={false}
+          aria-label="Cerrar el detalle"
+        >
           Cerrar
         </Link>
       </header>
@@ -76,6 +94,7 @@ export function TaskDetailPanel({ ubicada }: { ubicada: TareaUbicada }) {
           dueDate,
         }}
         columnName={columna.name}
+        hrefCerrar={hrefCerrar}
       />
     </aside>
   );

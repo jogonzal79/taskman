@@ -1,6 +1,7 @@
 import type { Priority } from "@taskman/core";
 import Link from "next/link";
 
+import { enlaceTablero, type Filtros } from "../lib/filtros";
 import type { TareaEnTablero } from "../lib/tablero";
 
 /**
@@ -64,11 +65,18 @@ export function TaskCard({
   tarea,
   hoy,
   abierta,
+  filtros,
 }: {
   tarea: TareaEnTablero;
   hoy: Date;
   /** Si es la que el panel de detalle esta mostrando. */
   abierta: boolean;
+  /**
+   * Los filtros puestos. Van EN EL ENLACE: abrir una tarjeta con un filtro
+   * puesto no puede perderlo, porque el destino es el mismo tablero con el panel
+   * abierto y no un tablero distinto.
+   */
+  filtros: Filtros;
 }) {
   const prioridad = PRIORIDAD[tarea.priority];
   const clases = [
@@ -90,7 +98,11 @@ export function TaskCard({
         empieza sobre un enlace; hoy no hay arrastre y adelantarlo seria inventar
         el problema.
       */}
-      <Link className="tarjeta-enlace" href={`/?tarea=${tarea.id}`} scroll={false}>
+      <Link
+        className="tarjeta-enlace"
+        href={enlaceTablero(filtros, tarea.id)}
+        scroll={false}
+      >
         <article className={clases}>
           {/* El `title` guarda el titulo completo, por si las dos lineas lo cortan. */}
           <h3 className="tarjeta__titulo" title={tarea.title}>

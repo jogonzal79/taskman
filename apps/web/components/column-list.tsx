@@ -1,3 +1,4 @@
+import type { Filtros } from "../lib/filtros";
 import type { ColumnaEnTablero } from "../lib/tablero";
 import { ColumnCard } from "./column-card";
 
@@ -25,6 +26,7 @@ export function ColumnList({
   columnas,
   hoy,
   tareaAbierta,
+  filtros,
 }: {
   boardId: string;
   columnas: ColumnaEnTablero[];
@@ -35,6 +37,8 @@ export function ColumnList({
    * pagina, no de un estado de cliente que habria que sincronizar.
    */
   tareaAbierta: string | undefined;
+  /** Pasan de largo hasta el enlace de cada tarjeta: abrir el panel no los pierde. */
+  filtros: Filtros;
 }) {
   return (
     <div className="columnas">
@@ -45,6 +49,7 @@ export function ColumnList({
           columna={columna}
           hoy={hoy}
           tareaAbierta={tareaAbierta}
+          filtros={filtros}
         />
       ))}
     </div>

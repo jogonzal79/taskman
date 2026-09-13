@@ -97,6 +97,50 @@ export function campoNuevaTarea(page: Page, nombreColumna: string): Locator {
   });
 }
 
+// --- Filtros -----------------------------------------------------------------
+
+/**
+ * Un chip de filtro POR LO QUE HACE, no por su etiqueta: "Filtrar por Alta"
+ * cuando esta apagado y "Quitar el filtro Alta" cuando esta puesto. Ese nombre
+ * accesible es el estado del filtro, asi que pedirlo asi comprueba de paso que la
+ * pantalla anuncia bien lo que va a pasar al pulsarlo.
+ */
+export function filtro(page: Page, nombre: string): Locator {
+  return page.getByRole("link", { name: `Filtrar por ${nombre}`, exact: true });
+}
+
+export function filtroPuesto(page: Page, nombre: string): Locator {
+  return page.getByRole("link", { name: `Quitar el filtro ${nombre}`, exact: true });
+}
+
+/** Todos los titulos del tablero, como LOCALIZADOR. Ver `esperarTitulos`. */
+export function titulosDelTablero(page: Page): Locator {
+  return page.locator(".tarjeta__titulo");
+}
+
+/**
+ * Espera a que el tablero muestre EXACTAMENTE estos titulos, en este orden.
+ *
+ * Va como asercion y no como `allTextContents()` porque `toHaveText` REINTENTA y
+ * la lectura suelta no: pulsar un filtro navega del lado del cliente, asi que
+ * leer justo despues del clic devuelve el tablero ANTERIOR. Paso al escribir
+ * estas pruebas —cuatro fallaron leyendo el estado de antes, una de ellas con la
+ * lista vacia porque el filtro previo no dejaba ninguna— y el sintoma se lee como
+ * "el filtro no funciona" en vez de como "todavia no llego".
+ */
+export async function esperarTitulos(page: Page, titulos: readonly string[]): Promise<void> {
+  await expect(titulosDelTablero(page)).toHaveText([...titulos]);
+}
+
+/**
+ * Los titulos de las tarjetas que llevan la MARCA de vencida. Se lee del DOM y no
+ * se recalcula: el caso que decide es que este conjunto y el que devuelve el
+ * filtro sean el mismo, y compararlos exige que los dos salgan de la aplicacion.
+ */
+export async function titulosMarcadosVencidos(page: Page): Promise<string[]> {
+  return page.locator(".tarjeta:has(time.fecha--vencida) .tarjeta__titulo").allTextContents();
+}
+
 // --- Panel de detalle --------------------------------------------------------
 
 /**

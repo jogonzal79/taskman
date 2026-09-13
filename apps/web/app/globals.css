@@ -194,6 +194,69 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* --- Filtros (9.3, dentro de BoardHeader) --------------------------------- */
+
+/*
+ * Los chips van pegados a la derecha del recuento, no al borde de la pantalla:
+ * `margin-left: auto` los empujaria al otro extremo del ancho y quedarian lejos
+ * del nombre del tablero, que es lo que estan calificando.
+ */
+.filtros {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-left: 12px;
+}
+
+/*
+ * Un chip apagado no lleva color: es un contorno gris con el texto en tinta
+ * tenue. El color de esta pagina esta reservado a prioridad y vencimiento, y
+ * cuatro chips de colores permanentes en la cabecera se lo gastarian entero.
+ */
+.filtro {
+  padding: 3px 9px;
+  border: 1px solid var(--borde);
+  border-radius: 999px;
+  background: var(--tarjeta);
+  color: var(--texto-tenue);
+  font-size: 12px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.filtro:hover {
+  border-color: var(--texto-apagado);
+  color: var(--texto);
+}
+
+.filtro:focus-visible {
+  outline: 2px solid var(--texto-tenue);
+  outline-offset: 1px;
+}
+
+/*
+ * PUESTO SE VE SIN COLOR: se invierte. Tinta plena de fondo y texto claro, que
+ * es el contraste mas fuerte que hay en la hoja sin gastar un color, y ademas
+ * sobrevive a una captura en gris.
+ */
+.filtro--puesto {
+  border-color: var(--texto);
+  background: var(--texto);
+  color: var(--lienzo);
+  font-weight: 600;
+}
+
+.filtro--puesto:hover {
+  color: var(--lienzo);
+}
+
+/* Sin recuadro: es una accion sobre los chips, no otro chip mas. */
+.filtro--limpiar {
+  border-color: transparent;
+  background: transparent;
+  text-decoration: underline;
+}
+
 /* --- ColumnList (9.3): contenedor con scroll horizontal ------------------- */
 
 .columnas {

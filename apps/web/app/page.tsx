@@ -2,6 +2,7 @@ import { BoardHeader } from "../components/board-header";
 import { BoardSidebar } from "../components/board-sidebar";
 import { ColumnList } from "../components/column-list";
 import { TaskDetailPanel } from "../components/task-detail-panel";
+import { enlaceTablero, leerFiltros, leerTareaAbierta } from "../lib/filtros";
 import { cargarVista, ubicarEnVista } from "../lib/tablero";
 
 /**
@@ -34,20 +35,16 @@ import { cargarVista, ubicarEnVista } from "../lib/tablero";
 export const dynamic = "force-dynamic";
 
 /**
- * QUE TAREA ESTA ABIERTA VIVE EN LA URL, no en estado de cliente: `/?tarea=<id>`.
- * Ver el comentario de `TaskDetailPanel` para las tres cosas que eso resuelve; la
- * que importa aca es que el panel se resuelve y se renderiza en el SERVIDOR, asi
- * que abrirlo no manda el tablero al navegador.
+ * TODO EL ESTADO DE LA PANTALLA VIVE EN LA URL: que tarea esta abierta
+ * (`?tarea=<id>`) y que filtros hay puestos (`?prioridad=...&vencidas=1`). Ver
+ * `TaskDetailPanel` y `lib/filtros.ts` para lo que resuelve cada uno; lo que
+ * comparten es lo importante: los dos se resuelven en el SERVIDOR, conviven en la
+ * misma cadena y ninguno pisa al otro, porque todos los enlaces de la pagina
+ * salen de `enlaceTablero`.
  *
- * Un valor repetido (`?tarea=a&tarea=b`) llega como array y se descarta: pedir
- * dos tareas a la vez no significa nada y elegir una seria inventar una regla.
+ * Los parametros hay que LEERLOS ANTES de cargar la vista, porque los filtros son
+ * parte de la consulta: no se trae el tablero entero para esconder tarjetas.
  */
-function leerTareaAbierta(parametros: Record<string, string | string[] | undefined>): string | undefined {
-  const valor = parametros["tarea"];
-
-  return typeof valor === "string" && valor !== "" ? valor : undefined;
-}
-
 export default async function PaginaTablero({
   searchParams,
 }: {
@@ -56,11 +53,11 @@ export default async function PaginaTablero({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const hoy = new Date();
-  const [{ tableros, tablerosOmitidos, actual }, parametros] = await Promise.all([
-    cargarVista(hoy),
-    searchParams,
-  ]);
+  const parametros = await searchParams;
+  const filtros = leerFiltros(parametros);
   const tareaAbierta = leerTareaAbierta(parametros);
+
+  const { tableros, tablerosOmitidos, actual } = await cargarVista(hoy, filtros);
 
   // Sin tableros no hay barra que dibujar: estaria vacia al lado de un hueco.
   if (actual === undefined) {
@@ -80,11 +77,26 @@ export default async function PaginaTablero({
    */
   const ubicada = ubicarEnVista(actual, tareaAbierta);
 
+  /**
+   * Lo que se muestra, sumado sobre las columnas. Con filtro es menos que
+   * `actual.taskCount`, y la diferencia entre los dos es exactamente lo que el
+   * filtro esta escondiendo. Se cuenta sobre lo cargado y no en la base a
+   * proposito: es el numero que describe LA PANTALLA, y el que describe el
+   * tablero ya lo da el agregado.
+   */
+  const mostradas = actual.columns.reduce((suma, columna) => suma + columna.tasks.length, 0);
+
   return (
     <div className="marco">
       <BoardSidebar tableros={tableros} omitidos={tablerosOmitidos} />
       <main className="pagina">
-        <BoardHeader nombre={actual.name} taskCount={actual.taskCount} />
+        <BoardHeader
+          nombre={actual.name}
+          taskCount={actual.taskCount}
+          mostradas={mostradas}
+          filtros={filtros}
+          tareaAbierta={tareaAbierta}
+        />
         <ColumnList
           boardId={actual.id}
           columnas={actual.columns}
@@ -93,14 +105,24 @@ export default async function PaginaTablero({
           // tarjeta que marcar y las dos formas coinciden. Con `ubicada` habria
           // que desenvolverlo para lo mismo.
           tareaAbierta={tareaAbierta}
+          filtros={filtros}
         />
       </main>
       {/*
         HERMANO del `<main>`, no encima: el panel se abre al costado y el
         tablero se estrecha. Es la diferencia entre un panel y un modal, y es
         por eso que no hay capa, ni superposicion, ni foco atrapado.
+
+        `hrefCerrar` se calcula ACA y baja como cadena: cerrar el panel es volver
+        al tablero CON LOS FILTROS PUESTOS, y el componente de cliente que
+        tambien cierra (con Escape, y despues de borrar) no puede leer los
+        parametros del servidor. Pasar la cadena ya armada es lo que hace que las
+        tres formas de cerrar —el enlace, Escape y el borrado— vayan al mismo
+        sitio.
       */}
-      {ubicada !== undefined && <TaskDetailPanel ubicada={ubicada} />}
+      {ubicada !== undefined && (
+        <TaskDetailPanel ubicada={ubicada} hrefCerrar={enlaceTablero(filtros)} />
+      )}
     </div>
   );
 }

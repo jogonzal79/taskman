@@ -42,10 +42,18 @@ export interface TareaEditable {
 export function TaskEditor({
   tarea,
   columnName,
+  hrefCerrar,
 }: {
   tarea: TareaEditable;
   /** Solo para mostrar de que columna es. Cambiarla requiere move (5.2). */
   columnName: string;
+  /**
+   * A donde vuelven Escape y el borrado. Llega ya armado desde el servidor
+   * porque lleva los FILTROS puestos, y este componente no los puede leer: un
+   * `router.push("/")` a secas cerraria el panel y de paso quitaria el filtro,
+   * que es una cosa que nadie pidio.
+   */
+  hrefCerrar: string;
 }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
@@ -58,9 +66,9 @@ export function TaskEditor({
   const [armado, setArmado] = useState(false);
   const idError = useId();
 
-  /** Cierra el panel volviendo a la ruta sin el parametro de consulta. */
+  /** Cierra el panel: el mismo tablero sin `tarea`, con los filtros intactos. */
   function cerrar(): void {
-    router.push("/", { scroll: false });
+    router.push(hrefCerrar, { scroll: false });
   }
 
   /**
@@ -98,7 +106,7 @@ export function TaskEditor({
     return () => document.removeEventListener("keydown", alTeclear);
     // `cerrar` usa `router`, que es estable; `armado` decide cual de los dos
     // niveles aplica, asi que el listener se vuelve a colgar cuando cambia.
-  }, [armado, router]);
+  }, [armado, router, hrefCerrar]);
 
   /**
    * Guarda UN campo. El patch que sale de aca tiene una sola clave, y esa clave
