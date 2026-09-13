@@ -5,14 +5,14 @@
 // Este paquete es una HOJA del grafo de dependencias (3.3): no importa nada del
 // proyecto.
 
-export { consultaDeListado, listadoDe, LIMITE_DEFECTO, LIMITE_MAXIMO } from "./pagination.js";
-export type { ConsultaDeListado } from "./pagination.js";
+export { consultaDeListado, listadoDe, LIMITE_DEFECTO, LIMITE_MAXIMO } from "./pagination";
+export type { ConsultaDeListado } from "./pagination";
 
-export { errorDeApi, ESTADO_POR_CODIGO } from "./error.js";
-export type { CodigoDeError, ErrorDeApi } from "./error.js";
+export { errorDeApi, ESTADO_POR_CODIGO } from "./error";
+export type { CodigoDeError, ErrorDeApi } from "./error";
 
-export { salud, saludDegradada } from "./health.js";
-export type { Salud, SaludDegradada } from "./health.js";
+export { salud, saludDegradada } from "./health";
+export type { Salud, SaludDegradada } from "./health";
 
 export {
   consultaDeAuditoria,
@@ -23,14 +23,14 @@ export {
   tipoDeEntidad,
   TIPOS_DE_ACTOR,
   TIPOS_DE_ENTIDAD,
-} from "./audit.js";
+} from "./audit";
 export type {
   ConsultaDeAuditoria,
   ListadoDeAuditoria,
   RegistroDeAuditoria,
   TipoDeActor,
   TipoDeEntidad,
-} from "./audit.js";
+} from "./audit";
 
 export {
   actualizarTablero,
@@ -41,7 +41,7 @@ export {
   tableroDetallado,
   LIMITE_DESCRIPCION_TABLERO,
   LIMITE_NOMBRE_TABLERO,
-} from "./board.js";
+} from "./board";
 export type {
   ActualizarTablero,
   CrearTablero,
@@ -49,7 +49,7 @@ export type {
   ParametrosDeTablero,
   Tablero,
   TableroDetallado,
-} from "./board.js";
+} from "./board";
 
 export {
   actualizarColumna,
@@ -60,7 +60,7 @@ export {
   crearColumna,
   parametrosDeColumna,
   LIMITE_NOMBRE_COLUMNA,
-} from "./column.js";
+} from "./column";
 export type {
   ActualizarColumna,
   Columna,
@@ -69,7 +69,7 @@ export type {
   ConsultaDeBorradoDeColumna,
   CrearColumna,
   ParametrosDeColumna,
-} from "./column.js";
+} from "./column";
 
 export {
   actualizarTarea,
@@ -90,7 +90,7 @@ export {
   LIMITE_TITULO_TAREA,
   ORDENES_DE_TAREA,
   PRIORIDADES,
-} from "./task.js";
+} from "./task";
 export type {
   ActualizarTarea,
   Coincidencia,
@@ -106,4 +106,4 @@ export type {
   Prioridad,
   ResultadoDeMovimiento,
   Tarea,
-} from "./task.js";
+} from "./task";

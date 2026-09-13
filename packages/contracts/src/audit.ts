@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { consultaDeListado, listadoDe } from "./pagination.js";
+import { consultaDeListado, listadoDe } from "./pagination";
 
 /**
  * El contrato del registro de auditoria en el borde HTTP (6.2 fila

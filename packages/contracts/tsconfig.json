@@ -1,6 +1,19 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
+    // Los imports relativos de este paquete van SIN extension, asi que la
+    // resolucion no puede ser la NodeNext de tsconfig.base.json: exigiria el
+    // `.js` de vuelta (TS2835). No es una preferencia de estilo, es lo que
+    // hace resoluble el paquete para Turbopack, que no implementa
+    // `extensionAlias` y por eso no puede mapear `./task.js` -> `task.ts`.
+    //
+    // Consecuencia asumida: `src/` deja de ser cargable por Node a secas
+    // —ESM exige el specifier completo— y pasa a depender de un bundler.
+    // Ya dependia: lo consumen esbuild (build.mjs), webpack (apps/web) y
+    // Vite (la suite), y ninguno lo carga por Node. Ver build.mjs.
+    "module": "Preserve",
+    "moduleResolution": "Bundler",
+
     "rootDir": ".",
     "noEmit": true,
     "types": []

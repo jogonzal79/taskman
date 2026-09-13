@@ -1,9 +1,9 @@
-import { ESTADO_POR_CODIGO, type CodigoDeError } from "../error.js";
-import { componentesDeEsquema, parametrosDe, ref } from "./componentes.js";
-import { esObjeto, type ObjetoJson } from "./json.js";
-import { RUTAS, type Ruta } from "./rutas.js";
+import { ESTADO_POR_CODIGO, type CodigoDeError } from "../error";
+import { componentesDeEsquema, parametrosDe, ref } from "./componentes";
+import { esObjeto, type ObjetoJson } from "./json";
+import { RUTAS, type Ruta } from "./rutas";
 
-export { serializarEstable } from "./json.js";
+export { serializarEstable } from "./json";
 
 /**
  * Generador del documento OpenAPI 3.1 de la API REST, en tiempo de compilacion
