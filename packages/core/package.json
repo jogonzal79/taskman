@@ -6,7 +6,8 @@
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./logger": "./src/domain/logger.ts"
   },
   "scripts": {
     "test": "dotenv -e ../../.env -- vitest run",

@@ -1,4 +1,18 @@
-import { leerNivelLog, NIVEL_LOG_POR_DEFECTO, NIVELES_LOG, type NivelLog } from "@taskman/core";
+// Del SUBCAMINO y no del barrel, y no es cosmetico: este modulo lo importa
+// `instrumentation.ts`, que Next compila TAMBIEN para el runtime edge. El barrel
+// reexporta los repositorios, o sea `@taskman/db` -> `@prisma/adapter-pg` -> `pg`
+// -> `fs`, y en edge no hay `fs`: el modulo no compila y TODA peticion de `next
+// dev` responde 500. `next build` no lo ve —sin rutas edge no emite ese bundle— y
+// `verify` tampoco lo veia, porque nada levantaba `next dev`.
+//
+// De los cuatro simbolos, tres son valores y uno es tipo, asi que `import type`
+// no alcanza: `leerNivelLog`, `NIVELES_LOG` y `NIVEL_LOG_POR_DEFECTO` se ejecutan
+// en el transform del esquema y sobreviven al borrado de tipos.
+//
+// `domain/logger.ts` es hoja —no importa nada, ni del nucleo ni de fuera— y por
+// eso el subcamino es seguro: pedirlo no arrastra grafo. Si algun dia deja de ser
+// hoja, esto vuelve a romperse igual de silenciosamente.
+import { leerNivelLog, NIVEL_LOG_POR_DEFECTO, NIVELES_LOG, type NivelLog } from "@taskman/core/logger";
 import { z } from "zod";
 
 /**
