@@ -1,6 +1,6 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 
-import { PrismaClient } from "./generated/prisma/client.js";
+import { PrismaClient } from "./generated/prisma/client";
 
 // Prisma 7 usa el query compiler: la conexion entra por un driver adapter, no
 // por la URL de schema.prisma.

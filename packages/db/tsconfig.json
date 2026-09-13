@@ -1,6 +1,22 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
+    // Como en packages/contracts: los imports relativos van sin extension, y
+    // la resolucion NodeNext de tsconfig.base.json exigiria el `.js` de vuelta
+    // (TS2835). Es lo que hace resoluble el paquete para Turbopack, que no
+    // implementa `extensionAlias`.
+    //
+    // OJO con lo que esto cubre y lo que no: de los 24 sitios de `src/`, 21
+    // son GENERADOS por Prisma y llevan `@ts-nocheck`, asi que tsc nunca los
+    // miro —con `.js` o sin el, el typecheck salia verde igual— y quien los
+    // arregla es `importFileExtension = ""` en schema.prisma, no esta opcion.
+    // Lo que si depende de aca son los 3 escritos a mano (src/index.ts y
+    // src/client.ts), y sobre todo que los tipos que salen del cliente sigan
+    // RESOLVIENDO: sin esto, `export *` los degradaria a `any` en silencio,
+    // que compila igual de verde y es bastante peor que un error.
+    "module": "Preserve",
+    "moduleResolution": "Bundler",
+
     "rootDir": ".",
     "noEmit": true,
     "types": ["node"]
