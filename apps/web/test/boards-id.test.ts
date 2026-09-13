@@ -7,7 +7,7 @@ import {
   DELETE as eliminar,
   GET as obtener,
   PATCH as actualizar,
-} from "../app/api/boards/[id]/route.js";
+} from "../app/api/boards/[id]/route";
 import {
   connectDb,
   contarFilas,
@@ -20,7 +20,7 @@ import {
   sembrarTablero,
   sembrarTareas,
   truncateAll,
-} from "./helpers.js";
+} from "./helpers";
 
 /**
  * Contrato REST de /api/boards/{id} (6.2): GET, PATCH y DELETE.

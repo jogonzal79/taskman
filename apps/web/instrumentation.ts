@@ -1,4 +1,4 @@
-import { validarEntorno } from "./lib/config.js";
+import { validarEntorno } from "./lib/config";
 
 /**
  * Validacion de entorno al arrancar (11.2): una variable ausente o invalida DEBE

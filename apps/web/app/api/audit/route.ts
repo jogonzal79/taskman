@@ -5,9 +5,9 @@ import {
 } from "@taskman/contracts";
 import { crearCorePort, type AuditEntry, type ListAuditQuery } from "@taskman/core";
 
-import { conAuth } from "../../../lib/auth.js";
-import { respuestaDeError, respuestaDeFallo, responder } from "../../../lib/http.js";
-import { registrarContratoRoto } from "../../../lib/log.js";
+import { conAuth } from "../../../lib/auth";
+import { respuestaDeError, respuestaDeFallo, responder } from "../../../lib/http";
+import { registrarContratoRoto } from "../../../lib/log";
 
 /**
  * GET /api/audit (6.2, RF-10): consulta el registro de auditoria. Scope read

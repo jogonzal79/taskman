@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { limiteHabilitado, validarEntorno } from "../lib/config.js";
+import { limiteHabilitado, validarEntorno } from "../lib/config";
 
 /**
  * El esquema de configuracion de la 11.2 para apps/web.

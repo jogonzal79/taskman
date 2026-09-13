@@ -1,5 +1,5 @@
-import type { ScopeHttp } from "./auth.js";
-import { limiteHabilitado } from "./config.js";
+import type { ScopeHttp } from "./auth";
+import { limiteHabilitado } from "./config";
 
 /**
  * Limite de peticiones por clave de la 7.3: 120 por minuto para lectura y 30

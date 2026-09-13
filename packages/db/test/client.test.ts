@@ -1,6 +1,6 @@
 import { afterAll, expect, it } from "vitest";
 
-import { prisma } from "../src/index.js";
+import { prisma } from "../src/index";
 
 afterAll(async () => {
   await prisma.$disconnect();
@@ -24,6 +24,6 @@ it("el singleton exportado se conecta y ve el esquema migrado", async () => {
 });
 
 it("devuelve siempre la misma instancia", async () => {
-  const again = await import("../src/index.js");
+  const again = await import("../src/index");
   expect(again.prisma).toBe(prisma);
 });

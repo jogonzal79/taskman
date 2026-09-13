@@ -3,7 +3,7 @@ import type { CorePort } from "@taskman/core";
 import type { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { GET as listar, POST as crear } from "../app/api/boards/route.js";
+import { GET as listar, POST as crear } from "../app/api/boards/route";
 import {
   connectDb,
   contarFilas,
@@ -14,7 +14,7 @@ import {
   port,
   sembrarTablero,
   truncateAll,
-} from "./helpers.js";
+} from "./helpers";
 
 /**
  * Contrato REST de /api/boards (6.2), nivel "Contrato REST" de la 10.

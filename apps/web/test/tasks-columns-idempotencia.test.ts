@@ -5,10 +5,10 @@ import { prefijoDe, type BoardDetail, type CorePort } from "@taskman/core";
 import type { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { POST as crearColumna } from "../app/api/boards/[id]/columns/route.js";
-import { POST as crearTablero } from "../app/api/boards/route.js";
-import { POST as crearTarea } from "../app/api/tasks/route.js";
-import { CABECERA_CLAVE, CABECERA_REPLAY, hashDePeticion } from "../lib/idempotencia.js";
+import { POST as crearColumna } from "../app/api/boards/[id]/columns/route";
+import { POST as crearTablero } from "../app/api/boards/route";
+import { POST as crearTarea } from "../app/api/tasks/route";
+import { CABECERA_CLAVE, CABECERA_REPLAY, hashDePeticion } from "../lib/idempotencia";
 import {
   connectDb,
   contarFilas,
@@ -19,7 +19,7 @@ import {
   port,
   sembrarTablero,
   truncateAll,
-} from "./helpers.js";
+} from "./helpers";
 
 /**
  * Idempotencia de la 6.5 en los otros dos POST: /api/tasks y

@@ -3,7 +3,7 @@ import type { CorePort } from "@taskman/core";
 import type { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { POST as crearColumna } from "../app/api/boards/[id]/columns/route.js";
+import { POST as crearColumna } from "../app/api/boards/[id]/columns/route";
 import {
   connectDb,
   contarFilas,
@@ -16,7 +16,7 @@ import {
   sembrarTablero,
   sembrarTareas,
   truncateAll,
-} from "./helpers.js";
+} from "./helpers";
 
 /**
  * Contrato REST de POST /api/boards/{id}/columns (6.2, RF-02).

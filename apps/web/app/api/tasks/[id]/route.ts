@@ -6,16 +6,16 @@ import {
 } from "@taskman/contracts";
 import { crearCorePort, type UpdateTaskInput } from "@taskman/core";
 
-import { conAuth, contextoDeApi } from "../../../../lib/auth.js";
+import { conAuth, contextoDeApi } from "../../../../lib/auth";
 import {
   leerCuerpo,
   responder,
   responderSinCuerpo,
   respuestaDeError,
   respuestaDeFallo,
-} from "../../../../lib/http.js";
-import { registrarContratoRoto } from "../../../../lib/log.js";
-import { aFechaUtc, aTareaSalida } from "../../../../lib/tareas.js";
+} from "../../../../lib/http";
+import { registrarContratoRoto } from "../../../../lib/log";
+import { aFechaUtc, aTareaSalida } from "../../../../lib/tareas";
 
 /**
  * GET /api/tasks/{id} (6.2): consulta una tarea. Scope read.

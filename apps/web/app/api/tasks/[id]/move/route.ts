@@ -6,10 +6,10 @@ import {
 } from "@taskman/contracts";
 import { crearCorePort, type MoveResult, type MoveTarget } from "@taskman/core";
 
-import { conAuth, contextoDeApi } from "../../../../../lib/auth.js";
-import { leerCuerpo, responder, respuestaDeError, respuestaDeFallo } from "../../../../../lib/http.js";
-import { registrarContratoRoto } from "../../../../../lib/log.js";
-import { aTareaSalida } from "../../../../../lib/tareas.js";
+import { conAuth, contextoDeApi } from "../../../../../lib/auth";
+import { leerCuerpo, responder, respuestaDeError, respuestaDeFallo } from "../../../../../lib/http";
+import { registrarContratoRoto } from "../../../../../lib/log";
+import { aTareaSalida } from "../../../../../lib/tareas";
 
 /**
  * POST /api/tasks/{id}/move (6.2, 6.3.3, RF-07 y RF-08): mueve una tarea a otra

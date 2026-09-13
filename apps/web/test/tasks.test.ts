@@ -3,8 +3,8 @@ import type { BoardDetail, CorePort } from "@taskman/core";
 import type { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { GET as obtener } from "../app/api/tasks/[id]/route.js";
-import { POST as crearTarea } from "../app/api/tasks/route.js";
+import { GET as obtener } from "../app/api/tasks/[id]/route";
+import { POST as crearTarea } from "../app/api/tasks/route";
 import {
   connectDb,
   contarFilas,
@@ -17,7 +17,7 @@ import {
   sembrarTablero,
   sembrarTareas,
   truncateAll,
-} from "./helpers.js";
+} from "./helpers";
 
 /**
  * Contrato REST de POST /api/tasks y GET /api/tasks/{id} (6.2 y 6.3.1).

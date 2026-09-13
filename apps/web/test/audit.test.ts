@@ -3,10 +3,10 @@ import type { BoardDetail, CorePort } from "@taskman/core";
 import type { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { GET as consultarAuditoria } from "../app/api/audit/route.js";
-import { POST as crearTarea } from "../app/api/tasks/route.js";
-import { DELETE as borrarTarea, PATCH as actualizarTarea } from "../app/api/tasks/[id]/route.js";
-import { POST as moverTarea } from "../app/api/tasks/[id]/move/route.js";
+import { GET as consultarAuditoria } from "../app/api/audit/route";
+import { POST as crearTarea } from "../app/api/tasks/route";
+import { DELETE as borrarTarea, PATCH as actualizarTarea } from "../app/api/tasks/[id]/route";
+import { POST as moverTarea } from "../app/api/tasks/[id]/move/route";
 import {
   connectDb,
   contarFilas,
@@ -18,7 +18,7 @@ import {
   port,
   sembrarTablero,
   truncateAll,
-} from "./helpers.js";
+} from "./helpers";
 
 /**
  * Contrato REST de GET /api/audit (6.2 fila GET /api/audit, RF-10).

@@ -2,9 +2,9 @@ import type { CorePort } from "@taskman/core";
 import type { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { POST as crearTablero } from "../app/api/boards/route.js";
-import { POST as crearTarea } from "../app/api/tasks/route.js";
-import { LIMITE_CUERPO_BYTES } from "../lib/http.js";
+import { POST as crearTablero } from "../app/api/boards/route";
+import { POST as crearTarea } from "../app/api/tasks/route";
+import { LIMITE_CUERPO_BYTES } from "../lib/http";
 import {
   connectDb,
   contarFilas,
@@ -14,7 +14,7 @@ import {
   port,
   sembrarTablero,
   truncateAll,
-} from "./helpers.js";
+} from "./helpers";
 
 /**
  * El tope de 256 KB por cuerpo de peticion (7.3).

@@ -17,7 +17,7 @@ import {
   type TaskOrderBy,
 } from "@taskman/core";
 
-import { conAuth, contextoDeApi } from "../../../lib/auth.js";
+import { conAuth, contextoDeApi } from "../../../lib/auth";
 import {
   leerCuerpo,
   responder,
@@ -25,15 +25,15 @@ import {
   respuestaDeError,
   respuestaDeFallo,
   type ContextoPeticion,
-} from "../../../lib/http.js";
+} from "../../../lib/http";
 import {
   cabecerasDeEjecucion,
   canonicalizar,
   reproducirTrasCarrera,
   resolverIdempotencia,
-} from "../../../lib/idempotencia.js";
-import { registrarContratoRoto } from "../../../lib/log.js";
-import { aFechaUtc, aTareaSalida } from "../../../lib/tareas.js";
+} from "../../../lib/idempotencia";
+import { registrarContratoRoto } from "../../../lib/log";
+import { aFechaUtc, aTareaSalida } from "../../../lib/tareas";
 
 /**
  * GET /api/tasks (6.2, 6.3.2, RF-04): lista y filtra tareas. Scope read.

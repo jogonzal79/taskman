@@ -1,10 +1,10 @@
 import { consultaDeBusqueda, listadoDeCoincidencias } from "@taskman/contracts";
 import { crearCorePort, type SearchScope } from "@taskman/core";
 
-import { conAuth } from "../../../../lib/auth.js";
-import { respuestaDeError, respuestaDeFallo, responder } from "../../../../lib/http.js";
-import { registrarContratoRoto } from "../../../../lib/log.js";
-import { aTareaSalida } from "../../../../lib/tareas.js";
+import { conAuth } from "../../../../lib/auth";
+import { respuestaDeError, respuestaDeFallo, responder } from "../../../../lib/http";
+import { registrarContratoRoto } from "../../../../lib/log";
+import { aTareaSalida } from "../../../../lib/tareas";
 
 /**
  * GET /api/tasks/search (6.2, RF-09): busqueda por texto. Scope read.

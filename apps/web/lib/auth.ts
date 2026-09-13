@@ -10,14 +10,14 @@ import {
   respuestaDeError,
   respuestaDeFallo,
   type ContextoPeticion,
-} from "./http.js";
-import { registrarPeticion } from "./log.js";
+} from "./http";
+import { registrarPeticion } from "./log";
 import {
   consumir,
   CUBO_POR_SCOPE,
   VENTANA_MS,
   type LimiteSuperado,
-} from "./rate-limit.js";
+} from "./rate-limit";
 
 /**
  * Autenticacion por API key en el borde HTTP (ADR-005, 7.1 y 7.2).

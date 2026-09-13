@@ -3,7 +3,7 @@ import type { BoardDetail, CorePort, Task } from "@taskman/core";
 import type { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { POST as mover } from "../app/api/tasks/[id]/move/route.js";
+import { POST as mover } from "../app/api/tasks/[id]/move/route";
 import {
   connectDb,
   contextoDeRuta,
@@ -15,7 +15,7 @@ import {
   port,
   sembrarTablero,
   truncateAll,
-} from "./helpers.js";
+} from "./helpers";
 
 /**
  * Contrato REST de POST /api/tasks/{id}/move (6.2, 6.3.3, RF-07 y RF-08).
