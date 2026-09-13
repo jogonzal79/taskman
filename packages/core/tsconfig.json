@@ -1,6 +1,26 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
+    // LA RESOLUCION ES GLOBAL, NO POR PAQUETE. El tsconfig de un paquete
+    // gobierna el `tsc` que corre DENTRO de el, no como lo resuelven sus
+    // consumidores: cuando este paquete typechequea, resuelve los archivos de
+    // `@taskman/db` con ESTAS opciones, no con las de db. Por eso la migracion
+    // a specifiers sin extension no se puede hacer paquete por paquete: en
+    // cuanto db dejo de poner `.js`, core empezo a fallar con TS2724/TS2305
+    // ("no exported member named 'Prisma'") aunque core no hubiera cambiado.
+    //
+    // Y falla RUIDOSO, que es lo unico bueno del asunto: se podria haber
+    // temido que `export *` degradara los tipos de Prisma a `any` en silencio
+    // y dejara el typecheck verde sin proteger nada. No pasa.
+    //
+    // Este cambio NO toca un solo specifier: los 262 `./x.js` de `src/` siguen
+    // tal cual y resuelven igual, porque la sustitucion `.js` -> `.ts` la hace
+    // TypeScript en TODOS los modos de resolucion, tambien en Bundler. Que las
+    // dos cosas sean separables es justamente el punto: primero el modo de
+    // resolucion, en todos los paquetes; despues los specifiers, de a uno.
+    "module": "Preserve",
+    "moduleResolution": "Bundler",
+
     "rootDir": ".",
     "noEmit": true,
     "types": ["node"]
