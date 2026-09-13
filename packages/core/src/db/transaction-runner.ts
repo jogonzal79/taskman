@@ -2,7 +2,7 @@ import { setTimeout as esperar } from "node:timers/promises";
 
 import { Prisma, type PrismaClient } from "@taskman/db";
 
-import { isRetryableConflict } from "./db-error.js";
+import { isRetryableConflict } from "./db-error";
 
 /**
  * Espera entre reintentos: exponencial con jitter completo.

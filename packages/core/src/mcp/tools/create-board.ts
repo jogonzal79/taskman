@@ -1,11 +1,11 @@
 import { z } from "zod";
 
-import type { CreateBoardInput } from "../../domain/types.js";
-import type { EntornoMcp } from "../llamada.js";
-import type { TaskManagerPort } from "../port.js";
-import { definirHandler, respuesta } from "../respuesta.js";
-import type { McpToolDefinition } from "../tool.js";
-import { columnaJson, cuentaColumnas, tableroJson } from "./campos.js";
+import type { CreateBoardInput } from "../../domain/types";
+import type { EntornoMcp } from "../llamada";
+import type { TaskManagerPort } from "../port";
+import { definirHandler, respuesta } from "../respuesta";
+import type { McpToolDefinition } from "../tool";
+import { columnaJson, cuentaColumnas, tableroJson } from "./campos";
 
 const shape = {
   name: z

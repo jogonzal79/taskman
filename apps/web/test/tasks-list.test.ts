@@ -3,7 +3,7 @@ import type { BoardDetail, CorePort, Priority } from "@taskman/core";
 import type { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { GET as listar } from "../app/api/tasks/route.js";
+import { GET as listar } from "../app/api/tasks/route";
 import {
   connectDb,
   ctx,
@@ -14,7 +14,7 @@ import {
   port,
   sembrarTablero,
   truncateAll,
-} from "./helpers.js";
+} from "./helpers";
 
 /**
  * Contrato REST de GET /api/tasks (6.2, 6.3.2, RF-04).

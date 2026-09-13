@@ -1,4 +1,4 @@
-import type { ColumnReference } from "./column-key.js";
+import type { ColumnReference } from "./column-key";
 
 /**
  * Tipos del dominio. Deliberadamente NO son los tipos generados por Prisma:

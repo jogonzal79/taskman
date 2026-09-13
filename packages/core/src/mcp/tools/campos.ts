@@ -1,8 +1,8 @@
 import { z } from "zod";
 
-import { DomainError } from "../../domain/errors.js";
-import type { Board, Column, Task } from "../../domain/types.js";
-import { fechaIso } from "../respuesta.js";
+import { DomainError } from "../../domain/errors";
+import type { Board, Column, Task } from "../../domain/types";
+import { fechaIso } from "../respuesta";
 
 /**
  * Campos compartidos por los esquemas de entrada, y las proyecciones que

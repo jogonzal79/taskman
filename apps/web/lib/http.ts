@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { ESTADO_POR_CODIGO, type CodigoDeError, type ErrorDeApi } from "@taskman/contracts";
 import { isDomainError, type DomainErrorCode } from "@taskman/core";
 
-import { registrarFallo } from "./log.js";
+import { registrarFallo } from "./log";
 
 /**
  * Envoltura de respuestas y modelo de errores del borde HTTP (6.1 y 6.4).

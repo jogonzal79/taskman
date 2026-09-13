@@ -1,6 +1,6 @@
-import { buscarClavePorPrefijo, type ApiKeyRow } from "../db/api-key-repository.js";
-import { hashearClave, hashesIguales, prefijoDe, type Scope } from "../domain/api-key.js";
-import { conCache } from "./api-key-cache.js";
+import { buscarClavePorPrefijo, type ApiKeyRow } from "../db/api-key-repository";
+import { hashearClave, hashesIguales, prefijoDe, type Scope } from "../domain/api-key";
+import { conCache } from "./api-key-cache";
 
 /**
  * Verificacion de API keys (ADR-005, 7.1 y 7.2).

@@ -2,8 +2,8 @@ import { createHash } from "node:crypto";
 
 import { DomainError, type IdempotencyRecord } from "@taskman/core";
 
-import type { Autenticacion } from "./auth.js";
-import { responderTexto, type ContextoPeticion } from "./http.js";
+import type { Autenticacion } from "./auth";
+import { responderTexto, type ContextoPeticion } from "./http";
 
 /**
  * La idempotencia de la 6.5, del lado del borde HTTP.

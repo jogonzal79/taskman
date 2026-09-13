@@ -19,7 +19,7 @@ import {
   type ParticipanteIdempotente,
 } from "@taskman/core";
 
-import { conAuth, contextoDeApi } from "../../../lib/auth.js";
+import { conAuth, contextoDeApi } from "../../../lib/auth";
 import {
   leerCuerpo,
   responder,
@@ -27,14 +27,14 @@ import {
   respuestaDeError,
   respuestaDeFallo,
   type ContextoPeticion,
-} from "../../../lib/http.js";
+} from "../../../lib/http";
 import {
   cabecerasDeEjecucion,
   canonicalizar,
   reproducirTrasCarrera,
   resolverIdempotencia,
-} from "../../../lib/idempotencia.js";
-import { registrarContratoRoto } from "../../../lib/log.js";
+} from "../../../lib/idempotencia";
+import { registrarContratoRoto } from "../../../lib/log";
 
 /**
  * GET /api/boards (6.2): lista tableros, paginado por cursor.

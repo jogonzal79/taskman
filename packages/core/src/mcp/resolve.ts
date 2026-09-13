@@ -1,6 +1,6 @@
-import type { DomainErrorCode } from "../domain/errors.js";
-import { DomainError } from "../domain/errors.js";
-import type { Llamada } from "./llamada.js";
+import type { DomainErrorCode } from "../domain/errors";
+import { DomainError } from "../domain/errors";
+import type { Llamada } from "./llamada";
 
 /**
  * Resolucion por nombre (8.3.1). UN solo modulo para las tres entidades:

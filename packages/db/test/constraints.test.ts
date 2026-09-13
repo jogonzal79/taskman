@@ -9,7 +9,7 @@ import {
   insertColumn,
   insertTask,
   truncateAll,
-} from "./helpers.js";
+} from "./helpers";
 
 // SQLSTATE de PostgreSQL que usamos en las aserciones.
 const UNIQUE_VIOLATION = "23505";

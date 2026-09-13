@@ -5,14 +5,14 @@ import { prefijoDe } from "@taskman/core";
 import type { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { POST as crear } from "../app/api/boards/route.js";
+import { POST as crear } from "../app/api/boards/route";
 import {
   CABECERA_CLAVE,
   CABECERA_REPLAY,
   canonicalizar,
   hashDePeticion,
   LIMITE_CLAVE_IDEMPOTENCIA,
-} from "../lib/idempotencia.js";
+} from "../lib/idempotencia";
 import {
   connectDb,
   contarFilas,
@@ -20,7 +20,7 @@ import {
   leerError,
   peticion,
   truncateAll,
-} from "./helpers.js";
+} from "./helpers";
 
 /**
  * Idempotencia de POST /api/boards (6.5), nivel "Contrato REST" de la 10.

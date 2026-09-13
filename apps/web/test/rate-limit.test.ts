@@ -2,15 +2,15 @@ import type { CorePort } from "@taskman/core";
 import type { Client } from "pg";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { GET as listarTableros } from "../app/api/boards/route.js";
-import { POST as crearTarea } from "../app/api/tasks/route.js";
+import { GET as listarTableros } from "../app/api/boards/route";
+import { POST as crearTarea } from "../app/api/tasks/route";
 import {
   consumir,
   reiniciarLimiteDePeticiones,
   CUBO_POR_SCOPE,
   LIMITE_POR_CUBO,
   VENTANA_MS,
-} from "../lib/rate-limit.js";
+} from "../lib/rate-limit";
 import {
   connectDb,
   contarFilas,
@@ -20,7 +20,7 @@ import {
   port,
   sembrarTablero,
   truncateAll,
-} from "./helpers.js";
+} from "./helpers";
 
 /**
  * Limite de peticiones de la 7.3: 120 por minuto de lectura y 30 de escritura,

@@ -1,6 +1,32 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
+    // LA RESOLUCION ES GLOBAL, NO POR PAQUETE. El tsconfig de un paquete
+    // gobierna el `tsc` que corre DENTRO de el, no como lo resuelven sus
+    // consumidores: cuando este paquete typechequea, resuelve los archivos de
+    // `@taskman/db` con ESTAS opciones, no con las de db. Por eso la migracion
+    // a specifiers sin extension no se puede hacer paquete por paquete: en
+    // cuanto db dejo de poner `.js`, core empezo a fallar con TS2724/TS2305
+    // ("no exported member named 'Prisma'") aunque core no hubiera cambiado.
+    //
+    // Y falla RUIDOSO, que es lo unico bueno del asunto: se podria haber
+    // temido que `export *` degradara los tipos de Prisma a `any` en silencio
+    // y dejara el typecheck verde sin proteger nada. No pasa.
+    //
+    // Los specifiers relativos de `src/` y `test/` ya NO llevan extension
+    // (`./domain/types` apunta a `types.ts`), que es lo que hace resoluble el
+    // paquete para Turbopack, que no implementa `extensionAlias`. Con la
+    // resolucion NodeNext de tsconfig.base.json cada uno de esos sitios seria
+    // un TS2835, asi que estas dos opciones son las que lo sostienen.
+    //
+    // Fueron dos pasos SEPARADOS y conviene no releerlos como uno: primero el
+    // modo de resolucion, en todos los paquetes y sin tocar un solo specifier
+    // —la sustitucion `.js` -> `.ts` la hace TypeScript en TODOS los modos,
+    // tambien en Bundler, asi que los `./x.js` de entonces resolvian igual—;
+    // despues los specifiers, de a un paquete por vez.
+    "module": "Preserve",
+    "moduleResolution": "Bundler",
+
     "rootDir": ".",
     "noEmit": true,
     "types": ["node"]

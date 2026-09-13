@@ -1,7 +1,7 @@
 import { z } from "zod";
 
-import { columnaDetallada } from "./column.js";
-import { listadoDe } from "./pagination.js";
+import { columnaDetallada } from "./column";
+import { listadoDe } from "./pagination";
 
 /**
  * Un tablero tal como viaja por HTTP. Las convenciones son las de la 6.1:

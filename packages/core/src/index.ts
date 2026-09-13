@@ -1,5 +1,5 @@
-export { DomainError, isDomainError } from "./domain/errors.js";
-export type { DomainErrorCode, DomainErrorOptions } from "./domain/errors.js";
+export { DomainError, isDomainError } from "./domain/errors";
+export type { DomainErrorCode, DomainErrorOptions } from "./domain/errors";
 
 export type {
   Board,
@@ -27,17 +27,17 @@ export type {
   TaskMatch,
   TaskOrderBy,
   UpdateTaskInput,
-} from "./domain/types.js";
-export { LIMITE_PAGINA_DEFECTO, LIMITE_PAGINA_MAXIMO } from "./domain/types.js";
+} from "./domain/types";
+export { LIMITE_PAGINA_DEFECTO, LIMITE_PAGINA_MAXIMO } from "./domain/types";
 
-export type { ActorContext, ActorType } from "./domain/actor.js";
+export type { ActorContext, ActorType } from "./domain/actor";
 export {
   leerNivelLog,
   LOGGER_NULO,
   NIVEL_LOG_POR_DEFECTO,
   NIVELES_LOG,
-} from "./domain/logger.js";
-export type { CamposDeLog, Logger, NivelLog } from "./domain/logger.js";
+} from "./domain/logger";
+export type { CamposDeLog, Logger, NivelLog } from "./domain/logger";
 export {
   actualizacion,
   borrado,
@@ -52,7 +52,7 @@ export {
   CAMPOS_COLUMNA,
   CAMPOS_TABLERO,
   CAMPOS_TAREA,
-} from "./domain/audit.js";
+} from "./domain/audit";
 export type {
   AuditAction,
   AuditEntityType,
@@ -63,10 +63,10 @@ export type {
   Cambios,
   CampoAuditado,
   ValorJson,
-} from "./domain/audit.js";
+} from "./domain/audit";
 
-export { computeMoveOrder } from "./domain/order.js";
-export { LIMITE_TITULO, normalizarTitulo, recortarTitulo } from "./domain/title.js";
+export { computeMoveOrder } from "./domain/order";
+export { LIMITE_TITULO, normalizarTitulo, recortarTitulo } from "./domain/title";
 
 export {
   describeDbFailure,
@@ -79,10 +79,10 @@ export {
   IDEMPOTENCY_PK_CONSTRAINT,
   SERIALIZATION_FAILURE,
   TASK_POSITION_CONSTRAINT,
-} from "./db/db-error.js";
-export type { DbFailure } from "./db/db-error.js";
+} from "./db/db-error";
+export type { DbFailure } from "./db/db-error";
 
-export { TaskRepository } from "./db/task-repository.js";
+export { TaskRepository } from "./db/task-repository";
 export type {
   ColumnRef,
   LockedTask,
@@ -90,36 +90,36 @@ export type {
   NewTaskRow,
   TaskFields,
   TaskTransaction,
-} from "./db/task-repository.js";
+} from "./db/task-repository";
 
-export { AuditQueryService } from "./services/audit-query-service.js";
-export { AuditService } from "./services/audit-service.js";
-export { TaskService } from "./services/task-service.js";
-export { BoardService, COLUMNAS_POR_DEFECTO, LIMITE_BOARD_DESCRIPTION, LIMITE_BOARD_NAME } from "./services/board-service.js";
-export { ColumnService } from "./services/column-service.js";
-export { resolverColumna } from "./services/column-reference.js";
-export type { BuscadorDeColumnas } from "./services/column-reference.js";
+export { AuditQueryService } from "./services/audit-query-service";
+export { AuditService } from "./services/audit-service";
+export { TaskService } from "./services/task-service";
+export { BoardService, COLUMNAS_POR_DEFECTO, LIMITE_BOARD_DESCRIPTION, LIMITE_BOARD_NAME } from "./services/board-service";
+export { ColumnService } from "./services/column-service";
+export { resolverColumna } from "./services/column-reference";
+export type { BuscadorDeColumnas } from "./services/column-reference";
 
-export { AuditRepository, insertAuditRow } from "./db/audit-repository.js";
-export type { AuditRow, AuditTransaction } from "./db/audit-repository.js";
+export { AuditRepository, insertAuditRow } from "./db/audit-repository";
+export type { AuditRow, AuditTransaction } from "./db/audit-repository";
 
 // --- Idempotencia (6.5) ------------------------------------------------------
 
-export { IdempotencyRepository, insertIdempotencyRow } from "./db/idempotency-repository.js";
+export { IdempotencyRepository, insertIdempotencyRow } from "./db/idempotency-repository";
 export type {
   EscrituraIdempotente,
   IdempotencyRecord,
   IdempotencyRow,
-} from "./db/idempotency-repository.js";
-export type { ParticipanteIdempotente } from "./services/participante.js";
-export { BoardRepository } from "./db/board-repository.js";
-export type { BoardTransaction, LockedColumn, NewBoardRow, NewColumnRow } from "./db/board-repository.js";
-export { TransactionRunner } from "./db/transaction-runner.js";
-export { comprobarConexion } from "./db/health.js";
+} from "./db/idempotency-repository";
+export type { ParticipanteIdempotente } from "./services/participante";
+export { BoardRepository } from "./db/board-repository";
+export type { BoardTransaction, LockedColumn, NewBoardRow, NewColumnRow } from "./db/board-repository";
+export { TransactionRunner } from "./db/transaction-runner";
+export { comprobarConexion } from "./db/health";
 
-export { LIMITE_COLUMN_KEY, LIMITE_COLUMN_NAME, normalizarColumnKey } from "./domain/column-key.js";
-export type { ColumnReference } from "./domain/column-key.js";
-export { normalizarTexto, recortarBlancos } from "./domain/text.js";
+export { LIMITE_COLUMN_KEY, LIMITE_COLUMN_NAME, normalizarColumnKey } from "./domain/column-key";
+export type { ColumnReference } from "./domain/column-key";
+export { normalizarTexto, recortarBlancos } from "./domain/text";
 
 // --- API keys (ADR-005, 7.1 y 7.2) ------------------------------------------
 
@@ -132,54 +132,54 @@ export {
   LARGO_PREFIJO_VISIBLE,
   PREFIJO_CLAVE,
   SCOPES,
-} from "./domain/api-key.js";
-export type { Scope } from "./domain/api-key.js";
-export { buscarClavePorPrefijo } from "./db/api-key-repository.js";
-export type { ApiKeyRow } from "./db/api-key-repository.js";
+} from "./domain/api-key";
+export type { Scope } from "./domain/api-key";
+export { buscarClavePorPrefijo } from "./db/api-key-repository";
+export type { ApiKeyRow } from "./db/api-key-repository";
 export {
   conCache,
   reiniciarCacheDeClaves,
   VENTANA_CACHE_MS,
-} from "./services/api-key-cache.js";
-export { ApiKeyService } from "./services/api-key-service.js";
+} from "./services/api-key-cache";
+export { ApiKeyService } from "./services/api-key-service";
 export type {
   BuscadorDeClaves,
   ClaveAutenticada,
   OpcionesApiKeyService,
   ResultadoAutenticacion,
-} from "./services/api-key-service.js";
+} from "./services/api-key-service";
 
 // --- MCP: registro unico de herramientas y puerto (8.1) ----------------------
 // El nucleo declara las herramientas como dato y NO importa el SDK de MCP: cada
 // app las monta sobre su propio transporte (ver src/mcp/tool.ts).
 
-export { crearHerramientas } from "./mcp/registry.js";
-export type { OpcionesRegistro } from "./mcp/registry.js";
+export { crearHerramientas } from "./mcp/registry";
+export type { OpcionesRegistro } from "./mcp/registry";
 export {
   leerPoliticaDestructiva,
   POLITICAS_DESTRUCTIVAS,
   POLITICA_DESTRUCTIVA_POR_DEFECTO,
-} from "./mcp/politica.js";
-export type { PoliticaDestructiva } from "./mcp/politica.js";
+} from "./mcp/politica";
+export type { PoliticaDestructiva } from "./mcp/politica";
 export {
   contextoDeAgente,
   ACTOR_MCP_DESCONOCIDO,
   CONTEXTO_MCP_POR_DEFECTO,
-} from "./mcp/contexto.js";
-export type { FabricaDeContexto } from "./mcp/contexto.js";
-export type { EntornoMcp, Llamada } from "./mcp/llamada.js";
-export type { TaskManagerPort } from "./mcp/port.js";
-export { CorePort, crearCorePort } from "./mcp/core-port.js";
+} from "./mcp/contexto";
+export type { FabricaDeContexto } from "./mcp/contexto";
+export type { EntornoMcp, Llamada } from "./mcp/llamada";
+export type { TaskManagerPort } from "./mcp/port";
+export { CorePort, crearCorePort } from "./mcp/core-port";
 export type {
   EsquemaEntrada,
   McpTextContent,
   McpToolDefinition,
   McpToolResult,
-} from "./mcp/tool.js";
-export { esUuid, resolverReferencia, MAXIMO_SUGERENCIAS } from "./mcp/resolve.js";
+} from "./mcp/tool";
+export { esUuid, resolverReferencia, MAXIMO_SUGERENCIAS } from "./mcp/resolve";
 export type {
   AmbitoResolucion,
   Candidato,
   EntidadResuelta,
   EstrategiaResolucion,
-} from "./mcp/resolve.js";
+} from "./mcp/resolve";

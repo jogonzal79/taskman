@@ -1,12 +1,12 @@
 import type { z } from "zod";
 
-import { consultaDeAuditoria } from "../audit.js";
-import { parametrosDeTablero } from "../board.js";
-import { consultaDeBorradoDeColumna, parametrosDeColumna } from "../column.js";
-import type { CodigoDeError } from "../error.js";
-import { consultaDeListado } from "../pagination.js";
-import { consultaDeBusqueda, consultaDeTareas, parametrosDeTarea } from "../task.js";
-import type { ComponenteId } from "./componentes.js";
+import { consultaDeAuditoria } from "../audit";
+import { parametrosDeTablero } from "../board";
+import { consultaDeBorradoDeColumna, parametrosDeColumna } from "../column";
+import type { CodigoDeError } from "../error";
+import { consultaDeListado } from "../pagination";
+import { consultaDeBusqueda, consultaDeTareas, parametrosDeTarea } from "../task";
+import type { ComponenteId } from "./componentes";
 
 export type Metodo = "get" | "post" | "patch" | "delete";
 

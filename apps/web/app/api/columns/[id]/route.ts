@@ -7,16 +7,16 @@ import {
 } from "@taskman/contracts";
 import { crearCorePort, type DeleteColumnOptions, type UpdateColumnInput } from "@taskman/core";
 
-import { conAuth, contextoDeApi } from "../../../../lib/auth.js";
-import { aColumnaSalida } from "../../../../lib/columnas.js";
+import { conAuth, contextoDeApi } from "../../../../lib/auth";
+import { aColumnaSalida } from "../../../../lib/columnas";
 import {
   leerCuerpo,
   responder,
   responderSinCuerpo,
   respuestaDeError,
   respuestaDeFallo,
-} from "../../../../lib/http.js";
-import { registrarContratoRoto } from "../../../../lib/log.js";
+} from "../../../../lib/http";
+import { registrarContratoRoto } from "../../../../lib/log";
 
 /**
  * PATCH /api/columns/{id} (6.2): renombra o reordena la columna. Scope write.

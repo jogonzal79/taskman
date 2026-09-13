@@ -1,6 +1,6 @@
-import type { ColumnReference } from "../domain/column-key.js";
-import { normalizarColumnKey } from "../domain/column-key.js";
-import { DomainError } from "../domain/errors.js";
+import type { ColumnReference } from "../domain/column-key";
+import { normalizarColumnKey } from "../domain/column-key";
+import { DomainError } from "../domain/errors";
 
 /**
  * Lo minimo que hace falta para resolver una referencia a columna. Lo cumplen

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
-import type { BoardRepository, BoardTransaction, LockedColumn } from "../db/board-repository.js";
-import type { ActorContext } from "../domain/actor.js";
+import type { BoardRepository, BoardTransaction, LockedColumn } from "../db/board-repository";
+import type { ActorContext } from "../domain/actor";
 import {
   actualizacion,
   borrado,
@@ -9,11 +9,11 @@ import {
   CAMPOS_COLUMNA,
   columnaCompleta,
   creacion,
-} from "../domain/audit.js";
-import { LIMITE_COLUMN_NAME, normalizarColumnKey } from "../domain/column-key.js";
-import { DomainError } from "../domain/errors.js";
-import { assertValidPosition } from "../domain/order.js";
-import { normalizarTexto } from "../domain/text.js";
+} from "../domain/audit";
+import { LIMITE_COLUMN_NAME, normalizarColumnKey } from "../domain/column-key";
+import { DomainError } from "../domain/errors";
+import { assertValidPosition } from "../domain/order";
+import { normalizarTexto } from "../domain/text";
 import type {
   Column,
   ColumnWithOrder,
@@ -21,9 +21,9 @@ import type {
   DeleteColumnOptions,
   TargetPosition,
   UpdateColumnInput,
-} from "../domain/types.js";
-import { AuditService } from "./audit-service.js";
-import type { ParticipanteIdempotente } from "./participante.js";
+} from "../domain/types";
+import { AuditService } from "./audit-service";
+import type { ParticipanteIdempotente } from "./participante";
 
 /** Saca el elemento de la lista y lo reinserta en la posicion pedida. */
 function reubicar(ids: readonly string[], id: string, position: TargetPosition): string[] {

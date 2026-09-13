@@ -1,9 +1,9 @@
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { crearCorePort } from "@taskman/core";
 
-import { validarEntorno } from "./config.js";
-import { crearLogger } from "./log.js";
-import { crearServidorMcp } from "./server.js";
+import { validarEntorno } from "./config";
+import { crearLogger } from "./log";
+import { crearServidorMcp } from "./server";
 
 /**
  * Entrypoint del transporte stdio (8.1): Claude Code en la misma maquina que la

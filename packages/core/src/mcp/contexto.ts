@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import type { ActorContext } from "../domain/actor.js";
+import type { ActorContext } from "../domain/actor";
 
 /**
  * El `ActorContext` de una llamada MCP (7.4).

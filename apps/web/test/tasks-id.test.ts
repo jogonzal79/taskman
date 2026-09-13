@@ -3,7 +3,7 @@ import type { BoardDetail, CorePort, Task } from "@taskman/core";
 import type { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { DELETE as eliminar, PATCH as actualizar } from "../app/api/tasks/[id]/route.js";
+import { DELETE as eliminar, PATCH as actualizar } from "../app/api/tasks/[id]/route";
 import {
   connectDb,
   contarFilas,
@@ -16,7 +16,7 @@ import {
   port,
   sembrarTablero,
   truncateAll,
-} from "./helpers.js";
+} from "./helpers";
 
 /**
  * Contrato REST de PATCH y DELETE /api/tasks/{id} (6.2, RF-05 y RF-06).

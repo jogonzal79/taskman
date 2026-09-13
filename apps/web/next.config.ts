@@ -1,13 +1,5 @@
 import type { NextConfig } from "next";
 
-/**
- * `@taskman/core` y `@taskman/db` publican TypeScript crudo (su `main` es
- * ./src/index.ts, lo mismo que ve build.mjs de apps/mcp-stdio), asi que Next
- * tiene que compilarlos el mismo: sin esto el server bundle intenta cargar .ts.
- *
- * `@taskman/db` esta en la lista aunque apps/web no lo importe: entra igual por
- * `@taskman/core`, y lo que Next mira es la ruta del modulo, no quien lo pidio.
- */
 const config: NextConfig = {
   /**
    * Next 16 escribe un AGENTS.md y un CLAUDE.md dentro de apps/web en el primer
@@ -17,7 +9,19 @@ const config: NextConfig = {
    * escrito. Se apaga.
    */
   agentRules: false,
-  transpilePackages: ["@taskman/core", "@taskman/db"],
+  /**
+   * Normalmente `.next`. Lo mueve `scripts/humo-dev.mjs`, y NO por higiene: el
+   * candado de `next dev` se llama `lock` y vive DENTRO del distDir
+   * (`setup-dev-bundler.js`: `path.join(distDir, 'lock')`), asi que es POR
+   * DIRECTORIO y no por puerto. Sin esto, un `verify` corrido mientras el
+   * desarrollador tiene su `next dev` abierto muere con "Another next dev server
+   * is already running" aunque el puerto de la comprobacion este libre.
+   * Comprobado: un `dev` en 3000 con otro vivo en 3999 sale con estado 1.
+   *
+   * Efecto colateral querido: la comprobacion nunca reusa la cache del dev del
+   * desarrollador, asi que compila en frio y mide siempre lo mismo.
+   */
+  distDir: process.env["TASKMAN_DIST_DIR"] ?? ".next",
   /**
    * Binarios y runtime de Prisma: se cargan del disco, no se empaquetan.
    *
@@ -28,20 +32,6 @@ const config: NextConfig = {
    * `pino` va tambien en sus dependencies, apuntando a la MISMA copia fisica.
    */
   serverExternalPackages: ["@prisma/client", "@prisma/adapter-pg", "pg", "pino"],
-  experimental: {
-    /**
-     * El nucleo esta escrito en el estilo NodeNext que fija tsconfig.base.json:
-     * sus imports relativos llevan la extension `.js` aunque el archivo sea
-     * `.ts` (`./domain/types.js` -> domain/types.ts). esbuild hace esa
-     * sustitucion solo, que es por lo que apps/mcp-stdio no necesita nada; los
-     * bundlers de Next no, y sin esto fallan los ~30 imports del barrel.
-     *
-     * OJO: esta opcion la implementa SOLO webpack. Turbopack la ignora
-     * explicitamente (esta en su lista de unsupported), y por eso los scripts
-     * de dev y build pasan `--webpack`. Ver la nota en package.json.
-     */
-    extensionAlias: { ".js": [".ts", ".tsx", ".js"] },
-  },
 };
 
 export default config;

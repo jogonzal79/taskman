@@ -1,15 +1,15 @@
 import { Prisma, type PrismaClient } from "@taskman/db";
 
-import type { Board, Column, ListBoardsQuery } from "../domain/types.js";
-import type { AuditRow, AuditTransaction } from "./audit-repository.js";
-import { insertAuditRow } from "./audit-repository.js";
-import type { EscrituraIdempotente, IdempotencyRow } from "./idempotency-repository.js";
-import { insertIdempotencyRow } from "./idempotency-repository.js";
-import type { OrdenSql } from "./pagination.js";
-import { clausulaOrden, condicionCursor, decodificarCursor, normalizarLimite, paginar } from "./pagination.js";
-import type { LockedTask } from "./task-repository.js";
-import { lockTasksOfColumns, rewriteTaskPositions } from "./task-repository.js";
-import type { TransactionRunner } from "./transaction-runner.js";
+import type { Board, Column, ListBoardsQuery } from "../domain/types";
+import type { AuditRow, AuditTransaction } from "./audit-repository";
+import { insertAuditRow } from "./audit-repository";
+import type { EscrituraIdempotente, IdempotencyRow } from "./idempotency-repository";
+import { insertIdempotencyRow } from "./idempotency-repository";
+import type { OrdenSql } from "./pagination";
+import { clausulaOrden, condicionCursor, decodificarCursor, normalizarLimite, paginar } from "./pagination";
+import type { LockedTask } from "./task-repository";
+import { lockTasksOfColumns, rewriteTaskPositions } from "./task-repository";
+import type { TransactionRunner } from "./transaction-runner";
 
 /** Fila de columna bloqueada: lo minimo para recalcular el orden del tablero. */
 export interface LockedColumn {

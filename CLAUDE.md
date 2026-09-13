@@ -15,7 +15,8 @@ Si estás por escribir acá un número o una enumeración de lo que ya existe, l
 hace falta es el comando que lo averigua, no el dato.
 
 - **Cuántas pruebas hay y si pasan**: `pnpm run verify`. Levanta la base, migra y
-  corre las suites contra PostgreSQL real; cada paquete imprime su total.
+  corre las suites contra PostgreSQL real; cada paquete imprime su total, y al
+  final levanta `next dev` y le pide dos rutas (`pnpm run humo:dev`).
 - **Qué endpoints existen**, con su verbo y su scope, uno por línea:
 
   ```
@@ -180,14 +181,36 @@ contador de pruebas no tiene ese commit.
   `pnpm run apikey:create`.
 - Los scripts de package.json deben ser multiplataforma: nada de `rm`, `cp`,
   `export` ni here-docs.
-- `apps/web` corre con `--webpack`, no con Turbopack, y por eso sus scripts de
-  `dev` y `build` llevan el flag. `packages/core` usa specifiers NodeNext
-  (`./domain/types.js` apunta a `types.ts`); esbuild hace esa sustitución solo
-  —por eso `apps/mcp-stdio` no necesita nada— y los bundlers de Next no. Lo
-  arregla `experimental.extensionAlias`, que Turbopack ignora explícitamente: con
-  Turbopack fallan los ~30 imports del barrel. La salida es que `core` publique
-  JS compilado, en vez de quedarse en webpack para siempre; el plazo que se le
-  habia puesto —antes de F3— ya paso sin saldarla.
+- `apps/web` corre con TURBOPACK, que es el default de `next`: sus scripts de
+  `dev` y `build` no llevan flag de bundler. Se llegó ahí migrando los
+  specifiers del estilo NodeNext (`./x.js` apunta a `x.ts`) a specifiers SIN
+  extensión, en cinco pasos y de a un paquete por vez, porque lo sin-extensión
+  es lo único que resuelven las cuatro herramientas del proyecto a la vez.
+  Antes eso lo tapaba `experimental.extensionAlias`, que sólo implementa
+  webpack, y por eso los scripts forzaban ese bundler con su flag; ya no queda
+  ni la opción ni el flag.
+
+  Lo que NO hay que leer como pendiente: los `.js` que quedan son de tres
+  clases y ninguna se migra. Subpaths REALES de un paquete
+  (`@modelcontextprotocol/sdk/types.js` y los otros cinco son archivos `.js`
+  publicados, de 1,7 a 73 KB; sacarles la extensión rompe el import), archivos
+  reales en disco (`../dist/index.js`, el bundle de esbuild, y
+  `../package.json`), y la extensión `.ts` DELIBERADA de
+  `core/scripts/create-api-key.mjs`, que es obligatoria. Antes de tocar
+  cualquiera, comprobá contra el disco a qué resuelve; el nombre no alcanza.
+
+  Que no vuelva a entrar un specifier con extensión donde no va:
+
+  ```
+  grep -rnoE '"[.][.]?/[^"]*[.]js"' . --include=*.ts --include=*.tsx \
+    --exclude-dir=node_modules --exclude-dir=.next --exclude-dir=.next-humo \
+    --exclude-dir=generated
+  ```
+
+  Pide `./` o `../` al principio y la comilla de cierre al final a propósito:
+  sin lo primero cuenta los subpaths de paquete, que son legítimos, y sin lo
+  segundo `.js` también matchea dentro de `"../package.json"`. Hoy la única
+  línea que devuelve son los dos `../dist/index.js` de `apps/mcp-stdio`.
 - Un paquete listado en `serverExternalPackages` tiene que ser RESOLUBLE desde
   `apps/web` o la entrada es inerte: Next declara externo algo que no puede
   externalizar, lo empaqueta igual, y en dev lo empaqueta partido en
@@ -205,7 +228,12 @@ contador de pruebas no tiene ese commit.
   devDependency de `apps/web` para la suite de contrato: comprobado por realpath,
   hay UNA sola copia física vista desde `apps/web`, `packages/db`,
   `packages/core` y `apps/mcp-stdio`, y el camino de `$queryRaw` con fragmentos
-  `Prisma.Sql` sigue devolviendo 200 en dev, que es donde aparecería el 42601.
+  `Prisma.Sql` devuelve 200 en dev, que es donde aparecería el 42601. OJO con esa
+  frase: es una MEDICIÓN y no una propiedad, y estuvo cuatro commits siendo falsa
+  sin que nadie se enterara —desde 2518c5f `next dev` devolvía 500 en TODA
+  petición, por lo que cuenta la entrada del runtime edge de más abajo—. La
+  vuelve a medir `pnpm run humo:dev` en cada verify; hasta ahora no la medía
+  nada, porque nada del pipeline levantaba `next dev`.
   `pino` entró por lo mismo con el log de la 11.1, y se comprobó igual: una sola
   copia física vista desde `apps/web` y `apps/mcp-stdio` —el mismo realpath, no el
   mismo número de versión— y después `next build` más `next start` con
@@ -214,6 +242,17 @@ contador de pruebas no tiene ese commit.
   Pendiente conocido: `@prisma/adapter-pg` SIGUE inerte y se empaqueta. Hoy no
   rompe nada —el bug era específico del runtime de `@prisma/client`— y el arreglo
   sería idéntico.
+- `instrumentation.ts` se compila TAMBIÉN para el runtime EDGE, donde no existe
+  `fs` y donde `serverExternalPackages` NO aplica. O sea que nada de lo que ese
+  archivo importe, ni directa ni transitivamente, puede terminar en `pg` o en
+  Prisma. Pasó: `lib/config.ts` pedía cuatro símbolos puros al BARREL de
+  `@taskman/core` y se traía los repositorios con ellos, así que `next dev`
+  devolvía 500 en TODA petición con `Module not found: Can't resolve 'fs'`
+  mientras `next build` seguía en verde —sin rutas edge no emite ese bundle— y
+  `verify` no lo veía. La salida fue el subcamino `@taskman/core/logger`, que
+  apunta a un módulo HOJA. La regla para cuando F3 agregue imports: lo que
+  cuelgue de `instrumentation.ts` pide al núcleo por un subcamino sin
+  dependencias, nunca por `"."`. Lo detecta `pnpm run humo:dev`.
 - Un typecheck que PASA donde esperabas que fallara puede ser un
   `tsconfig.tsbuildinfo` viejo, no un mecanismo roto. Pasó una vez con el
   `Record` exhaustivo de errores de `apps/web/lib/http.ts`: se agregó un código
@@ -343,14 +382,18 @@ contador de pruebas no tiene ese commit.
 - `packages/core/src/domain/api-key.ts` NO puede importar nada del resto del
   núcleo: solo `node:crypto`. El script de administración lo carga por ruta
   directa (`../src/domain/api-key.ts`) apoyándose en el stripping de tipos
-  nativo de Node, que NO resuelve los specifiers NodeNext del proyecto
-  (`./x.js` -> `x.ts`), así que un solo import interno lo rompe. Se comparte en
-  vez de recalcular el hash en el script porque, si los dos difirieran, se
-  emitirían claves que no validan y el síntoma sería un 401 indistinguible de
-  una clave mal tipeada. Consecuencia: ese comando requiere Node 22.6+, por
-  encima del Node 20+ que declara el resto del proyecto; afecta solo al script,
-  no a la app. Si algún día hace falta importar algo ahí, la salida es
-  empaquetar el script con esbuild como `apps/mcp-stdio`, no relajar la regla.
+  nativo de Node, que exige el specifier COMPLETO del ESM y no resuelve los
+  imports sin extensión del núcleo (`./x` -> `x.ts`), así que un solo import
+  interno lo rompe. (Antes la razón era la contraria —los specifiers eran
+  NodeNext y lo que Node no hacía era la sustitución `./x.js` -> `x.ts`—: la
+  regla sobrevivió al cambio con el motivo invertido, así que no la releas al
+  revés.) Se comparte en vez de recalcular el hash en el script porque, si los
+  dos difirieran, se emitirían claves que no validan y el síntoma sería un 401
+  indistinguible de una clave mal tipeada. Consecuencia: ese comando requiere
+  Node 22.6+, por encima del Node 20+ que declara el resto del proyecto; afecta
+  solo al script, no a la app. Si algún día hace falta importar algo ahí, la
+  salida es empaquetar el script con esbuild como `apps/mcp-stdio`, no relajar
+  la regla.
 - El pepper llega INYECTADO al `ApiKeyService`, nunca leído de `process.env`
   dentro del núcleo: el núcleo recibe datos ya validados (3.2), y así el
   servicio se prueba con dos peppers distintos en un mismo test. El constructor

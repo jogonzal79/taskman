@@ -2,10 +2,10 @@ import type { CamposDeLog, CorePort, Logger } from "@taskman/core";
 import type { Client } from "pg";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { GET as listarTableros, POST as crearTablero } from "../app/api/boards/route.js";
-import { GET as sonda } from "../app/api/health/route.js";
-import { GET as listarTareas } from "../app/api/tasks/route.js";
-import { crearLogger, fijarLogger } from "../lib/log.js";
+import { GET as listarTableros, POST as crearTablero } from "../app/api/boards/route";
+import { GET as sonda } from "../app/api/health/route";
+import { GET as listarTareas } from "../app/api/tasks/route";
+import { crearLogger, fijarLogger } from "../lib/log";
 import {
   connectDb,
   emitirClave,
@@ -13,7 +13,7 @@ import {
   port,
   sembrarTablero,
   truncateAll,
-} from "./helpers.js";
+} from "./helpers";
 
 /**
  * El log estructurado por peticion de la 11.1.

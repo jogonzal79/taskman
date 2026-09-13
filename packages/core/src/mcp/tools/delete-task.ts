@@ -1,13 +1,13 @@
 import { z } from "zod";
 
-import { DomainError } from "../../domain/errors.js";
-import type { BoardDetail, Column, Task } from "../../domain/types.js";
-import { ordenDeColumna, ubicarTarea } from "../lookup.js";
-import type { EntornoMcp } from "../llamada.js";
-import type { PoliticaDestructiva } from "../politica.js";
-import type { TaskManagerPort } from "../port.js";
-import { definirHandler, fechaIso, respuesta, respuestaError } from "../respuesta.js";
-import type { McpToolDefinition } from "../tool.js";
+import { DomainError } from "../../domain/errors";
+import type { BoardDetail, Column, Task } from "../../domain/types";
+import { ordenDeColumna, ubicarTarea } from "../lookup";
+import type { EntornoMcp } from "../llamada";
+import type { PoliticaDestructiva } from "../politica";
+import type { TaskManagerPort } from "../port";
+import { definirHandler, fechaIso, respuesta, respuestaError } from "../respuesta";
+import type { McpToolDefinition } from "../tool";
 import {
   campoBoardDeTarea,
   campoTask,
@@ -15,7 +15,7 @@ import {
   cuentaTareas,
   tableroJson,
   tareaJson,
-} from "./campos.js";
+} from "./campos";
 
 /**
  * La unica herramienta destructiva del catalogo (8.2), con la politica de

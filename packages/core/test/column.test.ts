@@ -10,7 +10,7 @@ import {
   TaskRepository,
   TaskService,
   TransactionRunner,
-} from "../src/index.js";
+} from "../src/index";
 import {
   connectDb,
   ctx,
@@ -22,7 +22,7 @@ import {
   porKey,
   truncateAll,
   uuid,
-} from "./helpers.js";
+} from "./helpers";
 
 let db: Client;
 let tableros: BoardService;

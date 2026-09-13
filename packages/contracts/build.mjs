@@ -24,10 +24,16 @@ import { build } from "esbuild";
  * volveria a esconderlo, en silencio y sin que ninguna prueba cambie de color.
  * Sin defecto, ese olvido es un fallo con mensaje de uso.
  *
- * El bundle es obligatorio en los dos modos porque `src/` es TypeScript con
- * specifiers NodeNext (`./task.js` apunta a `task.ts`): el stripping de tipos
- * nativo de Node NO hace esa sustitucion, asi que `node src/openapi/documento.ts`
- * no resuelve nada. esbuild si la hace sola, igual que en `apps/mcp-stdio`.
+ * El bundle es obligatorio en los dos modos porque `src/` es TypeScript y sus
+ * imports relativos van SIN extension (`./task` apunta a `task.ts`). El ESM de
+ * Node exige el specifier completo, asi que ni con el stripping de tipos nativo
+ * resolveria `node src/openapi/documento.ts`; esbuild si, que prueba `.ts` sola.
+ *
+ * Antes el motivo era el contrario y conviene no confundirlos: los specifiers
+ * eran NodeNext (`./task.js` -> `task.ts`) y lo que Node no hacia era esa
+ * SUSTITUCION. Se dejaron sin extension para que Turbopack pueda resolverlos,
+ * porque no implementa `extensionAlias`. El bundle hace falta igual, por otra
+ * razon, y por eso este archivo no cambio.
  *
  * El generador del bundle no toca el sistema de archivos: devuelve el documento y
  * el texto, y lo lee o lo escribe este script. Asi `src/` se mantiene sin

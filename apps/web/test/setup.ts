@@ -1,7 +1,7 @@
 import { LOGGER_NULO, reiniciarCacheDeClaves } from "@taskman/core";
 import { beforeEach } from "vitest";
 
-import { fijarLogger } from "../lib/log.js";
+import { fijarLogger } from "../lib/log";
 
 /**
  * Calla el log de la 11.1 en TODA la suite.

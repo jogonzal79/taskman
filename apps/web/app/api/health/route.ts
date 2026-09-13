@@ -6,13 +6,13 @@ import {
   responder,
   respuestaDeFallo,
   type ContextoPeticion,
-} from "../../../lib/http.js";
+} from "../../../lib/http";
 import {
   registrarContratoRoto,
   registrarPeticion,
   registrarSondaCaida,
-} from "../../../lib/log.js";
-import { VERSION } from "../../../lib/version.js";
+} from "../../../lib/log";
+import { VERSION } from "../../../lib/version";
 
 /**
  * GET /api/health (6.2): sonda de salud, sin autenticacion. Comprueba

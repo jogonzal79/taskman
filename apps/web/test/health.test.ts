@@ -2,8 +2,8 @@ import { salud, saludDegradada } from "@taskman/contracts";
 import type { CamposDeLog } from "@taskman/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { fijarLogger } from "../lib/log.js";
-import { leerError, leerJson } from "./helpers.js";
+import { fijarLogger } from "../lib/log";
+import { leerError, leerJson } from "./helpers";
 
 /**
  * Contrato REST de GET /api/health (6.2, 11.1).
@@ -34,8 +34,8 @@ import { leerError, leerJson } from "./helpers.js";
  */
 let versionFalsa: string | undefined;
 
-vi.mock("../lib/version.js", async (importOriginal) => {
-  const real = await importOriginal<typeof import("../lib/version.js")>();
+vi.mock("../lib/version", async (importOriginal) => {
+  const real = await importOriginal<typeof import("../lib/version")>();
 
   return {
     get VERSION(): string {
@@ -51,8 +51,8 @@ vi.mock("@taskman/core", async (importOriginal) => {
 });
 
 const { comprobarConexion } = await import("@taskman/core");
-const { GET } = await import("../app/api/health/route.js");
-const { VERSION } = await import("../lib/version.js");
+const { GET } = await import("../app/api/health/route");
+const { VERSION } = await import("../lib/version");
 
 const REQUEST_ID = /^req_[0-9a-f]{32}$/;
 

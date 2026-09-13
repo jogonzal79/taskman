@@ -4,7 +4,7 @@ import {
   leerPoliticaDestructiva,
   POLITICA_DESTRUCTIVA_POR_DEFECTO,
   POLITICAS_DESTRUCTIVAS,
-} from "../src/index.js";
+} from "../src/index";
 
 /**
  * MCP_DESTRUCTIVE_POLICY (8.3.2 y 11.2). Es el unico archivo de este paquete

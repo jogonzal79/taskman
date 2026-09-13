@@ -15,7 +15,16 @@ generator client {
   runtime                = "nodejs"
   moduleFormat           = "esm"
   generatedFileExtension = "ts"
-  importFileExtension    = "js"
+  // SIN extension, y es la unica forma de arreglarlo desde aca: estos 21
+  // imports los escribe el generador, no una mano. Con "js" emitia
+  // `./enums.js` apuntando a `enums.ts`, que solo resuelve un bundler con
+  // `extensionAlias`, y Turbopack no lo implementa. La cadena "" es un valor
+  // valido del generador (junto a ts/mts/cts/js/mjs/cjs) y emite `./enums`.
+  //
+  // `generatedFileExtension` se queda en "ts" porque NO admite otra cosa: el
+  // generador `prisma-client` solo emite TypeScript (ts, mts o cts). Si algun
+  // dia hiciera falta JS compilado aca, es un `tsc` encima y no una opcion.
+  importFileExtension    = ""
 }
 
 // Prisma 7: la URL de conexion ya no vive aca. Migrate la toma de

@@ -15,15 +15,15 @@ import {
   type UpdateBoardInput,
 } from "@taskman/core";
 
-import { conAuth, contextoDeApi } from "../../../../lib/auth.js";
+import { conAuth, contextoDeApi } from "../../../../lib/auth";
 import {
   leerCuerpo,
   responder,
   responderSinCuerpo,
   respuestaDeError,
   respuestaDeFallo,
-} from "../../../../lib/http.js";
-import { registrarContratoRoto } from "../../../../lib/log.js";
+} from "../../../../lib/http";
+import { registrarContratoRoto } from "../../../../lib/log";
 
 /**
  * GET /api/boards/{id} (6.2): el tablero con sus columnas y el recuento de

@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { consultaDeListado, listadoDe } from "./pagination.js";
+import { consultaDeListado, listadoDe } from "./pagination";
 
 /**
  * El contrato de una tarea en el borde HTTP (6.1, 6.2, 6.3.1 y 6.3.2).

@@ -1,19 +1,19 @@
 import { z } from "zod";
 
-import { DomainError } from "../../domain/errors.js";
-import type { UpdateTaskInput } from "../../domain/types.js";
-import { ubicarTarea } from "../lookup.js";
-import type { EntornoMcp } from "../llamada.js";
-import type { TaskManagerPort } from "../port.js";
-import { definirHandler, respuesta } from "../respuesta.js";
-import type { McpToolDefinition } from "../tool.js";
+import { DomainError } from "../../domain/errors";
+import type { UpdateTaskInput } from "../../domain/types";
+import { ubicarTarea } from "../lookup";
+import type { EntornoMcp } from "../llamada";
+import type { TaskManagerPort } from "../port";
+import { definirHandler, respuesta } from "../respuesta";
+import type { McpToolDefinition } from "../tool";
 import {
   aFecha,
   campoBoardDeTarea,
   campoTask,
   prioridad,
   tareaJson,
-} from "./campos.js";
+} from "./campos";
 
 /**
  * Los campos que un agente va a intentar cambiar aca y que NO se cambian aca.

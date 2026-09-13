@@ -1,11 +1,11 @@
 import { z } from "zod";
 
-import type { CreateTaskInput } from "../../domain/types.js";
-import { cargarTablero, ordenDeColumna, resolverColumnaDelTablero } from "../lookup.js";
-import type { EntornoMcp } from "../llamada.js";
-import type { TaskManagerPort } from "../port.js";
-import { definirHandler, respuesta } from "../respuesta.js";
-import type { McpToolDefinition } from "../tool.js";
+import type { CreateTaskInput } from "../../domain/types";
+import { cargarTablero, ordenDeColumna, resolverColumnaDelTablero } from "../lookup";
+import type { EntornoMcp } from "../llamada";
+import type { TaskManagerPort } from "../port";
+import { definirHandler, respuesta } from "../respuesta";
+import type { McpToolDefinition } from "../tool";
 import {
   aFecha,
   campoBoard,
@@ -14,7 +14,7 @@ import {
   cuentaTareas,
   prioridad,
   tareaJson,
-} from "./campos.js";
+} from "./campos";
 
 const shape = {
   board: campoBoard,

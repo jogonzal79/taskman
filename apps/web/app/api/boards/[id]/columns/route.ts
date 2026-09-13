@@ -14,16 +14,16 @@ import {
   type ParticipanteIdempotente,
 } from "@taskman/core";
 
-import { conAuth, contextoDeApi } from "../../../../../lib/auth.js";
-import { aColumnaSalida } from "../../../../../lib/columnas.js";
-import { type ContextoPeticion, leerCuerpo, responderTexto, respuestaDeError } from "../../../../../lib/http.js";
+import { conAuth, contextoDeApi } from "../../../../../lib/auth";
+import { aColumnaSalida } from "../../../../../lib/columnas";
+import { type ContextoPeticion, leerCuerpo, responderTexto, respuestaDeError } from "../../../../../lib/http";
 import {
   cabecerasDeEjecucion,
   canonicalizar,
   reproducirTrasCarrera,
   resolverIdempotencia,
-} from "../../../../../lib/idempotencia.js";
-import { registrarContratoRoto } from "../../../../../lib/log.js";
+} from "../../../../../lib/idempotencia";
+import { registrarContratoRoto } from "../../../../../lib/log";
 
 /**
  * POST /api/boards/{id}/columns (6.2, RF-02): agrega una columna al tablero.

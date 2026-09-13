@@ -4,10 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "dotenv -e ../../.env -- next dev --webpack",
-    "build": "next build --webpack",
+    "dev": "dotenv -e ../../.env -- next dev",
+    "build": "next build",
     "start": "dotenv -e ../../.env -- next start",
     "test": "dotenv -e ../../.env -- vitest run",
+    "humo:dev": "dotenv -e ../../.env -- node scripts/humo-dev.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

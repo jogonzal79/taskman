@@ -1,9 +1,9 @@
-import { cargarTablero, tareasDelTablero } from "../lookup.js";
-import type { EntornoMcp } from "../llamada.js";
-import type { TaskManagerPort } from "../port.js";
-import { definirHandler, respuesta } from "../respuesta.js";
-import type { McpToolDefinition } from "../tool.js";
-import { campoBoard, columnaJson, cuentaTareas, tableroJson } from "./campos.js";
+import { cargarTablero, tareasDelTablero } from "../lookup";
+import type { EntornoMcp } from "../llamada";
+import type { TaskManagerPort } from "../port";
+import { definirHandler, respuesta } from "../respuesta";
+import type { McpToolDefinition } from "../tool";
+import { campoBoard, columnaJson, cuentaTareas, tableroJson } from "./campos";
 
 const shape = {
   board: campoBoard,

@@ -1,5 +1,5 @@
-import { DomainError } from "./errors.js";
-import { contarCaracteres, recortarBlancos, reemplazarBlancosInternos } from "./text.js";
+import { DomainError } from "./errors";
+import { contarCaracteres, recortarBlancos, reemplazarBlancosInternos } from "./text";
 
 /** Iguales a los VARCHAR de `board_column`. */
 export const LIMITE_COLUMN_KEY = 40;

@@ -1,13 +1,13 @@
 import { z } from "zod";
 
-import { DomainError } from "../../domain/errors.js";
-import type { BoardDetail, Column, SearchScope } from "../../domain/types.js";
-import { cargarTablero, contextoDeTableros, resolverColumnaDelTablero } from "../lookup.js";
-import type { EntornoMcp } from "../llamada.js";
-import type { TaskManagerPort } from "../port.js";
-import { definirHandler, respuesta } from "../respuesta.js";
-import type { McpToolDefinition } from "../tool.js";
-import { campoBoard, campoColumn, cuentaTareas, tareaJson } from "./campos.js";
+import { DomainError } from "../../domain/errors";
+import type { BoardDetail, Column, SearchScope } from "../../domain/types";
+import { cargarTablero, contextoDeTableros, resolverColumnaDelTablero } from "../lookup";
+import type { EntornoMcp } from "../llamada";
+import type { TaskManagerPort } from "../port";
+import { definirHandler, respuesta } from "../respuesta";
+import type { McpToolDefinition } from "../tool";
+import { campoBoard, campoColumn, cuentaTareas, tareaJson } from "./campos";
 
 const shape = {
   text: z

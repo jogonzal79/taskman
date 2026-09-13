@@ -1,6 +1,13 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
+    // Por lo mismo que `packages/core/tsconfig.json`, donde esta la
+    // explicacion larga: este paquete tambien consume `@taskman/db` (en su
+    // suite) y `@taskman/core`, y los resuelve con SUS propias opciones.
+    // Ningun specifier cambia aca; esbuild no lee `moduleResolution`.
+    "module": "Preserve",
+    "moduleResolution": "Bundler",
+
     "rootDir": ".",
     "noEmit": true,
     "types": ["node"]

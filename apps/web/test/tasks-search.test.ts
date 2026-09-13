@@ -3,7 +3,7 @@ import type { BoardDetail, CorePort } from "@taskman/core";
 import type { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { GET as buscar } from "../app/api/tasks/search/route.js";
+import { GET as buscar } from "../app/api/tasks/search/route";
 import {
   connectDb,
   ctx,
@@ -14,7 +14,7 @@ import {
   port,
   sembrarTablero,
   truncateAll,
-} from "./helpers.js";
+} from "./helpers";
 
 /**
  * Contrato REST de GET /api/tasks/search (6.2, RF-09).

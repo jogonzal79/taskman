@@ -1,22 +1,22 @@
 import { z } from "zod";
 
-import { listadoDeAuditoria, registroDeAuditoria } from "../audit.js";
+import { listadoDeAuditoria, registroDeAuditoria } from "../audit";
 import {
   actualizarTablero,
   crearTablero,
   listadoDeTableros,
   tablero,
   tableroDetallado,
-} from "../board.js";
+} from "../board";
 import {
   actualizarColumna,
   columna,
   columnaConOrden,
   columnaDetallada,
   crearColumna,
-} from "../column.js";
-import { errorDeApi } from "../error.js";
-import { salud, saludDegradada } from "../health.js";
+} from "../column";
+import { errorDeApi } from "../error";
+import { salud, saludDegradada } from "../health";
 import {
   actualizarTarea,
   coincidencia,
@@ -27,8 +27,8 @@ import {
   ordenDeColumna,
   resultadoDeMovimiento,
   tarea,
-} from "../task.js";
-import { esObjeto, type ObjetoJson, type ValorJson } from "./json.js";
+} from "../task";
+import { esObjeto, type ObjetoJson, type ValorJson } from "./json";
 
 /**
  * Los esquemas que viajan a `components.schemas` del documento, con el nombre

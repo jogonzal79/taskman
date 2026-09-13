@@ -1,20 +1,20 @@
-import { LOGGER_NULO, type Logger } from "../domain/logger.js";
-import { CONTEXTO_MCP_POR_DEFECTO, type FabricaDeContexto } from "./contexto.js";
-import type { EntornoMcp } from "./llamada.js";
-import { POLITICA_DESTRUCTIVA_POR_DEFECTO, type PoliticaDestructiva } from "./politica.js";
-import type { TaskManagerPort } from "./port.js";
-import type { McpToolDefinition } from "./tool.js";
-import { definirCreateBoard } from "./tools/create-board.js";
-import { definirCreateColumn } from "./tools/create-column.js";
-import { definirCreateTask } from "./tools/create-task.js";
-import { definirDeleteTask } from "./tools/delete-task.js";
-import { definirGetBoard } from "./tools/get-board.js";
-import { definirGetTask } from "./tools/get-task.js";
-import { definirListBoards } from "./tools/list-boards.js";
-import { definirListTasks } from "./tools/list-tasks.js";
-import { definirMoveTask } from "./tools/move-task.js";
-import { definirSearchTasks } from "./tools/search-tasks.js";
-import { definirUpdateTask } from "./tools/update-task.js";
+import { LOGGER_NULO, type Logger } from "../domain/logger";
+import { CONTEXTO_MCP_POR_DEFECTO, type FabricaDeContexto } from "./contexto";
+import type { EntornoMcp } from "./llamada";
+import { POLITICA_DESTRUCTIVA_POR_DEFECTO, type PoliticaDestructiva } from "./politica";
+import type { TaskManagerPort } from "./port";
+import type { McpToolDefinition } from "./tool";
+import { definirCreateBoard } from "./tools/create-board";
+import { definirCreateColumn } from "./tools/create-column";
+import { definirCreateTask } from "./tools/create-task";
+import { definirDeleteTask } from "./tools/delete-task";
+import { definirGetBoard } from "./tools/get-board";
+import { definirGetTask } from "./tools/get-task";
+import { definirListBoards } from "./tools/list-boards";
+import { definirListTasks } from "./tools/list-tasks";
+import { definirMoveTask } from "./tools/move-task";
+import { definirSearchTasks } from "./tools/search-tasks";
+import { definirUpdateTask } from "./tools/update-task";
 
 export interface OpcionesRegistro {
   /** MCP_DESTRUCTIVE_POLICY (8.3.2). Ausente equivale a `confirm`. */

@@ -16,7 +16,7 @@ import {
   type AuditEvent,
   type AuditTransaction,
   type BoardDetail,
-} from "../src/index.js";
+} from "../src/index";
 import {
   connectDb,
   contarFilas,
@@ -28,7 +28,7 @@ import {
   porKey,
   truncateAll,
   uuid,
-} from "./helpers.js";
+} from "./helpers";
 
 /**
  * La auditoria de la 7.4: que cada escritura deja su registro, que ninguna

@@ -5,8 +5,8 @@ import type {
   MoveTransaction,
   TaskFields,
   TaskRepository,
-} from "../db/task-repository.js";
-import type { ActorContext } from "../domain/actor.js";
+} from "../db/task-repository";
+import type { ActorContext } from "../domain/actor";
 import {
   actualizacion,
   borrado,
@@ -16,13 +16,13 @@ import {
   movimiento,
   tareaCompleta,
   ubicacion,
-} from "../domain/audit.js";
-import { DomainError } from "../domain/errors.js";
-import { assertValidPosition, computeMoveOrder } from "../domain/order.js";
-import { normalizarTitulo } from "../domain/title.js";
-import { AuditService } from "./audit-service.js";
-import { resolverColumna } from "./column-reference.js";
-import type { ParticipanteIdempotente } from "./participante.js";
+} from "../domain/audit";
+import { DomainError } from "../domain/errors";
+import { assertValidPosition, computeMoveOrder } from "../domain/order";
+import { normalizarTitulo } from "../domain/title";
+import { AuditService } from "./audit-service";
+import { resolverColumna } from "./column-reference";
+import type { ParticipanteIdempotente } from "./participante";
 import type {
   ColumnOrder,
   CreateTaskInput,
@@ -35,7 +35,7 @@ import type {
   Task,
   TaskMatch,
   UpdateTaskInput,
-} from "../domain/types.js";
+} from "../domain/types";
 
 /** Agrupa las filas bloqueadas por columna, cada una ordenada por `position`. */
 function agruparPorColumna(filas: readonly LockedTask[]): Map<string, string[]> {

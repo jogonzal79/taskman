@@ -1,4 +1,4 @@
-import { DomainError, type DomainErrorCode } from "./errors.js";
+import { DomainError, type DomainErrorCode } from "./errors";
 
 /**
  * Clase de blancos Unicode completa.
