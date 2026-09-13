@@ -136,6 +136,11 @@ export {
 export type { Scope } from "./domain/api-key.js";
 export { buscarClavePorPrefijo } from "./db/api-key-repository.js";
 export type { ApiKeyRow } from "./db/api-key-repository.js";
+export {
+  conCache,
+  reiniciarCacheDeClaves,
+  VENTANA_CACHE_MS,
+} from "./services/api-key-cache.js";
 export { ApiKeyService } from "./services/api-key-service.js";
 export type {
   BuscadorDeClaves,

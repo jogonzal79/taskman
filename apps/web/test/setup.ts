@@ -1,4 +1,4 @@
-import { LOGGER_NULO } from "@taskman/core";
+import { LOGGER_NULO, reiniciarCacheDeClaves } from "@taskman/core";
 import { beforeEach } from "vitest";
 
 import { fijarLogger } from "../lib/log.js";
@@ -23,4 +23,17 @@ import { fijarLogger } from "../lib/log.js";
  */
 beforeEach(() => {
   fijarLogger(LOGGER_NULO);
+
+  /**
+   * Y vacia el cache de claves de la 7.1, por el mismo motivo y en el mismo
+   * sitio: su estado esta anclado al PROCESO, no a la peticion ni al archivo, asi
+   * que sin esto una prueba heredaria las claves que autentico la anterior.
+   *
+   * Sin eso la suite quedaria a merced del orden: `truncateAll` borra las filas
+   * pero no el cache, asi que una clave emitida en una prueba seguiria
+   * autenticando en la siguiente hasta 60 s despues. Hoy no colisiona porque cada
+   * `emitirClave` genera un prefijo nuevo al azar, pero "hoy no colisiona" es
+   * justo lo que no se quiere sostener a mano.
+   */
+  reiniciarCacheDeClaves();
 });

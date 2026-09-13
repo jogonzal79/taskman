@@ -1,5 +1,6 @@
-import { hashearClave, hashesIguales, prefijoDe, type Scope } from "../domain/api-key.js";
 import { buscarClavePorPrefijo, type ApiKeyRow } from "../db/api-key-repository.js";
+import { hashearClave, hashesIguales, prefijoDe, type Scope } from "../domain/api-key.js";
+import { conCache } from "./api-key-cache.js";
 
 /**
  * Verificacion de API keys (ADR-005, 7.1 y 7.2).
@@ -42,7 +43,14 @@ export interface OpcionesApiKeyService {
    * prueba sin tocar el entorno del proceso.
    */
   pepper: string;
-  /** Inyectable para las pruebas; por defecto va contra la base. */
+  /**
+   * Inyectable para las pruebas; por defecto va contra la base CON el cache de
+   * 60 s de la 7.1 (ver `api-key-cache.ts`).
+   *
+   * Inyectar `buscarClavePorPrefijo` a secas es, por lo tanto, la forma de
+   * apagar el cache: no hay un interruptor aparte porque el punto de composicion
+   * ya existia, y un booleano nuevo seria un segundo sitio donde decir lo mismo.
+   */
   buscar?: BuscadorDeClaves;
 }
 
@@ -59,7 +67,19 @@ export class ApiKeyService {
     }
 
     this.#pepper = opciones.pepper;
-    this.#buscar = opciones.buscar ?? ((prefix) => buscarClavePorPrefijo(prefix));
+
+    /**
+     * El cache de la 7.1 es el DEFECTO y no una decision de cada borde: la 7.1 lo
+     * pone junto a la comparacion en tiempo constante, o sea como parte de como se
+     * verifica una clave, no como una optimizacion del adaptador. Si cada edge
+     * tuviera que acordarse de componerlo, olvidarse no rompe nada visible —solo
+     * consulta mas— que es la forma de olvido que no se descubre.
+     *
+     * `conCache` se compone aca, o sea UNA VEZ POR SERVICIO y por lo tanto una vez
+     * por peticion; lo que persiste entre peticiones es el mapa, que vive en el
+     * proceso. Ver `api-key-cache.ts`.
+     */
+    this.#buscar = opciones.buscar ?? conCache((prefix) => buscarClavePorPrefijo(prefix));
   }
 
   /**

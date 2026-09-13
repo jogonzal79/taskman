@@ -124,6 +124,21 @@ contador de pruebas no tiene ese commit.
   `apikey:create`. DESCARTADA explicitamente la de un `setInterval` en el proceso
   de Next: se duplica por instancia y el hot reload la multiplica, asi que borra
   filas desde varios relojes a la vez y ninguno es observable.
+- La VENTANA DE REVOCACION del cache de claves de la 7.1: una clave revocada
+  sigue autenticando hasta 60 s. Es la consecuencia aceptada de cachear la fila
+  de `api_key` y esta MEDIDA de punta a punta, no supuesta: con el servidor
+  arriba, 200 antes de revocar, 200 justo despues del UPDATE, 401 a los 65 s.
+  NO se eligio por comodidad: hoy no hay donde enganchar la invalidacion. La
+  revocacion es un `UPDATE api_key SET revoked_at = now()` que una persona tipea
+  en psql —no hay endpoint ni script— asi que 'invalidar al revocar' exige
+  construir primero ese camino, y ademas el script correria en OTRO proceso, que
+  no comparte el cache. La salida barata mientras tanto: reiniciar el proceso lo
+  vacia, porque esta en memoria, asi que una revocacion urgente es el UPDATE mas
+  un reinicio. El orden para cerrarla de verdad es (1) un `apikey:revoke`
+  simetrico de `apikey:create`, que falta igual —revocar tipeando SQL a mano es
+  su propio riesgo— y (2) recien entonces LISTEN/NOTIFY o un cache compartido,
+  porque el problema real es entre procesos. `reiniciarCacheDeClaves()` ya existe
+  y es el gancho que usaria cualquiera de las dos.
 - El ESQUEMA ZOD de configuracion que pide la 11.2 —validar el entorno entero al
   arrancar, con una variable ausente o invalida impidiendo el arranque— NO
   existe. Lo que hay en `apps/web/instrumentation.ts` son TRES comprobaciones a
