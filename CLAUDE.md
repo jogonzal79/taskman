@@ -124,6 +124,26 @@ contador de pruebas no tiene ese commit.
   `apikey:create`. DESCARTADA explicitamente la de un `setInterval` en el proceso
   de Next: se duplica por instancia y el hot reload la multiplica, asi que borra
   filas desde varios relojes a la vez y ninguno es observable.
+- `last_used_at` de la 7.1 NO se actualiza, y el problema es mas grande de lo que
+  suena: LA COLUMNA NO EXISTE. La 4.1 declara `lastUsedAt` en el modelo `ApiKey` y
+  `schema.prisma` no la tiene, asi que esto no es agregar una escritura sino una
+  MIGRACION ADITIVA primero —y con el procedimiento de siempre: `--create-only`,
+  borrar los DROP que Prisma propone sobre las cuatro restricciones de SQL crudo, y
+  verificar despues con `pg_constraint`—. Lo que pide la 7.1 encima es que se
+  actualice como maximo una vez por minuto por clave, o sea un throttle, para no
+  convertir cada lectura en una escritura; el gancho natural es el cache de claves
+  que ya existe, que sabe cuando una entrada se refresco. El disparador para
+  hacerlo es querer saber que claves estan vivas —auditar claves sin uso, o
+  revocar por abandono— que en uso personal con dos claves no se pregunta. Hasta
+  entonces el dato no existe y ninguna consulta lo puede suponer.
+- DIVERGENCIAS CONOCIDAS entre la 4.1 y `schema.prisma` en el modelo `ApiKey`. No
+  son deuda a arreglar: son decisiones de F1 que el documento no refleja, y estan
+  escritas para que nadie las lea como un error al comparar los dos. `prefix` es
+  VarChar(24) y la 4.1 dice (16) —`tmk_live_` mas 6 caracteres son 15, asi que 16
+  alcanza justo y 24 deja aire—; `hash Char(64)` es `keyHash VarChar(64)` y ADEMAS
+  `@unique`; `scopes String[]` es el enum `Scope[]`, que es mas estricto; y hay un
+  `updatedAt` que la 4.1 no declara. La que SI falta es `lastUsedAt`, y esa tiene
+  su entrada arriba.
 - La VENTANA DE REVOCACION del cache de claves de la 7.1: una clave revocada
   sigue autenticando hasta 60 s. Es la consecuencia aceptada de cachear la fila
   de `api_key` y esta MEDIDA de punta a punta, no supuesta: con el servidor

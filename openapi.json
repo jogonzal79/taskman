@@ -249,6 +249,21 @@
               }
             }
           },
+          "413": {
+            "description": "Contenido demasiado grande. Codigos: PAYLOAD_TOO_LARGE.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDeApi"
+                }
+              }
+            }
+          },
           "422": {
             "description": "Entidad no procesable. Codigos: IDEMPOTENCY_MISMATCH.",
             "headers": {
@@ -525,6 +540,21 @@
           },
           "404": {
             "description": "No encontrado. Codigos: BOARD_NOT_FOUND.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDeApi"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Contenido demasiado grande. Codigos: PAYLOAD_TOO_LARGE.",
             "headers": {
               "X-Request-Id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -826,6 +856,21 @@
               }
             }
           },
+          "413": {
+            "description": "Contenido demasiado grande. Codigos: PAYLOAD_TOO_LARGE.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDeApi"
+                }
+              }
+            }
+          },
           "422": {
             "description": "Entidad no procesable. Codigos: IDEMPOTENCY_MISMATCH.",
             "headers": {
@@ -971,6 +1016,21 @@
           },
           "404": {
             "description": "No encontrado. Codigos: COLUMN_NOT_FOUND.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDeApi"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Contenido demasiado grande. Codigos: PAYLOAD_TOO_LARGE.",
             "headers": {
               "X-Request-Id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -1521,6 +1581,21 @@
               }
             }
           },
+          "413": {
+            "description": "Contenido demasiado grande. Codigos: PAYLOAD_TOO_LARGE.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDeApi"
+                }
+              }
+            }
+          },
           "422": {
             "description": "Entidad no procesable. Codigos: IDEMPOTENCY_MISMATCH.",
             "headers": {
@@ -1967,6 +2042,21 @@
               }
             }
           },
+          "413": {
+            "description": "Contenido demasiado grande. Codigos: PAYLOAD_TOO_LARGE.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDeApi"
+                }
+              }
+            }
+          },
           "429": {
             "description": "Demasiadas peticiones. Codigos: RATE_LIMITED.",
             "headers": {
@@ -2236,6 +2326,21 @@
           },
           "409": {
             "description": "Conflicto. Codigos: COLUMN_NOT_IN_BOARD.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDeApi"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Contenido demasiado grande. Codigos: PAYLOAD_TOO_LARGE.",
             "headers": {
               "X-Request-Id": {
                 "$ref": "#/components/headers/XRequestId"

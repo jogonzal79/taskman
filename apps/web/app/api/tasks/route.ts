@@ -19,10 +19,11 @@ import {
 
 import { conAuth, contextoDeApi } from "../../../lib/auth.js";
 import {
-  respuestaDeError,
-  respuestaDeFallo,
+  leerCuerpo,
   responder,
   responderTexto,
+  respuestaDeError,
+  respuestaDeFallo,
   type ContextoPeticion,
 } from "../../../lib/http.js";
 import {
@@ -194,15 +195,16 @@ function proyectarSalida(creada: Task, ctx: ContextoPeticion): Tarea {
 }
 
 export const POST = conAuth("write", async (request, auth): Promise<Response> => {
-  let cuerpo: unknown;
+  // El cuerpo se lee por un solo camino, con el tope de 256 KB de la 7.3: ver
+  // `leerCuerpo`. Un cuerpo que no es JSON sigue siendo 400; uno que pasa el tope
+  // es 413 y no se parsea.
+  const leido = await leerCuerpo(request, auth);
 
-  try {
-    cuerpo = await request.json();
-  } catch {
-    return respuestaDeError("VALIDATION_ERROR", "El cuerpo de la peticion no es JSON valido.", 400, auth, {
-      hint: "Envia un cuerpo JSON con 'Content-Type: application/json'.",
-    });
+  if (!leido.ok) {
+    return leido.respuesta;
   }
+
+  const cuerpo = leido.valor;
 
   /**
    * La idempotencia de la 6.5, ANTES de validar el cuerpo: ver

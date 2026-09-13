@@ -17,10 +17,11 @@ import {
 
 import { conAuth, contextoDeApi } from "../../../../lib/auth.js";
 import {
-  respuestaDeError,
-  respuestaDeFallo,
+  leerCuerpo,
   responder,
   responderSinCuerpo,
+  respuestaDeError,
+  respuestaDeFallo,
 } from "../../../../lib/http.js";
 import { registrarContratoRoto } from "../../../../lib/log.js";
 
@@ -148,15 +149,16 @@ export const PATCH = conAuth<[ContextoRuta]>("write", async (request, auth, cont
     });
   }
 
-  let cuerpo: unknown;
+  // El cuerpo se lee por un solo camino, con el tope de 256 KB de la 7.3: ver
+  // `leerCuerpo`. Un cuerpo que no es JSON sigue siendo 400; uno que pasa el tope
+  // es 413 y no se parsea.
+  const leido = await leerCuerpo(request, auth);
 
-  try {
-    cuerpo = await request.json();
-  } catch {
-    return respuestaDeError("VALIDATION_ERROR", "El cuerpo de la peticion no es JSON valido.", 400, auth, {
-      hint: "Envia un cuerpo JSON con 'Content-Type: application/json'.",
-    });
+  if (!leido.ok) {
+    return leido.respuesta;
   }
+
+  const cuerpo = leido.valor;
 
   const entrada = actualizarTablero.safeParse(cuerpo);
 

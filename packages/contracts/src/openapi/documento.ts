@@ -27,6 +27,7 @@ const FRASE_POR_ESTADO: Readonly<Record<number, string>> = {
   403: "Prohibido.",
   404: "No encontrado.",
   409: "Conflicto.",
+  413: "Contenido demasiado grande.",
   422: "Entidad no procesable.",
   428: "Se requiere confirmacion.",
   429: "Demasiadas peticiones.",
@@ -81,7 +82,8 @@ function etiqueta(ruta: Ruta): string {
  * Deducidos y no escritos endpoint por endpoint: UNAUTHENTICATED y
  * FORBIDDEN_SCOPE los puede devolver cualquiera que exija scope (7.2),
  * RATE_LIMITED tambien —el limite de la 7.3 se cobra en `conAuth`, o sea en
- * todos—, VALIDATION_ERROR cualquiera que reciba entrada, INTERNAL_ERROR
+ * todos—, VALIDATION_ERROR cualquiera que reciba entrada, PAYLOAD_TOO_LARGE
+ * cualquiera que lea un CUERPO (el tope de 256 KB de la 7.3), INTERNAL_ERROR
  * cualquiera que pase por el try/catch del adaptador, e IDEMPOTENCY_MISMATCH
  * solo los tres de la 6.5. Repetirlos 16 veces en la tabla seria repetir 16
  * veces la misma regla.
@@ -99,6 +101,13 @@ function erroresDe(ruta: Ruta): readonly CodigoDeError[] {
   }
 
   codigos.push("UNAUTHENTICATED", "FORBIDDEN_SCOPE", "RATE_LIMITED", ...(ruta.errores ?? []));
+
+  // El tope de 256 KB de la 7.3 solo puede superarlo un endpoint que LEA cuerpo,
+  // asi que sale de la tabla igual que el resto: sin declararlo endpoint por
+  // endpoint, y sin aparecer en los que no reciben nada.
+  if (ruta.cuerpo !== undefined) {
+    codigos.push("PAYLOAD_TOO_LARGE");
+  }
 
   if (ruta.idempotente === true) {
     codigos.push("IDEMPOTENCY_MISMATCH");

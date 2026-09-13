@@ -180,6 +180,141 @@ export function respuestaDeError(
 }
 
 /**
+ * El tope de la 7.3: "Los cuerpos de peticion se limitan a 256 KB". En BYTES, que
+ * es la unidad en la que la 7.3 lo escribe y la unica que se puede contar sin
+ * decodificar.
+ */
+export const LIMITE_CUERPO_BYTES = 256 * 1024;
+
+export type CuerpoLeido =
+  | { readonly ok: true; readonly valor: unknown }
+  | { readonly ok: false; readonly respuesta: Response };
+
+/**
+ * EL UNICO punto por donde se lee un cuerpo de peticion (7.3).
+ *
+ * Los siete handlers que reciben cuerpo hacian cada uno su `await request.json()`
+ * con su try/catch: siete sitios donde poner el tope, o seis donde olvidarlo. Aca
+ * el tope es la unica forma de leer.
+ *
+ * SE CORTA EL STREAM, no se mira la cabecera. `Content-Length` se consulta como
+ * atajo —si YA declara mas que el tope, no se lee ni un byte— pero la autoridad es
+ * el contador del bucle: un cuerpo troceado no lleva `Content-Length`, y uno que
+ * lo lleva puede mentir. Confiar en la cabecera es confiar en el cliente, que es
+ * exactamente de quien la 7.3 protege. En cuanto la cuenta pasa el tope se
+ * `cancel()`ea el lector y no se lee mas: lo que queda en memoria son los trozos
+ * leidos hasta ese punto, nunca los 50 MB, y `JSON.parse` no se llega a llamar.
+ *
+ * Devuelve la respuesta armada en vez de lanzar porque el llamador la necesita
+ * ANTES de resolver la idempotencia de la 6.5, que ocurre antes del esquema.
+ */
+export async function leerCuerpo(
+  request: Request,
+  ctx: ContextoPeticion,
+): Promise<CuerpoLeido> {
+  const declarado = Number(request.headers.get("content-length") ?? "");
+
+  if (Number.isFinite(declarado) && declarado > LIMITE_CUERPO_BYTES) {
+    return { ok: false, respuesta: demasiadoGrande(declarado, ctx) };
+  }
+
+  const texto = await leerTextoAcotado(request);
+
+  if (texto === undefined) {
+    return { ok: false, respuesta: demasiadoGrande(undefined, ctx) };
+  }
+
+  try {
+    return { ok: true, valor: JSON.parse(texto) };
+  } catch {
+    // Todavia no hay esquema que aplicar: el cuerpo ni siquiera es JSON. Es un
+    // 400 igual, y con el mismo codigo, porque para quien llama el problema es el
+    // mismo —lo que mando no sirve— y la 6.4 no tiene otro para esto.
+    return {
+      ok: false,
+      respuesta: respuestaDeError(
+        "VALIDATION_ERROR",
+        "El cuerpo de la peticion no es JSON valido.",
+        400,
+        ctx,
+        { hint: "Envia un cuerpo JSON con 'Content-Type: application/json'." },
+      ),
+    };
+  }
+}
+
+/**
+ * Lee el cuerpo trozo a trozo y devuelve `undefined` en cuanto pasa el tope.
+ *
+ * El contador va sobre `byteLength` y no sobre la longitud del texto: los bytes
+ * son lo que ocupa la peticion, y decodificar para medir seria decodificar lo que
+ * se va a descartar. La decodificacion ocurre una sola vez, al final, sobre como
+ * mucho 256 KB mas un trozo.
+ */
+async function leerTextoAcotado(request: Request): Promise<string | undefined> {
+  if (request.body === null) {
+    return "";
+  }
+
+  const lector = request.body.getReader();
+  const trozos: Uint8Array[] = [];
+  let leidos = 0;
+
+  try {
+    for (;;) {
+      const { done, value } = await lector.read();
+
+      if (done) {
+        break;
+      }
+
+      leidos += value.byteLength;
+
+      if (leidos > LIMITE_CUERPO_BYTES) {
+        // Se corta la fuente: el resto del cuerpo no se transfiere ni se guarda.
+        await lector.cancel();
+
+        return undefined;
+      }
+
+      trozos.push(value);
+    }
+  } finally {
+    lector.releaseLock();
+  }
+
+  const completo = new Uint8Array(leidos);
+  let escrito = 0;
+
+  for (const trozo of trozos) {
+    completo.set(trozo, escrito);
+    escrito += trozo.byteLength;
+  }
+
+  return new TextDecoder().decode(completo);
+}
+
+/**
+ * El 413 de la 7.3. `details` lleva el tope y, si la peticion lo declaro, cuanto
+ * declaro: un cliente que reintenta necesita saber contra que numero recortar.
+ */
+function demasiadoGrande(declarado: number | undefined, ctx: ContextoPeticion): Response {
+  return respuestaDeError(
+    "PAYLOAD_TOO_LARGE",
+    `El cuerpo de la peticion supera el limite de ${LIMITE_CUERPO_BYTES} bytes.`,
+    413,
+    ctx,
+    {
+      details: {
+        limit_bytes: LIMITE_CUERPO_BYTES,
+        ...(declarado === undefined ? {} : { declared_bytes: declarado }),
+      },
+      hint: "Divide la operacion en varias peticiones mas chicas.",
+    },
+  );
+}
+
+/**
  * Traduce cualquier fallo de un handler a una respuesta de la 6.4.
  *
  * Lo que no es un `DomainError` es un fallo no controlado: 500 con un mensaje

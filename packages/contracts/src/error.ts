@@ -98,6 +98,22 @@ export const ESTADO_POR_CODIGO = {
   // en 409.
   INVALID_REASSIGN_TARGET: 409,
   DUPLICATE_KEY: 409,
+  /**
+   * --- 413 ---------------------------------------------------------------
+   *
+   * El tope de 256 KB por cuerpo de la 7.3. La 6.4 no lo lista, y eso no lo
+   * convierte en un codigo inventado: el catalogo se amplia cuando aparece el
+   * caso, igual que paso con los siete de forma y con RATE_LIMITED. 413 y no 400
+   * porque es la semantica exacta —el cuerpo es valido, es demasiado grande— y
+   * porque un 400 le diria a un cliente que revise lo que mando cuando lo que
+   * tiene que revisar es cuanto mando.
+   *
+   * Es un codigo del BORDE, como UNAUTHENTICATED o RATE_LIMITED, y por eso no
+   * entra en `DomainErrorCode`: el nucleo no sabe que existen las peticiones, y
+   * mucho menos cuanto pesan.
+   */
+  PAYLOAD_TOO_LARGE: 413,
+
   // --- 422 y para arriba -------------------------------------------------
   IDEMPOTENCY_MISMATCH: 422,
   CONFIRMATION_REQUIRED: 428,
