@@ -23,10 +23,18 @@
 //                     el nucleo -> Prisma, que es el grafo que de verdad se
 //                     rompe. Un 200 aca es lo unico que prueba que la ruta
 //                     compilo Y que la cadena hasta la base funciona en dev.
+//   GET /            la UI de lectura de la 9.1. Es un Server Component, o sea
+//                     que su grafo es el mas grande del proyecto —React, el
+//                     nucleo, Prisma— y ademas es el UNICO camino que renderiza:
+//                     un fallo al evaluar el componente o al cargar su CSS no lo
+//                     ve ninguna otra comprobacion. La suite de vitest importa
+//                     Route Handlers y los invoca a mano; nunca renderiza una
+//                     pagina, y no hay Playwright todavia.
 //
 // Health sola no alcanzaria: en el fallo de 2518c5f las DOS daban 500, pero el
-// modo de fallo contrario —una ruta con `conAuth` rota y health sana— es
-// exactamente el que este proyecto va a tener cuando entre la UI de F3.
+// modo de fallo contrario —una ruta con `conAuth` rota y health sana— existe
+// igual. La UI de F3 es justamente eso: sin esta comprobacion, `verify` pasa en
+// verde con la unica pagina del proyecto devolviendo 500.
 
 import { spawn, spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
@@ -277,9 +285,12 @@ log(`\`next dev\` (Turbopack) en ${BASE} (distDir ${DIST_DIR}, pid ${hijo.pid})`
 
 await esperarRespuesta();
 
+// En orden de grafo creciente, para que el primero que falle sea el mas barato de
+// diagnosticar: si caen las tres, el motivo esta en la de arriba.
 const comprobaciones = [
   { ruta: "/api/health", clave: undefined, que: "sin autenticacion (6.2)" },
   { ruta: "/api/boards", clave, que: "autenticada, scope read (7.2)" },
+  { ruta: "/", clave: undefined, que: "la UI de lectura, Server Component (9.1)" },
 ];
 
 for (const comprobacion of comprobaciones) {
