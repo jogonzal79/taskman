@@ -95,6 +95,7 @@ export function TarjetaVisual({
   hoy,
   abierta = false,
   fantasma = false,
+  ajena = false,
 }: {
   tarea: TarjetaEnPantalla;
   hoy: Date;
@@ -102,6 +103,11 @@ export function TarjetaVisual({
   abierta?: boolean;
   /** El hueco que deja la tarjeta mientras su copia viaja con el puntero. */
   fantasma?: boolean;
+  /**
+   * La toco un agente o la API y el usuario todavia no la vio (9.1). Lleva la
+   * animacion de entrada y el realce que se apaga.
+   */
+  ajena?: boolean;
 }) {
   const prioridad = PRIORIDAD[tarea.priority];
   const clases = [
@@ -109,6 +115,7 @@ export function TarjetaVisual({
     ...(prioridad === undefined ? [] : [prioridad.acento]),
     ...(abierta ? ["tarjeta--abierta"] : []),
     ...(fantasma ? ["tarjeta--fantasma"] : []),
+    ...(ajena ? ["tarjeta--ajena"] : []),
   ].join(" ");
 
   return (
@@ -143,6 +150,7 @@ export function TaskCard({
   tarea,
   columnId,
   bloqueado,
+  ajena,
   hoy,
   abierta,
   filtros,
@@ -152,6 +160,8 @@ export function TaskCard({
   columnId: string;
   /** Hay un movimiento en vuelo: no se puede empezar otro. Ver `ColumnList`. */
   bloqueado: boolean;
+  /** La cambio otro actor y el usuario todavia no la vio (9.1). */
+  ajena: boolean;
   hoy: Date;
   /** Si es la que el panel de detalle esta mostrando. */
   abierta: boolean;
@@ -247,7 +257,13 @@ export function TaskCard({
         scroll={false}
         draggable={false}
       >
-        <TarjetaVisual tarea={tarea} hoy={hoy} abierta={abierta} fantasma={isDragging} />
+        <TarjetaVisual
+          tarea={tarea}
+          hoy={hoy}
+          abierta={abierta}
+          fantasma={isDragging}
+          ajena={ajena}
+        />
       </Link>
     </li>
   );

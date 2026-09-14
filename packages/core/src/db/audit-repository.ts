@@ -1,9 +1,16 @@
 import { Prisma, type PrismaClient } from "@taskman/db";
 
 import type { ActorType } from "../domain/actor";
-import type { AuditEntry, AuditPayload, ListAuditQuery } from "../domain/audit";
+import type {
+  AuditAction,
+  AuditEntityType,
+  AuditEntry,
+  AuditPayload,
+  ListAuditQuery,
+} from "../domain/audit";
 import type { Page } from "../domain/types";
 import { normalizarLimite } from "./pagination";
+import { CANAL_DE_CAMBIOS, type AvisoDeCambio } from "./cambios";
 import type { TransactionRunner } from "./transaction-runner";
 
 /**
@@ -25,8 +32,15 @@ export interface AuditRow {
   actorType: ActorType;
   actorName: string;
   clientId: string | null;
-  action: string;
-  entityType: string;
+  /*
+   * Los dos con el tipo del DOMINIO y no `string`. Eran `string` y no molestaba
+   * mientras la fila solo se insertaba; desde que ademas se PUBLICA (ver
+   * `avisarDelCambio`), quien la recibe compara contra literales, y ahi un
+   * `string` deja pasar un "TASK" en mayusculas que no matchea nunca. El valor
+   * que se escribe no cambia: `AuditService` ya los arma desde `AuditEvent`.
+   */
+  action: AuditAction;
+  entityType: AuditEntityType;
   entityId: string;
   beforeData: AuditPayload | null;
   afterData: AuditPayload | null;
@@ -65,6 +79,53 @@ export async function insertAuditRow(tx: Prisma.TransactionClient, row: AuditRow
       requestId: row.requestId,
     },
   });
+
+  await avisarDelCambio(tx, row);
+}
+
+/**
+ * PUBLICA EL AVISO de la 9.1 —"algo cambio"— por `NOTIFY`, pegado a la
+ * escritura del registro de auditoria.
+ *
+ * VA AQUI Y NO EN OTRO SITIO, y el motivo es el invariante que ya existe: el
+ * registro de auditoria se escribe SIEMPRE dentro de la transaccion de la
+ * operacion que audita, y esta es la unica funcion que lo escribe. O sea que
+ * enganchar el aviso aca le hereda la misma garantia: toda escritura del
+ * sistema avisa, y ninguna puede olvidarse, porque olvidarse seria no auditar.
+ * Colgarlo de cada servicio serian nueve sitios donde olvidarlo.
+ *
+ * Y VA DENTRO DE LA TRANSACCION, que es lo que lo hace correcto y no solo
+ * comodo: PostgreSQL entrega las notificaciones AL COMMIT. Si la operacion se
+ * revierte —o si la reintenta el reintento de 40001— el aviso no sale. Nunca se
+ * anuncia un cambio que no ocurrio, y nunca se anuncia dos veces un intento que
+ * se abortó. Fuera de la transaccion habria que elegir entre avisar de mas o
+ * avisar de menos.
+ *
+ * `pg_notify` COMO FUNCION y no la sentencia `NOTIFY`: la sentencia toma el
+ * canal y el texto como literales y no admite parametros, asi que habria que
+ * interpolar el JSON en el SQL. La funcion los recibe bindeados.
+ *
+ * NO ROMPE LA OPERACION SI FALLA. Un aviso perdido degrada la pantalla a lo que
+ * era antes de este paso —hay que recargar para ver el cambio— mientras que
+ * revertir una escritura buena porque no se pudo avisar de ella cambia un
+ * problema de refresco por uno de datos. Se traga la falla a proposito; el
+ * `catch` es la unica parte de esta funcion que NO comparte el destino de la
+ * transaccion, y es asi queriendo.
+ */
+async function avisarDelCambio(tx: Prisma.TransactionClient, row: AuditRow): Promise<void> {
+  const aviso: AvisoDeCambio = {
+    actor: row.actorType,
+    action: row.action,
+    entityType: row.entityType,
+    entityId: row.entityId,
+    requestId: row.requestId,
+  };
+
+  try {
+    await tx.$queryRaw`SELECT pg_notify(${CANAL_DE_CAMBIOS}, ${JSON.stringify(aviso)})`;
+  } catch {
+    // Ver arriba: el refresco de la pantalla no puede tumbar una escritura.
+  }
 }
 
 // --- Lectura (6.2, RF-10) ----------------------------------------------------

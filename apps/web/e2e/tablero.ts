@@ -97,6 +97,80 @@ export function campoNuevaTarea(page: Page, nombreColumna: string): Locator {
   });
 }
 
+// --- Cambios de otro actor (9.1) ---------------------------------------------
+
+/**
+ * CORTA EL FLUJO DE CAMBIOS para esta pagina, de forma DEFINITIVA.
+ *
+ * Se responde 204 y no se aborta la peticion: ante un error de red
+ * `EventSource` reintenta cada pocos segundos, y ante una respuesta que no es
+ * `text/event-stream` da la conexion por fallida y NO reintenta. O sea que 204
+ * deja el tablero sordo de verdad, que es lo que la prueba necesita, en vez de
+ * sordo a ratos.
+ *
+ * PARA QUE SIRVE: hay pruebas —las de la reconciliacion de la 9.2— cuyo montaje
+ * exige que la pantalla NO se entere de un cambio ajeno. Antes de que existiera
+ * `/eventos` eso era gratis, porque la pagina no consultaba sola; ahora hay que
+ * pedirlo.
+ *
+ * Y NO ES UN APAÑO PARA QUE PASEN: es lo que hace que sigan midiendo lo suyo. La
+ * reconciliacion es la red que queda cuando la pantalla esta desactualizada,
+ * SEA CUAL SEA el motivo, y el motivo mas realista hoy es justamente este —el
+ * flujo caido, que no tiene cola y no recupera lo perdido—. Probarla con el
+ * flujo cortado no es simular una condicion de laboratorio: es la condicion en
+ * la que hace falta.
+ *
+ * Hay que llamarla ANTES de cargar la pagina; despues, la carrera con la
+ * hidratacion decide si llega a tiempo.
+ */
+export async function cortarElFlujoDeCambios(page: Page): Promise<void> {
+  await page.route("**/eventos", (ruta) => ruta.fulfill({ status: 204 }));
+}
+
+/** Que el tablero NO este escuchando: el complemento de `esperarEscuchando`. */
+export async function esperarSordo(page: Page): Promise<void> {
+  await expect(page.locator(".columnas")).toHaveAttribute("data-cambios", "conectando");
+}
+
+/**
+ * ESPERA A QUE EL TABLERO ESTE ESCUCHANDO el flujo de `/eventos`.
+ *
+ * HAY QUE LLAMARLA ANTES DE CUALQUIER CAMBIO AJENO, y no es una precaucion:
+ * `NOTIFY` no guarda nada para quien no esta escuchando, asi que un cambio hecho
+ * entre que el servidor devuelve el HTML y que el navegador hidrata y abre el
+ * `EventSource` se pierde de verdad. Sin esta espera, la prueba mide esa carrera
+ * en vez de lo que dice medir: pasa o falla segun lo rapido que hidrate.
+ *
+ * ES UNA PROPIEDAD DEL PRODUCTO, no del runner. Ese hueco existe tambien para
+ * una persona, y dura lo que tarda la primera hidratacion; despues no se vuelve a
+ * abrir, porque una reconexion refresca al volver (ver `alReconectar`).
+ */
+export async function esperarEscuchando(page: Page): Promise<void> {
+  await expect(page.locator(".columnas")).toHaveAttribute("data-cambios", "conectado");
+}
+
+/** Las tarjetas con la marca de "lo cambio otro y todavia no lo viste". */
+export function tarjetasMarcadas(page: Page): Locator {
+  return page.locator(".tarjeta--ajena");
+}
+
+/** Los titulos de esas tarjetas, como localizador (reintenta). */
+export function titulosMarcados(page: Page): Locator {
+  return page.locator(".tarjeta--ajena .tarjeta__titulo");
+}
+
+/**
+ * MIRA LA PANTALLA: la señal de entrada que apaga las marcas.
+ *
+ * Es un movimiento del puntero y no un clic, a proposito: un clic sobre el
+ * tablero abriria el panel de una tarjeta, y entonces la prueba no sabria si la
+ * marca se apago por la mirada o por la navegacion. Ver `lib/usar-mirada.ts`.
+ */
+export async function mirar(page: Page): Promise<void> {
+  await page.mouse.move(4, 4);
+  await page.mouse.move(8, 12);
+}
+
 // --- Arrastre ----------------------------------------------------------------
 
 /**
@@ -225,21 +299,37 @@ export async function tarjetasAnimadas(page: Page): Promise<string[]> {
  * El resultado es que la prueba declara la INTENCION ("a Por hacer, arriba del
  * todo") y no la mecanica, que es lo que se queria del teclado desde el principio.
  */
-export async function arrastrar(
-  page: Page,
-  titulo: string,
-  destino: {
-    /** Nombre de la columna donde tiene que terminar. La misma vale. */
-    columna: string;
-    /** Indice DENTRO de esa columna: un numero, o los dos extremos. */
-    indice: number | "principio" | "final";
-  },
-): Promise<void> {
-  const asa = asaDe(page, titulo);
+export async function arrastrar(page: Page, titulo: string, destino: Destino): Promise<void> {
+  await agarrar(page, titulo);
+  await llevarA(page, titulo, destino);
+  await soltar(page);
+}
 
-  await asa.focus();
+/** Donde tiene que terminar una tarjeta. */
+export interface Destino {
+  /** Nombre de la columna. La misma en la que ya esta tambien vale. */
+  columna: string;
+  /** Indice DENTRO de esa columna: un numero, o los dos extremos. */
+  indice: number | "principio" | "final";
+}
+
+/**
+ * Las tres mitades de `arrastrar`, expuestas por separado.
+ *
+ * Existen porque hay una prueba que necesita METER ALGO EN MEDIO del gesto —un
+ * agente que escribe con la tarjeta ya agarrada— y la unica forma de hacerlo sin
+ * repetir la mecanica es poder abrir el gesto, hacer lo otro, y cerrarlo. Antes
+ * esa prueba pulsaba las flechas a mano y por eso fallaba de forma intermitente:
+ * se comia la espera de fotograma que explica `llevarAlIndice`, asi que dos
+ * flechas seguidas se resolvian contra la misma geometria y la segunda no hacia
+ * nada. Con la maquina cargada fallaba; sola, pasaba.
+ */
+export async function agarrar(page: Page, titulo: string): Promise<void> {
+  await asaDe(page, titulo).focus();
   await page.keyboard.press("Space");
+}
 
+export async function llevarA(page: Page, titulo: string, destino: Destino): Promise<void> {
   try {
     await llevarALaColumna(page, titulo, destino.columna);
     await llevarAlIndice(page, titulo, destino.columna, destino.indice);
@@ -250,7 +340,9 @@ export async function arrastrar(
 
     throw error;
   }
+}
 
+export async function soltar(page: Page): Promise<void> {
   await soltandoYEsperandoAlServidor(page, () => page.keyboard.press("Space"));
 }
 

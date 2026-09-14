@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useId, useState, useTransition } from "react";
 
 import { borrarTarea, editarTarea, type CamposDeTarea } from "../lib/acciones";
+import { recordarCambioPropio } from "../lib/cambios-propios";
 import { PRIORIDADES, type OpcionDePrioridad } from "../lib/prioridad";
 
 /**
@@ -135,6 +136,11 @@ export function TaskEditor({
     iniciar(async () => {
       const resultado = await editarTarea(tarea.id, cambios);
 
+      // Ver `QuickAdd`: lo que escribe esta pestaña no se marca como ajeno.
+      if (resultado.ok) {
+        recordarCambioPropio(resultado.requestId);
+      }
+
       setError(
         resultado.ok
           ? null
@@ -154,6 +160,7 @@ export function TaskEditor({
       const resultado = await borrarTarea(tarea.id);
 
       if (resultado.ok) {
+        recordarCambioPropio(resultado.requestId);
         // La tarea ya no existe, asi que el panel no tiene nada que mostrar.
         // `ubicarEnVista` tambien lo resolveria —un id que no esta en el tablero
         // no abre panel— pero cerrar explicitamente evita que el parametro de

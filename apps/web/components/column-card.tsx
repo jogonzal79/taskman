@@ -46,6 +46,7 @@ export function ColumnCard({
   columna,
   tareas,
   bloqueado,
+  marcadas,
   hoy,
   tareaAbierta,
   filtros,
@@ -74,6 +75,12 @@ export function ColumnCard({
    * ahi por que no alcanza con descartar el segundo arrastre al soltarlo.
    */
   bloqueado: boolean;
+  /**
+   * Las tareas que toco un agente o la API y el usuario todavia no vio (9.1).
+   * Pasa de largo hasta la tarjeta; el conjunto es del TABLERO y no de esta
+   * columna, porque una tarea marcada puede haber cambiado justamente de columna.
+   */
+  marcadas: ReadonlySet<string>;
   hoy: Date;
   /** La tarea abierta en el panel, si es alguna de esta columna. */
   tareaAbierta: string | undefined;
@@ -120,6 +127,7 @@ export function ColumnCard({
               tarea={tarea}
               columnId={columna.id}
               bloqueado={bloqueado}
+              ajena={marcadas.has(tarea.id)}
               hoy={hoy}
               abierta={tarea.id === tareaAbierta}
               filtros={filtros}

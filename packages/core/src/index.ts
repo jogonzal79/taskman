@@ -101,6 +101,8 @@ export { resolverColumna } from "./services/column-reference";
 export type { BuscadorDeColumnas } from "./services/column-reference";
 
 export { AuditRepository, insertAuditRow } from "./db/audit-repository";
+export { CANAL_DE_CAMBIOS, leerAvisoDeCambio } from "./db/cambios";
+export type { AvisoDeCambio } from "./db/cambios";
 export type { AuditRow, AuditTransaction } from "./db/audit-repository";
 
 // --- Idempotencia (6.5) ------------------------------------------------------

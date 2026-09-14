@@ -39,6 +39,17 @@
   --alta-fondo: #fdf4e3;
   --alta-borde: #e8c98a;
   --vencida: #b3261e;
+
+  /*
+   * El acento de "lo cambio otro" (9.1). Es AZUL y no rojo ni ambar a proposito:
+   * los dos calidos ya significan urgencia y vencimiento (9.3), y reutilizar uno
+   * haria que una tarea movida por un agente se leyera como una tarea en
+   * problemas. Este no dice "atencion", dice "esto es nuevo para vos".
+   */
+  --acento-ajeno: #1f6feb;
+  --acento-ajeno-borde: #9dc1f5;
+  --acento-ajeno-fondo: #f2f7fe;
+  --acento-ajeno-halo: rgb(31 111 235 / 28%);
 }
 
 * {
@@ -858,4 +869,81 @@ textarea.panel__control {
   background: var(--alta-fondo);
   color: var(--alta);
   font-size: 13px;
+}
+
+/* --- Cambios de otro actor (9.1, 7.4) ------------------------------------- */
+
+/*
+ * UNA TARJETA QUE CAMBIO OTRO se ve distinta de una que cambio el usuario, y esa
+ * diferencia es una decision de producto: el usuario sabe lo que hizo el mismo,
+ * asi que realzarlo seria ruido; lo que necesita ver es lo que hizo OTRO
+ * mientras el no miraba.
+ *
+ * SON DOS COSAS, no una. La ANIMACION DE ENTRADA se ve una vez y dice "esto
+ * acaba de pasar": sin ella la tarjeta simplemente estaria en otro sitio, que es
+ * lo que se lee como un bug. El REALCE se queda hasta que el usuario mira (ver
+ * `lib/usar-mirada.ts`) y dice "esto es lo que cambio": sin el, quien vuelve a la
+ * pestaña un minuto despues no tiene forma de saber que se movio.
+ *
+ * EL REALCE SE APAGA SOLO hasta un resto tenue —del color de acento a un borde
+ * y un fondo apenas teñidos— porque un realce a pleno color durante minutos
+ * compite con la prioridad y el vencimiento, que son las dos señales que la 9.3
+ * declara obligatorias. Lo que queda es suficiente para encontrar la tarjeta de
+ * un vistazo y no tanto como para tapar nada.
+ */
+.tarjeta--ajena {
+  border-color: var(--acento-ajeno-borde);
+  background: var(--acento-ajeno-fondo);
+  animation:
+    entrada-ajena 320ms ease-out,
+    realce-ajeno 2.4s ease-out forwards;
+}
+
+/*
+ * El borde izquierdo NO se toca: es la señal de prioridad (ver `.tarjeta`), y
+ * pisarla dejaria a una tarjeta urgente sin su marca justo cuando alguien la
+ * acaba de mover.
+ */
+.tarjeta--ajena.tarjeta--urgente {
+  border-left-color: var(--urgente);
+}
+
+.tarjeta--ajena.tarjeta--alta {
+  border-left-color: var(--alta-borde);
+}
+
+@keyframes entrada-ajena {
+  from {
+    transform: translateY(-6px);
+    opacity: 0;
+  }
+
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+/*
+ * De realce fuerte a resto tenue. `forwards` deja el estado final puesto: la
+ * animacion termina, la marca NO, y quitarla es cosa de que el usuario mire.
+ */
+@keyframes realce-ajeno {
+  from {
+    box-shadow: 0 0 0 3px var(--acento-ajeno-halo);
+  }
+
+  to {
+    box-shadow: 0 1px 1px rgb(28 32 36 / 5%);
+  }
+}
+
+/*
+ * Quien pidio menos movimiento no ve la entrada ni el desvanecido; el realce
+ * SI se queda, porque es informacion y no decoracion.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .tarjeta--ajena {
+    animation: none;
+  }
 }

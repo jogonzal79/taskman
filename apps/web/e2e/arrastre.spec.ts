@@ -26,6 +26,8 @@ import {
   avisoDeMovimiento,
   columna,
   correcciones,
+  cortarElFlujoDeCambios,
+  esperarSordo,
   expect,
   filtroPuesto,
   panel,
@@ -307,6 +309,20 @@ test("si la accion falla, el tablero vuelve al estado previo y se ve el mensaje"
 }) => {
   const backlogSembrado = [TITULO_MEDIA, TITULO_URGENTE, TITULO_ALTA, TITULO_BAJA];
 
+  /**
+   * CON EL FLUJO DE CAMBIOS CORTADO, porque el montaje lo exige: hace falta que
+   * la pantalla siga mostrando una tarjeta que ya no existe. Con el flujo vivo,
+   * el borrado del agente llega en el acto y la tarjeta desaparece antes de
+   * poder arrastrarla, o sea que no habria forma de provocar el TASK_NOT_FOUND.
+   *
+   * Es la condicion realista para este fallo, ademas: lo que se prueba es que un
+   * tablero DESACTUALIZADO no escribe mentiras, y hoy la forma de estar
+   * desactualizado es no estar escuchando.
+   */
+  await cortarElFlujoDeCambios(page);
+  await page.reload();
+  await esperarSordo(page);
+
   await expect(titulos(page, BACKLOG)).toHaveText(backlogSembrado);
 
   // Otro actor la borra. La pantalla no se entera.
@@ -378,7 +394,18 @@ test("cuando el servidor contradice al navegador, la pantalla termina con el ord
 
   // Se anota cada animacion desde antes de que cargue nada; ver `anotarAnimaciones`.
   await anotarAnimaciones(page);
+  /**
+   * Y SE CORTA EL FLUJO DE CAMBIOS. Sin esto no hay divergencia que reconciliar:
+   * el movimiento del agente llegaria por `/eventos`, la pantalla se pondria al
+   * dia y el navegador calcularia sobre el orden BUENO, que es justamente lo que
+   * este caso necesita que no pase.
+   *
+   * Lo que queda probado con el corte es mas fuerte que antes: la reconciliacion
+   * de la 9.2 no depende de que el aviso funcione. Es la red de abajo.
+   */
+  await cortarElFlujoDeCambios(page);
   await page.reload();
+  await esperarSordo(page);
 
   await expect(titulos(page, POR_HACER)).toHaveText(comoSeVeAlCargar);
   expect(await correcciones(page)).toBe(0);

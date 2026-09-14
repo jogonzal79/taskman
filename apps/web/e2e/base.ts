@@ -1,6 +1,16 @@
 import { randomUUID } from "node:crypto";
 
-import { crearCorePort, type ActorContext, type CorePort } from "@taskman/core";
+import {
+  crearCorePort,
+  crearHerramientas,
+  generarClave,
+  hashearClave,
+  prefijoDe,
+  type ActorContext,
+  type CorePort,
+  type McpToolDefinition,
+  type Scope,
+} from "@taskman/core";
 import { Client } from "pg";
 
 /**
@@ -193,4 +203,134 @@ export async function moverPorElNucleo(
 /** Borra una tarea sin pasar por el navegador. Para el punto 4 de la 9.2. */
 export async function borrarPorElNucleo(titulo: string): Promise<void> {
   await corePort().deleteTask(await idDeTarea(titulo), contextoDeAgente());
+}
+
+// --- Los dos caminos AJENOS: MCP y la API REST -------------------------------
+
+/**
+ * MUEVE UNA TAREA POR EL REGISTRO DE HERRAMIENTAS MCP (CT-07).
+ *
+ * Es `moverPorElNucleo` un escalon mas arriba, y la diferencia importa: aquella
+ * llama al `CorePort` directamente, y esta pasa por `crearHerramientas` —el
+ * registro unico de la 8.1— o sea por el MISMO codigo que ejecuta
+ * `apps/mcp-stdio`. Recorre la validacion del esquema de entrada, la resolucion
+ * por NOMBRE de la 8.3.1 (por eso los argumentos son titulos y keys, no UUID) y
+ * el `contextoDeAgente` que fija `actorType: AGENT` por construccion.
+ *
+ * LO UNICO QUE NO RECORRE es el transporte stdio, que es lo que el criterio
+ * permite explicitamente ("o por el mismo camino del nucleo que usa MCP").
+ * Levantar el proceso de `apps/mcp-stdio` dentro de una prueba de navegador
+ * agregaria un `esbuild` y un proceso hijo para ejercitar `StdioServerTransport`,
+ * que es del SDK y ya tiene su propia suite de contrato en ese paquete.
+ */
+export async function moverPorMcp(args: {
+  tablero?: string;
+  tarea: string;
+  aColumna: string;
+  position: number | "end";
+}): Promise<void> {
+  const resultado = await herramienta("move_task").handler({
+    board: args.tablero ?? TABLERO,
+    task: args.tarea,
+    to_column: args.aColumna,
+    position: args.position,
+  });
+
+  // El handler NO lanza: un fallo vuelve como resultado con `isError`, que es lo
+  // que ve el agente. Sin esta comprobacion, una prueba con un titulo mal escrito
+  // pasaria a medir "la pantalla no cambio" en vez de "el movimiento no llego".
+  if (resultado.isError === true) {
+    throw new Error(`move_task fallo: ${resultado.content.map((c) => c.text).join(" ")}`);
+  }
+}
+
+let herramientas: McpToolDefinition[] | undefined;
+
+function herramienta(nombre: string): McpToolDefinition {
+  herramientas ??= crearHerramientas(corePort());
+
+  const definicion = herramientas.find((candidata) => candidata.name === nombre);
+
+  if (definicion === undefined) {
+    throw new Error(`El registro MCP no tiene la herramienta ${nombre}.`);
+  }
+
+  return definicion;
+}
+
+/**
+ * EMITE UNA API KEY VALIDA CONTRA EL SERVIDOR QUE ESTA CORRIENDO (CT-06).
+ *
+ * El hash se calcula con el pepper de `process.env.API_KEY_PEPPER`, que es el
+ * MISMO que tiene el servidor: los dos procesos los arranca `pnpm run e2e` con
+ * `dotenv -e ../../.env`. Si se fijara uno propio —como hace la suite de
+ * contrato, que controla los dos lados dentro del mismo proceso— la clave
+ * hashearia distinto y el servidor devolveria 401.
+ *
+ * Se emite DENTRO de la prueba y no a mano porque la siembra de la 10.3 vacia
+ * `api_key` antes de cada una.
+ */
+export async function emitirClaveParaLaApi(scopes: readonly Scope[]): Promise<string> {
+  const pepper = process.env["API_KEY_PEPPER"];
+
+  if (pepper === undefined || pepper.trim() === "") {
+    throw new Error("API_KEY_PEPPER no esta definida: la clave emitida no validaria.");
+  }
+
+  const clave = generarClave();
+
+  await consultar(
+    `INSERT INTO api_key (id, label, prefix, key_hash, scopes, revoked_at)
+     VALUES ($1, $2, $3, $4, $5::"Scope"[], NULL)`,
+    [randomUUID(), "clave de extremo a extremo", prefijoDe(clave), hashearClave(clave, pepper), scopes],
+  );
+
+  return clave;
+}
+
+/**
+ * CREA UNA TAREA POR LA API REST (CT-06), con una peticion HTTP de verdad contra
+ * el servidor que Playwright levanto.
+ *
+ * Por HTTP y no por el nucleo a proposito: lo que el CT-06 comprueba es que un
+ * cambio hecho por OTRO CLIENTE aparezca, y "otro cliente" en la 7.4 es
+ * exactamente lo que produce `actor_type: API`. Ese valor lo pone `conAuth` al
+ * autenticar la clave, asi que solo se obtiene pasando por el borde REST; por el
+ * nucleo habria que fabricar el `ActorContext` a mano y la prueba estaria
+ * afirmando sobre un actor que ella misma invento.
+ */
+export async function crearPorLaApi(args: {
+  base: string;
+  clave: string;
+  boardId: string;
+  columnKey: string;
+  title: string;
+}): Promise<void> {
+  const respuesta = await fetch(`${args.base}/api/tasks`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${args.clave}` },
+    body: JSON.stringify({
+      board_id: args.boardId,
+      column_key: args.columnKey,
+      title: args.title,
+    }),
+  });
+
+  if (respuesta.status !== 201) {
+    throw new Error(
+      `POST /api/tasks devolvio ${respuesta.status}: ${await respuesta.text()}`,
+    );
+  }
+}
+
+/** El id del tablero que la pagina muestra. Lo pide el cuerpo de POST /api/tasks. */
+export async function idDeTablero(nombre: string = TABLERO): Promise<string> {
+  const filas = await consultar<{ id: string }>(`SELECT id FROM board WHERE name = $1`, [nombre]);
+  const fila = filas[0];
+
+  if (fila === undefined) {
+    throw new Error(`No hay ningun tablero "${nombre}".`);
+  }
+
+  return fila.id;
 }

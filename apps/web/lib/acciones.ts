@@ -64,6 +64,19 @@ export type ResultadoAccion<T = void> =
        * unico sitio donde hay columnas que leer y en ninguno mas.
        */
       readonly valor: T;
+      /**
+       * El `X-Request-Id` de la 6.1 con el que se escribio, TAMBIEN cuando sale
+       * bien. En la rama de error existia desde el principio para que el usuario
+       * tenga algo que copiar; aca sirve para otra cosa: es como la pantalla
+       * RECONOCE SUS PROPIOS CAMBIOS.
+       *
+       * Cada escritura publica un aviso por `NOTIFY` con este mismo id (ver
+       * `insertAuditRow`), asi que la pestaña que lo produjo puede descartar el
+       * suyo y no marcarse a si misma como cambio ajeno. Sin esto habria que
+       * adivinar por tiempo o por actor, y por actor no alcanza: otra pestaña
+       * tambien escribe como USER y esa SI tiene que refrescar esta.
+       */
+      readonly requestId: string;
     }
   | {
       readonly ok: false;
@@ -150,7 +163,7 @@ async function ejecutar<T>(
    */
   revalidatePath("/");
 
-  return { ok: true, valor };
+  return { ok: true, valor, requestId: ctx.requestId };
 }
 
 /**

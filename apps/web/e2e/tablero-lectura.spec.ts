@@ -297,10 +297,15 @@ test("por debajo de 1024 px sale el aviso, no una version degradada", async ({ p
  *          PARCIAL, en `task-detail.spec.ts`: borra la tercera de cuatro y
  *          comprueba las que quedan y en que orden, pero EN PANTALLA. La densidad
  *          0..n-1 no se ve ahi y hace falta SQL (`e2e/base.ts`).
- *   CT-06  Crear por API con la UI abierta y revalidar.       Falta: la pagina no
- *          consulta sola, asi que hoy solo se refresca al recargar o despues de
- *          una accion propia. Es el paso de senalizacion de cambios de agentes.
- *   CT-07  Mover por MCP y ver el reflejo en la UI.           Falta: lo mismo que CT-06.
+ *   CT-06  Crear por API con la UI abierta y revalidar.
+ *          CUBIERTO, en `cambios-ajenos.spec.ts`, con una peticion HTTP real y su
+ *          API key (asi el actor es API y no uno inventado). Comprueba ademas que
+ *          NO hubo recarga de documento.
+ *   CT-07  Mover por MCP y ver el reflejo en la UI.
+ *          CUBIERTO, en `cambios-ajenos.spec.ts`, por el registro unico de
+ *          herramientas de la 8.1 —el mismo codigo que ejecuta `apps/mcp-stdio`—
+ *          con resolucion por nombre y actor AGENT. Lo unico que no recorre es el
+ *          transporte stdio.
  *   CT-08  Clave sin scope delete contra la UI de borrado.    Falta: la UI no usa
  *          la API ni claves (9.1), asi que este escenario no tiene superficie aca;
  *          el scope si esta cubierto en la suite de contrato de `apps/web/test`.

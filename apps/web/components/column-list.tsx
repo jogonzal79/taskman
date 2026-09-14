@@ -17,9 +17,12 @@ import {
   type UniqueIdentifier,
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
-import { useMemo, useRef, useState, useTransition } from "react";
+import type { AvisoDeCambio } from "@taskman/core/cambios";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 
 import { moverTarea, type OrdenDeColumna } from "../lib/acciones";
+import { esCambioPropio, recordarCambioPropio } from "../lib/cambios-propios";
 import type { Filtros } from "../lib/filtros";
 import {
   columnaDe,
@@ -31,6 +34,8 @@ import {
 } from "../lib/orden";
 import { useReordenAnimado } from "../lib/reorden-animado";
 import type { ColumnaEnPantalla, TarjetaEnPantalla } from "../lib/tablero";
+import { useCambios } from "../lib/usar-cambios";
+import { useMirada } from "../lib/usar-mirada";
 import { ColumnCard } from "./column-card";
 import { TarjetaVisual } from "./task-card";
 
@@ -114,6 +119,18 @@ function ordenDeProps(columnas: readonly ColumnaEnPantalla[]): OrdenVisible {
   return orden;
 }
 
+/**
+ * Lo que puede haber en la cola de avisos: un cambio, o la RECONEXION del flujo.
+ *
+ * La reconexion no es un cambio y no se puede disfrazar de uno: mientras el
+ * flujo estuvo caido pudo cambiar cualquier cosa y no se sabe QUE, asi que no
+ * hay ninguna tarjeta a la que atribuirselo. Lo unico que provoca es el
+ * refresco. Un literal aparte lo dice en el tipo; fabricar un `AvisoDeCambio`
+ * falso con una entidad inventada obligaria a que el filtro lo esquivara por
+ * casualidad.
+ */
+type Pendiente = AvisoDeCambio | "reconexion";
+
 /** Donde esta una tarea SEGUN EL SERVIDOR: su columna y su position real. */
 interface Ubicacion {
   readonly columnId: string;
@@ -162,6 +179,26 @@ export function ColumnList({
    */
   const [correcciones, setCorrecciones] = useState(0);
   const [enVuelo, iniciar] = useTransition();
+
+  /**
+   * LAS TARJETAS TOCADAS POR OTRO (9.1). Ids de tareas que cambio un agente o la
+   * API mientras esta pantalla estaba abierta, y que el usuario todavia no vio.
+   *
+   * Es estado de CLIENTE y no puede ser otra cosa: "todavia no lo vio" es un
+   * hecho de esta pestaña y de este momento, no de la base. Dos pestañas abiertas
+   * tienen marcas distintas, y con razon.
+   *
+   * No se poda cuando una tarea desaparece: un id que ya no esta en el tablero no
+   * encuentra tarjeta y no pinta nada, y podarlo obligaria a decidir que hacer
+   * con el de una tarea que el filtro esconde y que va a volver.
+   */
+  const [marcadas, setMarcadas] = useState<ReadonlySet<string>>(() => new Set());
+  /**
+   * Los avisos que llegaron y todavia no se aplicaron. Ver `useEffect` de abajo:
+   * NO se aplican mientras hay un arrastre o un movimiento en vuelo.
+   */
+  const [pendientes, setPendientes] = useState<readonly Pendiente[]>([]);
+  const router = useRouter();
 
   const contenedor = useRef<HTMLDivElement>(null);
   const marcarReordenAnimado = useReordenAnimado(contenedor);
@@ -243,6 +280,44 @@ export function ColumnList({
     return porId;
   }, [columnas]);
 
+  /**
+   * SE ESCUCHA EL FLUJO DE CAMBIOS (CT-06 y CT-07).
+   *
+   * Los avisos NO se aplican aca: se ENCOLAN. Aplicarlos en el momento seria
+   * llamar a `router.refresh()` desde el manejador, y ese refresco trae
+   * propiedades nuevas, y las propiedades nuevas REINICIAN el orden local (ver
+   * el ajuste durante el render, mas arriba). Si eso cae en mitad de un
+   * arrastre, la tarjeta que la persona tiene agarrada vuelve a su sitio; y si
+   * cae entre soltar y la respuesta de la accion, se lleva por delante el estado
+   * optimista del punto 1 de la 9.2 y la reconciliacion del punto 3 corrige
+   * contra un estado que ya no es el que se calculo.
+   *
+   * O sea que los dos mecanismos de este paso y del anterior tocan el MISMO
+   * estado, y por eso viven en el mismo componente: la cola es lo que los ordena.
+   */
+  const escuchando = useCambios({
+    alCambiar: useCallback((aviso: AvisoDeCambio) => {
+      // Lo que escribio esta pestaña ya se vio: la Server Action revalido la
+      // ruta antes de contestar. Refrescar otra vez seria un render de mas, y
+      // marcarlo convertiria el realce en ruido sobre lo que uno acaba de hacer.
+      if (esCambioPropio(aviso.requestId)) {
+        return;
+      }
+
+      setPendientes((previos) => [...previos, aviso]);
+    }, []),
+
+    /**
+     * Al RECONECTAR se encola un aviso vacio, que solo provoca el refresco.
+     * `NOTIFY` no guarda nada para quien no esta escuchando, asi que lo ocurrido
+     * mientras el flujo estuvo caido no llega nunca: la unica forma de ponerse al
+     * dia es releer. No marca ninguna tarjeta, porque no se sabe cuales fueron.
+     */
+    alReconectar: useCallback(() => {
+      setPendientes((previos) => [...previos, "reconexion"]);
+    }, []),
+  });
+
   const sensores = useSensors(
     /**
      * LA RESTRICCION DE DISTANCIA ES LO QUE DEJA CONVIVIR el arrastre con el
@@ -263,6 +338,58 @@ export function ColumnList({
        */
       keyboardCodes: { start: ["Space"], cancel: ["Escape"], end: ["Space"] },
     }),
+  );
+
+  /**
+   * APLICA LOS AVISOS ENCOLADOS, y solo cuando el tablero esta QUIETO.
+   *
+   * "Quieto" es: no hay una tarjeta agarrada (`activa`) y no hay un movimiento
+   * esperando respuesta (`enVuelo`). Son las dos ventanas en las que el estado
+   * local manda sobre las propiedades, y meter un refresco en cualquiera de las
+   * dos rompe el paso anterior. El efecto se vuelve a disparar cuando esas dos
+   * banderas bajan, asi que lo que llego durante un arrastre se aplica ENTERO
+   * justo despues de que la reconciliacion termino: no se pierde ningun aviso, se
+   * retrasa lo que dura el gesto.
+   *
+   * PRIMERO SE MARCA Y DESPUES SE REFRESCA, en ese orden y en el mismo commit:
+   * `router.refresh()` trae la tarjeta con sus datos nuevos, y la marca tiene que
+   * estar puesta cuando eso ocurra para que la tarjeta ENTRE ya realzada en vez
+   * de aparecer normal y realzarse un instante despues.
+   */
+  useEffect(() => {
+    if (pendientes.length === 0 || activa !== null || enVuelo) {
+      return;
+    }
+
+    /**
+     * Solo se marca lo AJENO Y SOBRE UNA TAREA. Lo ajeno, porque marcar lo propio
+     * volveria el realce ruido permanente —es la mitad explicita del requisito—;
+     * y solo TASK, porque un cambio de tablero o de columna no tiene tarjeta a la
+     * que colgarle la marca. Un DELETE tampoco deja nada que marcar, pero no hace
+     * falta filtrarlo: su id ya no encuentra tarjeta.
+     */
+    const ajenas = pendientes.flatMap((aviso) =>
+      aviso !== "reconexion" && aviso.actor !== "USER" && aviso.entityType === "task"
+        ? [aviso.entityId]
+        : [],
+    );
+
+    if (ajenas.length > 0) {
+      setMarcadas((previas) => new Set([...previas, ...ajenas]));
+    }
+
+    setPendientes([]);
+    router.refresh();
+  }, [pendientes, activa, enVuelo, router]);
+
+  /**
+   * Y SE APAGAN CUANDO EL USUARIO MIRA. Que significa "mirar" y por que se
+   * eligio asi esta escrito entero en `lib/usar-mirada.ts`; en una linea: la
+   * pestaña visible mas la primera señal de que hay alguien delante.
+   */
+  useMirada(
+    marcadas.size > 0,
+    useCallback(() => setMarcadas(new Set()), []),
   );
 
   /**
@@ -458,6 +585,11 @@ export function ColumnList({
        * conserva el calculado localmente ni se comparan los dos para quedarse
        * con "el que parezca mejor": se sustituye, y punto.
        */
+      // Antes de nada: este movimiento es NUESTRO. El aviso por `/eventos` llega
+      // a continuacion y hay que poder descartarlo, o el tablero se marcaria a si
+      // mismo cada vez que el usuario arrastra algo.
+      recordarCambioPropio(resultado.requestId);
+
       const corregido = aplicarOrdenDelServidor(optimista, resultado.valor.columnas);
 
       if (huboCorreccion(optimista, corregido, resultado.valor.columnas)) {
@@ -532,7 +664,19 @@ export function ColumnList({
         </p>
       )}
 
-      <div className="columnas" ref={contenedor} data-correcciones={correcciones}>
+      {/*
+        `data-cambios` publica si el tablero esta ESCUCHANDO. Es el mismo criterio
+        que `data-correcciones`: el modo de fallo de este mecanismo es el
+        silencio, y un tablero que dejo de enterarse se ve identico a uno donde no
+        pasa nada. Sin este dato, ni una persona ni una prueba pueden distinguir
+        los dos casos.
+      */}
+      <div
+        className="columnas"
+        ref={contenedor}
+        data-correcciones={correcciones}
+        data-cambios={escuchando ? "conectado" : "conectando"}
+      >
         {columnas.map((columna) => (
           <ColumnCard
             key={columna.id}
@@ -555,6 +699,7 @@ export function ColumnList({
               return tarjeta === undefined ? [] : [tarjeta];
             })}
             bloqueado={bloqueado}
+            marcadas={marcadas}
             hoy={hoy}
             tareaAbierta={tareaAbierta}
             filtros={filtros}

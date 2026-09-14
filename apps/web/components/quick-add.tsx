@@ -3,6 +3,7 @@
 import { useId, useState, useTransition } from "react";
 
 import { crearTarea } from "../lib/acciones";
+import { recordarCambioPropio } from "../lib/cambios-propios";
 
 /**
  * QuickAddInput (9.3): "Creacion de tarea escribiendo el titulo al final de una
@@ -79,6 +80,11 @@ export function QuickAdd({
       const resultado = await crearTarea({ boardId, columnId, title: titulo });
 
       if (resultado.ok) {
+        // Esta creacion es NUESTRA: el aviso que llega a continuacion por
+        // `/eventos` se descarta, asi que la tarjeta recien creada no se marca
+        // como cambio ajeno. Ver `lib/cambios-propios.ts`.
+        recordarCambioPropio(resultado.requestId);
+
         // El campo queda LISTO PARA LA SIGUIENTE: se vacia y nunca se deshabilita,
         // asi que el foco no se pierde y se puede seguir escribiendo sin volver a
         // pulsar. Deshabilitarlo mientras crea seria lo natural y esta descartado
