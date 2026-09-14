@@ -20,12 +20,15 @@ import { TaskEditor } from "./task-editor";
  * Escape. La cabecera, el nombre de la columna y el cierre se dibujan aca, y el
  * cierre es un ENLACE y no un boton porque cerrar el panel es navegar.
  *
- * EL PANEL ESTA EN LA URL, no en estado de cliente: `/?tarea=<id>`. Tres cosas
- * salen gratis de esa decision y ninguna era obvia:
+ * EL PANEL ESTA EN LA URL, no en estado de cliente: `tarea=<id>` junto al
+ * tablero y los filtros (`enlaceTablero`). Tres cosas salen gratis de esa
+ * decision y ninguna era obvia:
  *
- *   - Los datos no cruzan al cliente. La pagina resuelve la tarea en el servidor
- *     con lo que ya cargo (`ubicarEnVista`), asi que abrir el panel no manda el
- *     tablero al navegador ni dispara una consulta nueva.
+ *   - Abrir el panel no dispara una consulta. La pagina resuelve la tarea en el
+ *     servidor con lo que ya cargo (`ubicarEnVista`), y lo unico que cruza de mas
+ *     al navegador es ESA tarea con su descripcion: las tarjetas ya estan en el
+ *     cliente desde que `ColumnList` lo es, pero sin descripcion
+ *     (`paraLaPantalla`).
  *   - Una edicion repinta el panel Y la tarjeta con una sola revalidacion: el
  *     panel es un parametro de consulta de la MISMA ruta que `revalidatePath("/")`
  *     invalida. Con el panel en estado de cliente habria que sincronizar dos

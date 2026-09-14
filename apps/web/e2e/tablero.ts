@@ -178,10 +178,12 @@ export function campoNuevaTarea(page: Page, nombreColumna: string): Locator {
  *
  * Y NO ES UN APAÑO PARA QUE PASEN: es lo que hace que sigan midiendo lo suyo. La
  * reconciliacion es la red que queda cuando la pantalla esta desactualizada,
- * SEA CUAL SEA el motivo, y el motivo mas realista hoy es justamente este —el
- * flujo caido, que no tiene cola y no recupera lo perdido—. Probarla con el
- * flujo cortado no es simular una condicion de laboratorio: es la condicion en
- * la que hace falta.
+ * SEA CUAL SEA el motivo. Los motivos reales son dos: el hueco entre que el flujo
+ * se cae y la reconexion refresca —`NOTIFY` no tiene cola, y lo perdido lo trae
+ * el refresco, no antes— y, sin limite de tiempo, una conexion `LISTEN` que muere
+ * sin cerrarse (ver la deuda en CLAUDE.md). Cortar el flujo para siempre no es
+ * simular una condicion de laboratorio: es alargar ese hueco lo que dure la
+ * prueba.
  *
  * Hay que llamarla ANTES de cargar la pagina; despues, la carrera con la
  * hidratacion decide si llega a tiempo.
@@ -470,9 +472,9 @@ export async function soltar(page: Page): Promise<void> {
  * la pantalla, en cambio, obliga a verlo encenderse primero, y eso si es una
  * carrera.
  *
- * LO USAN LAS TRES SUITES QUE ESCRIBEN —arrastre, QuickAdd y panel— porque el
- * problema es el mismo en las tres: toda mutacion de esta UI es una Server
- * Action, o sea un POST a la ruta actual.
+ * LO USA TODA SUITE QUE ESCRIBE DESDE LA PANTALLA, directamente o por
+ * `arrastrar` y `soltar`, porque el problema es el mismo en todas: toda mutacion
+ * de esta UI es una Server Action, o sea un POST a la ruta actual.
  *
  * CONSECUENCIA: la accion que se le pase TIENE que producir una escritura. Un
  * arrastre que termina donde empezo no manda nada (ver `alSoltar`) y esto
@@ -698,9 +700,10 @@ export function panel(page: Page): Locator {
 
 /**
  * Un campo del panel por su ETIQUETA, que es como lo encuentra una persona. Cada
- * control esta dentro de su `<label>`, asi que el nombre accesible sale del texto
- * de la etiqueta: si ese `<label>` se rompiera, la prueba deja de encontrar el
- * campo en vez de seguir andando por la clase CSS.
+ * control tiene su `<label>` HERMANO, asociado por `htmlFor` —`Etiqueta` en
+ * `task-editor.tsx` explica por que no lo envuelve—, asi que el nombre accesible
+ * sale del texto de la etiqueta: si esa asociacion se rompiera, la prueba deja de
+ * encontrar el campo en vez de seguir andando por la clase CSS.
  */
 export function campoDelPanel(page: Page, etiqueta: string): Locator {
   return panel(page).getByLabel(etiqueta, { exact: true });

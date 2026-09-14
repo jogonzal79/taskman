@@ -45,9 +45,13 @@ hace falta es el comando que lo averigua, no el dato.
   servicios en el mismo proceso y no consume su propia API pública (9.1), así que
   no tiene con qué. LO QUE EXPONE, por cada escritura del sistema: el tipo de
   actor, la acción, el tipo de entidad y su UUID. Nada de títulos, descripciones,
-  fechas ni contenido; para leer cualquier dato sigue haciendo falta la clave. Es
-  una decisión de sistema personal en un contenedor: el día que esto se publique,
-  va con la misma cabecera que el resto.
+  fechas ni contenido. Y que no lleve contenido NO quiere decir que el contenido
+  esté protegido: la UI entera no autentica. `GET /` sirve todos los tableros con
+  sus títulos y fechas, con `?tarea=` también la descripción, y las Server
+  Actions crean, editan, mueven y borran sin clave ni scopes (las dos lecturas,
+  medidas con `curl` sin cabecera `Authorization`: 200 y los datos en el HTML).
+  O sea que `/eventos` no expone nada que la página no exponga ya. Es el desvío
+  "La UI no tiene autenticación", más abajo.
 - **Qué endpoints faltan**: la tabla de la 6.2 es el objetivo y el comando de
   arriba es el estado; la resta de los dos es la lista. Cualquier copia escrita
   acá empieza a envejecer el mismo día.
@@ -63,8 +67,8 @@ las reglas que no se negocian y los invariantes del servidor MCP.
 
 ## Deuda conocida
 
-Salio del uso real, no de la especificacion. Ninguna esta arreglada; anotarlas
-aca es para que no se redescubran de cero.
+Salio del uso real y de las revisiones, no de la especificacion. Ninguna esta
+arreglada; anotarlas aca es para que no se redescubran de cero.
 
 Esta lista SÍ va escrita a mano, a diferencia del inventario de arriba, y la
 diferencia no es el formato: una entrada de acá se borra en el mismo commit que
@@ -180,6 +184,70 @@ contador de pruebas no tiene ese commit.
   su propio riesgo— y (2) recien entonces LISTEN/NOTIFY o un cache compartido,
   porque el problema real es entre procesos. `reiniciarCacheDeClaves()` ya existe
   y es el gancho que usaria cualquiera de las dos.
+- El aviso de cambios NO DISTINGUE TABLERO. `taskman_cambios` es un canal unico y
+  `AvisoDeCambio` no lleva el tablero, asi que una escritura en OTRO tablero hace
+  que `ColumnList` refresque el que se esta mirando. Hoy cuesta un render de mas y
+  nada visible: la marca de cambio ajeno se cuelga del id de la tarea, y un id de
+  otro tablero no encuentra tarjeta. Scopearlo exige que el aviso sepa el tablero
+  de cada escritura, o un canal por tablero con quien escucha re-suscribiendose
+  al cambiar de tablero.
+- No hay INDICADOR VISIBLE de que el flujo de cambios se cayo. El estado vive en
+  `data-cambios` de `ColumnList` ("conectado" o "conectando") y nada lo pinta:
+  una persona con el tablero sordo no tiene como enterarse salvo mirando el DOM.
+  Desde be319a6 el atributo dice la verdad cuando la escucha se cae y se cierra;
+  lo que falta es mostrarlo. Tampoco distingue "reintentando" de "se rindio": si
+  `EventSource` abandona —ante una respuesta que no es 200, como el 204 con el
+  que las pruebas cortan el flujo— el atributo se queda en "conectando".
+- Una conexion `LISTEN` que muere SIN CERRARSE —corte de red, portatil
+  suspendido— deja el tablero SORDO y "conectado". `pg` solo se entera de una
+  caida por un `error` o un `end`, y sin FIN ni RST no llega ninguno, asi que
+  `lib/cambios.ts` no tiene nada que atender y los flujos siguen abiertos con su
+  latido. Es la mitad que be319a6 NO arreglo, y es mas frecuente que el caso
+  arreglado. NO ESTA MEDIDA.
+- `ColumnList` SIGUE MONTADO al cambiar de tablero: la pagina lo renderiza sin
+  `key`, asi que React reusa la instancia y su estado de cliente cruza de un
+  tablero al otro. Lo visible: el aviso de un arrastre fallado en un tablero sigue
+  arriba del otro hasta el siguiente arrastre, porque el error solo se limpia al
+  empezar uno. Sin `key` A PROPOSITO: ponerla remontaria `ColumnList` en cada
+  cambio y con el reabriria `/eventos`, y un aviso que llegue en ese hueco se
+  pierde.
+- Un tablero FUERA DE LA PRIMERA PAGINA del listado —mas de
+  `LIMITE_PAGINA_MAXIMO` tableros— se abre por su enlace, porque `cargarVista` lo
+  carga por id, pero no aparece en la barra ni queda marcado: la barra lista solo
+  la primera pagina y dice "y mas sin mostrar". En uso personal no pasa.
+- Las Server Actions NO VALIDAN CON EL CONTRATO. `lib/acciones.ts` llama al
+  nucleo sin pasar por los esquemas de `packages/contracts`, y la existencia del
+  dia de `due_date` solo la valida el contrato (`fechaSola`): `editarTarea` la
+  convierte con `aFechaUtc`, que no comprueba nada, y `TaskService.update` la
+  asigna como llega. O sea que un POST armado a mano contra la accion con
+  "2026-02-30" guarda el 2 de marzo sin avisar, igual que la entrada de `aFecha`
+  para MCP. Lo medido es la conversion (`new Date("2026-02-30T00:00:00.000Z")`
+  da `2026-03-02`); el POST a mano no se reprodujo. Desde la UI real no pasa,
+  porque `<input type="date">` solo produce fechas validas. Incumple ademas la
+  3.2, que pide a los adaptadores validar con el esquema de contratos, y vale
+  para cualquier campo que el contrato restrinja y el dominio no: una accion es
+  un POST publico y sus tipos no existen en tiempo de ejecucion.
+- Un BORRADO que falla por error interno NO MUESTRA EL `requestId`: `borrar` en
+  `task-editor.tsx` pinta solo `resultado.mensaje`, mientras `ResultadoAccion`
+  (`lib/acciones.ts`) dice que el `requestId` se muestra justamente en el fallo
+  no controlado, que es cuando es lo unico util que copiar. El guardado del mismo
+  panel, el QuickAdd, "Nuevo tablero" y el arrastre si lo agregan.
+- "HOY" SE CALCULA EN UTC, y la marca de vencida sale antes de tiempo. `esVencida`
+  compara contra el dia UTC y el filtro `overdue` contra el `CURRENT_DATE` de una
+  sesion en UTC (`domain/vencimiento.ts` explica por que tienen que coincidir),
+  pero la fecha limite la elige una persona en su calendario local. En UTC-4 —la
+  zona de esta maquina en verano— desde las 20:00 locales una tarea que vence HOY
+  sale "Vencida" y entra en el filtro de vencidas, hasta la medianoche. La prueba
+  de "vence hoy" no lo ve porque siembra relativo al dia UTC. La salida no es
+  tocar `esVencida` sola: las dos puntas tienen que moverse juntas a la zona de
+  quien mira, que el sistema hoy no conoce.
+- La LINEA DE LOG POR PETICION de la 11.1 —request_id, metodo, ruta, estado,
+  duracion, prefijo de clave y actor— solo la escriben `conAuth` y `/api/health`
+  (`registrarPeticion`). Las Server Actions no escriben ninguna: dejan rastro en
+  el log solo cuando fallan sin controlar (`registrarFallo`, con su request_id),
+  asi que una accion que sale bien, o que devuelve un error de dominio, no
+  aparece. Tampoco escriben linea el render de `GET /` ni `/eventos`. El
+  request_id de una accion que escribe si queda en `audit_log`.
 
 ## Desvíos declarados de la especificación
 
@@ -196,10 +264,12 @@ Cada una dice de QUÉ sección se desvía y POR QUÉ, no solo qué falta. Si el
 motivo dejó de valer, ahí está el disparador para volver a mirarla.
 
 - **La UI es SOLO ESCRITORIO.** La 9.3 pide responsive —"en pantallas estrechas
-  las columnas se muestran de una en una con navegación por pestañas"— y eso
-  queda descartado: por debajo de 1024 px no se sirve una versión degradada sino
-  un aviso. El motivo es que un tablero Kanban de a una columna deja de ser un
-  tablero: lo que se mira en él es la relación entre columnas, y con pestañas hay
+  las columnas se muestran de una en una con navegación por pestañas"— y la 13
+  del funcional lo pide entre los requisitos no funcionales —"diseño responsive
+  para uso personal en desktop y móvil"—. Los dos quedan descartados: por debajo
+  de 1024 px no se sirve una versión degradada sino un aviso. El motivo es que un
+  tablero Kanban de a una columna deja de ser un tablero: lo que se mira en él es
+  la relación entre columnas, y con pestañas hay
   que recordar lo que no se ve. Antes que hacerlo mal, no hacerlo y decirlo.
   Ya está escrito en `globals.css` y `layout.tsx`, está probado
   (`tablero-lectura.spec.ts`, el caso de 1023 px) y el usuario ve el motivo en
@@ -217,6 +287,11 @@ motivo dejó de valer, ahí está el disparador para volver a mirarla.
   invalidada solo puede volver a PREGUNTAR después, y entre el commit y esa
   pregunta cabe otra escritura; el orden autoritativo tiene que venir en la
   respuesta de la acción, releído dentro de la transacción que lo escribió.
+  El disparador que esa cabecera nombraba para volver a mirarlo —las
+  notificaciones de cambios de agentes— ya ocurrió (`/eventos`) y no cambia el
+  argumento: un aviso dispara `router.refresh()`, que vuelve a pedir el render
+  del servidor, así que sigue sin haber una capa de fetch en el cliente. Queda el
+  otro: una pantalla con varios tableros a la vez.
 
 - **Sin "acción de nueva tarea" en BoardHeader**, que la 9.3 le asigna junto al
   nombre, el selector y los filtros. El QuickAdd al pie de cada columna (que la
@@ -255,6 +330,24 @@ motivo dejó de valer, ahí está el disparador para volver a mirarla.
   veces. Disparador: el día que esto se le entregue a alguien más, porque ahí
   emitir una clave deja de ser una tarea de quien administra la máquina.
 
+- **La UI NO TIENE AUTENTICACIÓN.** Quien llega al puerto de la aplicación lee y
+  escribe todo sin clave: `GET /` sirve todos los tableros con sus títulos y
+  fechas, `?tarea=` agrega la descripción (las dos medidas con `curl` sin cabecera
+  `Authorization`: 200 y los datos en el HTML), y las Server Actions crean,
+  editan, mueven y borran sin clave ni scopes (7.2). De paso quedan fuera el
+  límite de la 7.3, que se cobra por clave dentro de `conAuth`, y el `client_id`
+  de la auditoría: la UI escribe como USER con `client_id` NULL. `/eventos` no
+  agrega exposición a eso. El motivo: es un sistema personal en un contenedor, y
+  la UI invoca los servicios en el mismo proceso y no consume su propia API
+  pública (9.1), así que no tiene clave que presentar ni a quién presentársela.
+  OJO, la especificación se contradice sola en este punto. La ADR-005 (2.5) dice
+  que "la sesión de la UI web usa el mismo mecanismo mediante una clave de
+  servidor que nunca llega al navegador"; la 7.3 dice que "los Server Components
+  y las Server Actions invocan el núcleo directamente en el servidor", y no nombra
+  ninguna clave. El repo sigue a la 7.3 y a la 9.1, y por eso el CT-08 no tiene
+  superficie en la UI (ver el mapa CT). Disparador: que el puerto de la
+  aplicación sea alcanzable por alguien más que quien administra la máquina.
+
 - **Sin el aislamiento de pruebas de la 10.3**, que pide "un esquema PostgreSQL
   propio, creado y destruido en el ciclo de vida de la suite, para permitir
   paralelismo sin interferencias". El repo usa UNA base compartida, `TRUNCATE` en
@@ -264,8 +357,8 @@ motivo dejó de valer, ahí está el disparador para volver a mirarla.
   que se gana es que no hay que crear ni destruir esquemas. Disparador: que la
   corrida de `verify` moleste de verdad.
   OJO, la otra mitad de la 10.3 SÍ está: el script de siembra determinista
-  invocable con una semilla fija existe (`apps/web/e2e/semilla.ts`, semillas
-  `principal` y `vacio`), y de él parten las pruebas de extremo a extremo.
+  invocable con una semilla fija existe (`apps/web/e2e/semilla.ts`, una semilla
+  por clave de `SEMILLAS`), y de él parten las pruebas de extremo a extremo.
 
 ## Entorno
 
@@ -280,10 +373,21 @@ motivo dejó de valer, ahí está el disparador para volver a mirarla.
   residuo cambia con el orden de las suites —este archivo decía "fixture de
   `apps/mcp-stdio`" y dejó de ser cierto en cuanto `apps/web` pasó a correr
   después—, así que no lo anotes acá: si ves algo y dudás, buscá de dónde sale
-  con `grep -rn "<lo que viste>" --include=*.test.ts .`. Ya engañó una vez, con
-  un título de TAREA leído como nombre de tablero. La búsqueda incluye ahora
-  `apps/web/e2e/`: la siembra de la 10.3 trunca y siembra igual, y es la última
-  que corre.
+  con
+
+  ```
+  grep -rn "<lo que viste>" apps packages --include=*.ts \
+    --exclude-dir=node_modules --exclude-dir=generated --exclude-dir=.next \
+    --exclude-dir=.next-humo --exclude-dir=.next-e2e
+  ```
+
+  Ya engañó una vez, con un título de TAREA leído como nombre de tablero. NO
+  filtra por `*.test.ts`, y es a propósito: la última suite que corre es la de
+  extremo a extremo, que parte de la siembra de la 10.3 —trunca y siembra igual—,
+  y los textos de esa siembra viven en `apps/web/e2e/semilla.ts` y `base.ts`, que
+  no son archivos de prueba. Este
+  archivo mandaba antes un `--include=*.test.ts` que, con ese residuo, no
+  devolvía nada.
 - Eso incluye `api_key`: verify también la vacía, así que cualquier clave
   emitida a mano desaparece en el próximo verify y hay que reemitirla con
   `pnpm run apikey:create`.

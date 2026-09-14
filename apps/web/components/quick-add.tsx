@@ -9,20 +9,20 @@ import { recordarCambioPropio } from "../lib/cambios-propios";
  * QuickAddInput (9.3): "Creacion de tarea escribiendo el titulo al final de una
  * columna."
  *
- * ES EL PRIMER COMPONENTE DE CLIENTE DEL PROYECTO, y esta escrito para seguir
+ * FUE EL PRIMER COMPONENTE DE CLIENTE DEL PROYECTO, y esta escrito para seguir
  * siendo el mas chico posible: un campo, tres piezas de estado y nada mas. No
- * conoce el tablero, no conoce las tarjetas y no lee datos —los ids llegan como
- * propiedades desde el Server Component que ya los tenia—, asi que el limite
- * cliente/servidor cae exactamente aca y no un nivel mas arriba. `ColumnCard`,
- * `ColumnList` y la pagina siguen siendo servidor.
+ * conoce el tablero, no conoce las tarjetas y no lee datos: los ids llegan como
+ * propiedades. Cuando se escribio, el limite cliente/servidor caia exactamente
+ * aca; desde el arrastre cae mas arriba, en `ColumnList`, que es de cliente y
+ * arrastra con el a `ColumnCard` y a este componente.
  *
- * NO HAY ESTADO DE CLIENTE QUE RECONCILIAR, y por eso no hay TanStack Query
- * todavia. La lista de tarjetas la sigue pintando el servidor: la accion invalida
- * la ruta (`revalidatePath`) y Next devuelve el arbol nuevo junto con la
- * respuesta de la accion. Lo unico que este componente guarda es lo que el
- * servidor no puede saber —que hay tecleado, si hay algo en vuelo y cual fue el
- * ultimo error—. La reconciliacion optimista de la 9.2 entra con el arrastre, que
- * es donde hace falta de verdad.
+ * ESTE COMPONENTE NO TIENE ESTADO QUE RECONCILIAR. No toca la lista de tarjetas:
+ * la accion invalida la ruta (`revalidatePath`) y Next devuelve el arbol nuevo
+ * junto con la respuesta de la accion. Lo unico que guarda es lo que el servidor
+ * no puede saber —que hay tecleado, si hay algo en vuelo y cual fue el ultimo
+ * error—. La reconciliacion optimista de la 9.2 vive en el arrastre
+ * (`ColumnList`), y por que no hay TanStack Query esta en la cabecera de ese
+ * archivo y en los desvios declarados de CLAUDE.md.
  *
  * UN `<form>` Y NO un `onKeyDown` que compare "Enter". El submit nativo ya
  * resuelve lo que ese `if` tendria que resolver a mano: el Enter del teclado
@@ -151,9 +151,10 @@ export function QuickAdd({
            * lo escrito, no salir del campo— asi que despues de un Escape se puede
            * empezar a escribir de nuevo directamente.
            *
-           * `stopPropagation` porque Escape es la tecla que cierra cosas: el dia
-           * que exista el panel de detalle de la 9.3, un Escape tecleado en este
-           * campo tiene que limpiar el campo y NO cerrar el panel de al lado.
+           * `stopPropagation` porque Escape es la tecla que cierra cosas: el
+           * panel de detalle de la 9.3 lo escucha en `document` para cerrarse, y
+           * un Escape tecleado en este campo tiene que limpiar el campo y NO
+           * cerrar el panel de al lado.
            */
           evento.stopPropagation();
           setTitulo("");

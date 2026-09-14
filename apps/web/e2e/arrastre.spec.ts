@@ -269,9 +269,9 @@ test("Escape a mitad del arrastre devuelve la tarjeta a su columna y no escribe 
 
 /**
  * COMO SE FUERZA EL FALLO: un agente BORRA la tarea por el nucleo mientras la
- * pantalla la sigue mostrando. La pagina no consulta sola, asi que la tarjeta
- * sigue ahi y se puede arrastrar; al soltarla, `TaskService.move` no encuentra
- * la fila y lanza TASK_NOT_FOUND.
+ * pantalla la sigue mostrando. Con el flujo de cambios cortado (ver abajo) la
+ * pantalla no se entera, asi que la tarjeta sigue ahi y se puede arrastrar; al
+ * soltarla, `TaskService.move` no encuentra la fila y lanza TASK_NOT_FOUND.
  *
  * Se elige este y no un doble ni una ruta de prueba porque es un fallo REAL del
  * sistema —el caso de dos actores sobre el mismo tablero, que es para lo que

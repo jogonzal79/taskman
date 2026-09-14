@@ -33,8 +33,10 @@ import { aFechaUtc } from "./tareas";
  * consigo misma, y ademas pagaria un salto de red y una serializacion de ida y
  * vuelta para llegar al mismo `TaskService` que ya tiene importado. El precio de
  * NO pasar por ahi es que las validaciones del contrato de la 6.3.1 no se
- * aplican; las que importan son las del dominio, que si se aplican porque viven
- * en el nucleo (el titulo se normaliza en `TaskService.create`).
+ * aplican. Las del dominio si, porque viven en el nucleo (el titulo se normaliza
+ * en `TaskService.create`), pero NO son todas las que importan: la existencia del
+ * dia de `due_date` solo la valida el contrato, y por este camino un dia
+ * inexistente se guarda corrido (ver la deuda en CLAUDE.md).
  *
  * ESTE MODULO NO IMPORTA NADA DE REACT y no renderiza: un archivo con
  * `"use server"` solo puede exportar funciones asincronas, asi que todo lo que no
@@ -304,17 +306,18 @@ export interface CamposDeTarea {
  *
  * Lo defiende el TYPECHECK y NO la suite, igual que en los dos handlers REST que
  * hacen esto mismo: cambiarlo por `description: entrada.description` deja toda la
- * suite en verde y falla con TS2375 por `exactOptionalPropertyTypes`. Lo que la
- * suite SI atrapa son los colapsos que COMPILAN, y son dos, cada uno con su
- * prueba en la base:
+ * suite en verde y falla con TS2375 por `exactOptionalPropertyTypes`. Los
+ * colapsos que COMPILAN son dos, y la suite atrapa UNO SOLO:
  *
  *   - Convertir el campo vacio a `""` en vez de a `null` (lo hace el cliente,
  *     ver `task-editor.tsx`): compila, y guarda una cadena vacia donde tenia que
- *     quedar NULL. Se ve por SQL y no en pantalla, porque una descripcion vacia
- *     y una NULL se pintan igual.
+ *     quedar NULL. NO lo atrapa ninguna prueba: una descripcion vacia y una NULL
+ *     se pintan igual, y `e2e/base.ts` no lee esa columna. Se comprobo por SQL a
+ *     mano cuando se escribio el panel.
  *   - `?? null` en lugar del spread: compila si se escribe
  *     `description: entrada.description ?? null`, y entonces NO tocar la
- *     descripcion pasa a BORRARLA.
+ *     descripcion pasa a BORRARLA. Lo atrapa `task-detail.spec.ts`, en la prueba
+ *     que edita otro campo y recarga.
  *
  * `dueDate` LLEGA COMO CADENA y se ancla aca con `aFechaUtc`, la misma conversion
  * del borde REST. Es lo que impide el corrimiento de un dia: la columna es DATE,

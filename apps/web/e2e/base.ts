@@ -196,10 +196,12 @@ function contextoDeAgente(): ActorContext {
  * MUEVE UNA TAREA SIN PASAR POR EL NAVEGADOR, como haria un agente por MCP
  * mientras la pantalla esta abierta.
  *
- * La pantalla NO se entera: la pagina es `force-dynamic` pero no consulta sola,
- * asi que sigue mostrando —y sigue calculando sobre— el tablero que cargo. Esa
- * es justamente la divergencia que el punto 3 de la 9.2 existe para corregir, y
- * la unica forma honesta de provocarla.
+ * Por si sola la pantalla SI se enteraria, por `/eventos` (CT-07). Por eso las
+ * pruebas que usan esta funcion para provocar una divergencia cortan antes el
+ * flujo (`cortarElFlujoDeCambios`): con el flujo cortado, la pantalla sigue
+ * mostrando —y sigue calculando sobre— el tablero que cargo. Esa es justamente la
+ * divergencia que el punto 3 de la 9.2 existe para corregir, y la unica forma
+ * honesta de provocarla.
  */
 export async function moverPorElNucleo(
   titulo: string,

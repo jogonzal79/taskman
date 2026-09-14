@@ -245,8 +245,9 @@ export function TaskCard({
       </button>
 
       {/*
-        LA TARJETA ENTERA ES UN ENLACE al panel de detalle, `/?tarea=<id>`. Un
-        enlace y no un `onClick`, que es lo que la deja abrible con el teclado,
+        LA TARJETA ENTERA ES UN ENLACE al panel de detalle: la URL de este
+        tablero con `tarea=<id>` (`enlaceTablero`). Un enlace y no un
+        `onClick`, que es lo que la deja abrible con el teclado,
         con el boton del medio y con JavaScript apagado.
 
         `draggable={false}` apaga el arrastre NATIVO de los enlaces. Sin eso, al

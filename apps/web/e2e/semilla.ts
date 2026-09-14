@@ -24,7 +24,7 @@ import { Client } from "pg";
  * seed —no depende de la implementacion del generador ni de la version de Node—
  * y ademas hace que las aserciones importen las MISMAS constantes que se
  * sembraron, en vez de repetir a mano lo que se espera ver. Lo que se fija es el
- * NOMBRE de la semilla: `principal` o `vacio`.
+ * NOMBRE de la semilla, que es una de las claves de `SEMILLAS`.
  *
  * LO UNICO QUE NO ES LITERAL son dos cosas, las dos inevitables:
  *

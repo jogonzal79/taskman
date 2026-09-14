@@ -15,10 +15,11 @@ import {
  *
  * Cubre los casos 1, 4 y 6 del paso —crear y que aparezca, el titulo vacio, y
  * Escape— mas el del titulo demasiado largo, que es el unico que prueba que el
- * error LLEGA A LA PANTALLA. Los dos que se comprueban por SQL —la position al
- * final y el `actor_type` USER de la auditoria— no estan aca: son sobre la base y
- * no sobre el render, y afirmarlos desde el navegador obligaria a exponer un
- * camino de lectura que la UI no tiene.
+ * error LLEGA A LA PANTALLA. La position al final SI se afirma por SQL, en la
+ * ultima prueba (CT-02, abajo), con la lectura directa de la base de
+ * `e2e/base.ts`. El `actor_type` USER de la tarea creada NO se afirma en ninguna
+ * prueba de extremo a extremo; el de un tablero creado desde la barra si (CT-01,
+ * `tableros.spec.ts`).
  *
  * LO QUE HACE QUE ESTAS PRUEBAS MIDAN "SE VE" Y NO SOLO "SE CREO": ninguna
  * recarga. Se marca `window` antes de teclear y se comprueba que la marca

@@ -488,7 +488,8 @@ body {
 /* --- TaskCard (9.3): titulo, prioridad, fecha y marca de vencida ---------- */
 
 /*
- * La tarjeta entera es un enlace al panel (`/?tarea=<id>`). El `<a>` no aporta
+ * La tarjeta entera es un enlace al panel (`tarea=<id>` en la URL del tablero,
+ * ver `enlaceTablero`). El `<a>` no aporta
  * apariencia: hereda la tinta y no subraya, porque una tarjeta subrayada en azul
  * dentro de un tablero gris se leeria como un enlace a otro sitio y no como la
  * tarjeta que ya se ve. Lo que si tiene es foco visible, que es lo unico que

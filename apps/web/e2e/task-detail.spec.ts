@@ -23,17 +23,21 @@ import {
  * TaskDetailPanel (9.3): abrir una tarjeta, editar sus campos al perder el foco,
  * y borrar.
  *
- * Cubre los casos 1, 2, 5 y 7 del paso. Los que van por SQL en el reporte —que
- * vaciar la descripcion la deje en NULL, que no tocarla la conserve, la fecha sin
- * corrimiento de dia y la ausencia de auditoria cuando no hay cambio efectivo—
- * NO estan aca, y no por comodidad: una descripcion vacia y una NULL se pintan
- * EXACTAMENTE igual en el campo, asi que una prueba de navegador no puede
- * distinguirlas. Afirmar por pantalla lo que solo se ve en la base seria escribir
- * una prueba que pasa en los dos casos.
+ * Cubre los casos 1, 2, 5 y 7 del paso, y lo que el CT-04 y el CT-05 piden mirar
+ * por SQL: la fecha sin corrimiento de dia (`to_char` en la base) y la densidad
+ * despues de borrar.
  *
- * Como en las de QuickAdd, ninguna recarga: se marca `window` y se comprueba que
- * la marca sobrevive, o sea que lo que cambio la pantalla fue la revalidacion y
- * no una carga de documento.
+ * LO QUE NINGUNA PRUEBA DE ACA AFIRMA: que vaciar la descripcion la deje en NULL
+ * y no en cadena vacia, y que un guardado sin cambio efectivo no audite. Lo
+ * primero no se ve desde el navegador —una descripcion vacia y una NULL pintan
+ * el campo EXACTAMENTE igual— y `e2e/base.ts` no lee esa columna; las dos cosas
+ * se comprobaron por SQL a mano cuando se escribio el panel. Que editar OTRO
+ * campo conserve la descripcion si esta, por pantalla y recargando.
+ *
+ * Casi ninguna recarga: se marca `window` y se comprueba que la marca sobrevive,
+ * o sea que lo que cambio la pantalla fue la revalidacion y no una carga de
+ * documento. La excepcion es la prueba de la descripcion, que recarga a
+ * proposito (ver ahi por que).
  */
 
 async function marcar(page: import("@playwright/test").Page): Promise<void> {

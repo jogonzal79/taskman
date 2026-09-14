@@ -92,9 +92,13 @@ import { TarjetaVisual } from "./task-card";
  *     cache invalidada solo puede volver a preguntar DESPUES, y entre el commit
  *     y esa pregunta cabe otra escritura.
  *
- * El dia que aparezca una pantalla que SI consulte por su cuenta —notificaciones
- * de cambios de agentes, varios tableros a la vez— la decision se vuelve a mirar
- * con un caso concreto delante, que es lo que hoy no hay.
+ * EL DISPARADOR QUE ESTE COMENTARIO NOMBRABA YA OCURRIO, y el argumento no
+ * cambia. Decia que la decision se volveria a mirar cuando llegaran las
+ * notificaciones de cambios de agentes, y llegaron (`/eventos`, CT-06 y CT-07),
+ * pero no consultan nada desde el navegador: un aviso solo provoca
+ * `router.refresh()`, que vuelve a pedir el render del SERVIDOR. Sigue sin haber
+ * una capa de fetch en el cliente que cachear. Queda el otro disparador: una
+ * pantalla con varios tableros a la vez.
  *
  * --- EL ESTADO Y LAS PROPIEDADES --------------------------------------------
  *

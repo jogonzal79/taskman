@@ -14,10 +14,10 @@
  * agente, la API— es ajeno.
  *
  * VIVE EN EL MODULO Y NO EN UN COMPONENTE porque los productores estan repartidos
- * —`QuickAdd`, `TaskEditor` y `ColumnList` escriben cada uno por su lado— y el
- * consumidor es uno solo. Un contexto de React seria el mismo Set con un
- * proveedor alrededor; en el navegador un modulo de cliente ya es una instancia
- * por documento, que es exactamente el alcance que hace falta.
+ * —cada componente que llama a una Server Action anota su `requestId` por su
+ * lado— y el consumidor es uno solo. Un contexto de React seria el mismo Set con
+ * un proveedor alrededor; en el navegador un modulo de cliente ya es una
+ * instancia por documento, que es exactamente el alcance que hace falta.
  *
  * NO SIRVE PARA NADA MAS. No es una cache ni un registro de actividad: es una
  * ventana corta de identificadores, y por eso se poda.

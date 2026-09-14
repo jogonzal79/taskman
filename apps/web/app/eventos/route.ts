@@ -21,10 +21,14 @@ import { suscribirseACambios } from "../../lib/cambios";
  * tipo de actor, la accion, el tipo de entidad y su UUID. No lleva titulos, ni
  * descripciones, ni fechas, ni el contenido de nada. Es el minimo que la
  * pantalla necesita para saber a que tarjeta ponerle la marca, y no hay forma de
- * reconstruir un tablero con eso: para leer cualquier dato sigue haciendo falta
- * la clave. Que la ruta no autentique es, aun asi, una decision de sistema
- * personal en un contenedor; el dia que esto se publique, va con la misma
- * cabecera que el resto.
+ * reconstruir un tablero con eso.
+ *
+ * Lo que eso NO hace es proteger el contenido: la UI entera no autentica. `GET /`
+ * sirve los tableros con sus titulos y fechas, `?tarea=` agrega la descripcion,
+ * y las Server Actions escriben y borran sin clave. Esta ruta no expone nada que
+ * la pagina no exponga ya. Es una decision de sistema personal en un contenedor,
+ * declarada en los desvios de CLAUDE.md ("La UI no tiene autenticacion"); el dia
+ * que esto se publique, va con la misma cabecera que el resto.
  *
  * --- POR QUE SSE Y NO WEBSOCKET ---------------------------------------------
  *

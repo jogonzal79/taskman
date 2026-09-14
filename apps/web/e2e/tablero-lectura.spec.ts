@@ -284,12 +284,12 @@ test("por debajo de 1024 px sale el aviso, no una version degradada", async ({ p
  *          seleccionado no pueda ser casualidad, y las cuatro columnas se
  *          comprueban en pantalla y por SQL —key, nombre y position de la 4.3—
  *          con el actor USER en `audit_log`. El primer tablero de una base vacia,
- *          que solo se puede crear desde la barra, en `sin-tableros.spec.ts`. El
- *          mismo archivo cubre el selector de la 9.3 (que vive en la barra y no
- *          en BoardHeader, ver CLAUDE.md): llegar al segundo tablero, que el
- *          elegido sobreviva al recargado y se comparta por URL, y que ningun
- *          enlace de la pagina —filtros, tarjetas, cierre del panel— devuelva al
- *          primero.
+ *          que solo se puede crear desde la barra, en `sin-tableros.spec.ts`.
+ *          `tableros.spec.ts` cubre ademas el selector de la 9.3 (que vive en la
+ *          barra y no en BoardHeader, ver CLAUDE.md): llegar al segundo
+ *          tablero, que el elegido sobreviva al recargado y se comparta por
+ *          URL, y que ningun enlace de la pagina —filtros, tarjetas, cierre del
+ *          panel— devuelva al primero.
  *          Lo que NO falta: crear, borrar o reordenar COLUMNAS desde la UI. El
  *          capitulo 9 no se lo asigna a ningun componente, la 18 traza sus
  *          "columnas" a este CT —o sea a que aparezcan las cuatro de la 4.3— y el
@@ -304,8 +304,10 @@ test("por debajo de 1024 px sale el aviso, no una version degradada", async ({ p
  *          CUBIERTO, en `arrastre.spec.ts`, con la recarga y con el orden denso
  *          comprobado por SQL en las dos columnas.
  *   CT-04  Editar titulo, prioridad y fecha en el panel de detalle.
- *          CUBIERTO, en `task-detail.spec.ts`: titulo, descripcion, prioridad y
- *          FECHA, los cuatro con su reflejo en la tarjeta. La fecha se comprueba
+ *          CUBIERTO, en `task-detail.spec.ts`: titulo, prioridad y FECHA, los
+ *          tres con su reflejo en la tarjeta. La descripcion tambien se edita,
+ *          pero la tarjeta no la pinta: su prueba la mira en el panel despues de
+ *          recargar. La fecha se comprueba
  *          en los dos extremos —el dia en la base con `to_char` y el texto de la
  *          tarjeta— porque el corrimiento de un dia se puede introducir al
  *          escribir o al leer, y una sola punta no distingue los dos casos.
@@ -325,8 +327,9 @@ test("por debajo de 1024 px sale el aviso, no una version degradada", async ({ p
  *          con resolucion por nombre y actor AGENT. Lo unico que no recorre es el
  *          transporte stdio.
  *   CT-08  Clave sin scope delete contra la UI de borrado.    Falta: la UI no usa
- *          la API ni claves (9.1), asi que este escenario no tiene superficie aca;
- *          el scope si esta cubierto en la suite de contrato de `apps/web/test`.
+ *          la API ni claves (9.1), asi que este escenario no tiene superficie aca
+ *          —es el desvio "la UI no tiene autenticacion" de CLAUDE.md—; el scope
+ *          si esta cubierto en la suite de contrato de `apps/web/test`.
  *   CT-09  Filtrar por prioridad y por vencidas.              CUBIERTO, en
  *          `filtros.spec.ts`, incluido que el conjunto filtrado por vencidas y el
  *          que la UI marca como vencido sean el mismo.

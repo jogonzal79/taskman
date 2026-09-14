@@ -11,8 +11,9 @@ import {
 import { cargarVista, paraLaPantalla, ubicarEnVista } from "../lib/tablero";
 
 /**
- * El tablero (9.1, 9.3). Lectura, mas la unica escritura que ya existe: el
- * QuickAdd al pie de cada columna.
+ * El tablero (9.1, 9.3): la lectura, y desde aca cuelgan todas las escrituras de
+ * la UI —crear tableros y tareas, editar, borrar y mover—, que son Server
+ * Actions (`lib/acciones.ts`) disparadas desde componentes de cliente.
  *
  * ESTA PAGINA ES UN SERVER COMPONENT, y se puede comprobar sin creerlo: la
  * funcion es `async` y espera al nucleo, cosa que un Componente de Cliente no

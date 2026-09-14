@@ -37,10 +37,12 @@ export interface TareaEnTablero {
   title: string;
   /**
    * No la pinta la TARJETA —la 9.3 le da titulo, prioridad y fecha, y nada mas—
-   * sino el PANEL de detalle, que la edita. Viaja igual con cada tarea porque el
+   * sino el PANEL de detalle, que la edita. Se CARGA con cada tarea porque el
    * panel se resuelve sobre lo que la pagina ya cargo (ver `ubicarEnVista`) y no
    * con una consulta propia: traerla aca cuesta una columna mas en un SELECT que
-   * ya se hace, y no traerla costaria una consulta por apertura de panel.
+   * ya se hace, y no traerla costaria una consulta por apertura de panel. Lo que
+   * NO hace es cruzar al navegador: `paraLaPantalla` la quita antes de pasarle
+   * las columnas a `ColumnList`, y solo viaja la de la tarea abierta.
    */
   description: string | null;
   priority: Task["priority"];
