@@ -69,7 +69,9 @@ import { registrarFallo } from "./log";
  * DESCARTADO un evento de estado ("sordo") con el flujo abierto. Obligaria a un
  * temporizador de reconexion en el servidor, y a sostener dos nociones de
  * "conectado" —la del socket y la de la escucha— que el cliente tendria que
- * cruzar. Cerrando, son la misma: un flujo abierto es una escucha viva.
+ * cruzar. Cerrando, son la misma: un flujo abierto es una escucha viva, salvo
+ * cuando la conexion muere sin cerrarse y `pg` no se entera (deuda en
+ * CLAUDE.md, sin medir).
  *
  * NO HAY TEMPORIZADOR DE RECONEXION. Reintentan las pestañas abiertas, una vez
  * cada `REINTENTO_MS` de `/eventos`, y solo mientras la escucha falte: sin

@@ -37,11 +37,12 @@ import {
  *
  * DECISION TOMADA: las pruebas de los defectos afirman el comportamiento
  * CORRECTO, hoy fallan, y entran marcadas con `test.fail()`. LA MARCA SE QUITA
- * EL DIA QUE SE ARREGLE EL DEFECTO: con el arreglo la prueba pasa, Playwright la
- * da por fallida ("expected to fail, but passed") y `verify` se pone rojo hasta
- * que alguien la quite. Guardarlas para commitearlas junto al arreglo
- * significaria perderlas si el arreglo se pospone, y lo que vive fuera del repo
- * se evapora.
+ * EL DIA QUE SE ARREGLE EL DEFECTO. Lo que pasa si nadie la quita esta medido:
+ * a una prueba marcada que PASA, Playwright la reporta como fallida —imprime
+ * "Expected to fail, but passed." y sale con exit 1—, y un fallo de Playwright
+ * deja `verify` en rojo, que es lo que midio la contraprueba de esta marca.
+ * Guardarlas para commitearlas junto al arreglo significaria perderlas si el
+ * arreglo se pospone, y lo que vive fuera del repo se evapora.
  *
  * LA TRAMPA DE LA MARCA: `test.fail()` acepta CUALQUIER fallo, no el que se
  * busca. Si el montaje se rompiera —la retencion deja de retener, Tab ya no
@@ -222,8 +223,9 @@ test.fail("DEUDA 2: elegir la prioridad con dos flechas y salir con Tab guarda l
    * Dos fotogramas antes de la segunda flecha, para que el guardado de la
    * primera ya este EN VUELO para el componente cuando ella llega. Sin esto la
    * segunda podria entrar antes de que React pinte el `enVuelo` y guardarse
-   * tambien, y la prueba pasaria —o sea, se pondria roja por la marca— sin que
-   * nadie hubiera arreglado nada.
+   * tambien, y la prueba pasaria sin que nadie hubiera arreglado nada: con la
+   * marca puesta, eso es un rojo falso (una marcada que pasa sale con exit 1,
+   * medido).
    */
   await fotograma(page);
   await page.keyboard.press("ArrowDown");

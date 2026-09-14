@@ -204,6 +204,15 @@ contador de pruebas no tiene ese commit.
   `lib/cambios.ts` no tiene nada que atender y los flujos siguen abiertos con su
   latido. Es la mitad que be319a6 NO arreglo, y es mas frecuente que el caso
   arreglado. NO ESTA MEDIDA.
+- SILENCIO EN EL LOG durante una caida larga de la base. Cuando el `LISTEN` se
+  cae, el cliente `pg` emite `error` y eso escribe dos lineas `listen`; los
+  reintentos que siguen —cada pestana abierta vuelve a pedir `/eventos` cada
+  ~3 s, y cada pedido intenta conectar— no escriben ninguna, porque el `catch`
+  de la ruta cierra el flujo sin registrar. MEDIDO con `docker compose stop
+  postgres`: la caida sumo dos lineas `listen` al log, y no sumo ninguna mas
+  durante cuatro reintentos fallidos. Si el `LISTEN` no pudiera volver con la
+  base arriba —por credenciales, por ejemplo— quedaria solo esa primera traza
+  mientras las pestanas reintentan.
 - `ColumnList` SIGUE MONTADO al cambiar de tablero: la pagina lo renderiza sin
   `key`, asi que React reusa la instancia y su estado de cliente cruza de un
   tablero al otro. Lo visible: el aviso de un arrastre fallado en un tablero sigue
@@ -276,13 +285,21 @@ contador de pruebas no tiene ese commit.
   LO QUE LA PRUEBA AFIRMA ES EL VALOR GUARDADO: dos flechas y Tab tienen que
   guardar MEDIUM, y hoy queda HIGH. La perdida de foco del select tras el
   remontaje se vio en la sonda de medicion y NO esta en la suite.
+- MONTAJE 2 y DEUDA 2 dependen de que una flecha sobre un `<select>` cerrado
+  cambie su valor, y eso esta MEDIDO SOLO en Chromium sobre Windows, headless y
+  con ventana. En macOS NO ESTA MEDIDO: si ahi el navegador trata las flechas de
+  otra forma, MONTAJE 2 se pone rojo, que es justo para lo que esta —avisar que
+  el montaje de DEUDA 2 dejo de valer, en vez de dejarla verde por un motivo
+  equivocado—.
 - EL AVISO PROPIO LLEGA ANTES DE QUE LA PESTANA ANOTE SU `requestId`, y el
   filtro de `lib/cambios-propios.ts` queda sin efecto. MEDIDO en 10 de 10
   creaciones con QuickAdd —`next start`, Chromium headless, base local, una
   pestana, flujo `/eventos` vivo, sin retencion y sin carga—: llegaron 10 avisos
   y salieron 10 refrescos del router. Con `/eventos` cortado, 0 avisos y 0
-  refrescos. Un refresco solo lo pide `ColumnList` ante un aviso que
-  `esCambioPropio` no reconoce, asi que ninguno de los 10 se reconocio. El por
+  refrescos. El unico `router.refresh()` esta en `ColumnList` y lo piden dos
+  cosas: un aviso que `esCambioPropio` no reconoce, o una reconexion del flujo.
+  En esa corrida no hubo reconexion, asi que la medicion no cambia: ninguno de
+  los 10 avisos se reconocio. El por
   que, como explicacion NO MEDIDA: el `NOTIFY` sale en el COMMIT, y la respuesta
   de la accion —despues de la cual se anota el `requestId`— sale cuando el
   servidor termino de renderizar el arbol revalidado.
@@ -333,7 +350,8 @@ motivo dejó de valer, ahí está el disparador para volver a mirarla.
   (`tablero-lectura.spec.ts`, el caso de 1023 px) y el usuario ve el motivo en
   pantalla. OJO: la definición de terminado de F3 (fila F3 de la 12) dice
   "comportamiento responsive verificado", así que este desvío la contradice de
-  frente y cerrar F3 exige nombrarlo.
+  frente. EL CIERRE DE F3 SE ACEPTÓ CON ESTE DESVÍO, de forma explícita, el 14 de
+  septiembre de 2026, pese a ese punto del DoD.
 
 - **Sin TanStack Query**, que la 9.1 nombra con clave de caché `["board", boardId]`.
   El argumento largo está en la cabecera de `column-list.tsx`; en corto: es una
@@ -370,6 +388,17 @@ motivo dejó de valer, ahí está el disparador para volver a mirarla.
   un prefijo no encuentra nada mientras se escribe) y no tolera acentos de forma
   uniforme (ver las dos entradas de deuda correspondientes). Disparador: entra
   cuando entre `unaccent` en la configuración de búsqueda.
+
+- **Sin editar tableros desde la UI.** La 3 del funcional pone "crear, listar,
+  editar" para los tableros, y el RF-01 pide crearlos "indicando nombre y
+  descripción opcional". La UI los crea y los lista, y los crea sin descripción;
+  editar el nombre o la descripción de un tablero se hace por la API
+  (`PATCH /api/boards/{id}`), y el catálogo MCP de la 8.2 no trae herramienta
+  para eso. El motivo: la descripción de un tablero no se muestra en ningún sitio
+  de esta UI, así que pedirla o editarla sería escribir un dato que la pantalla
+  no usa; renombrar un tablero pasa pocas veces en uso personal; y el capítulo 9
+  no le asigna esa acción a ningún componente. Disparador: que la UI muestre la
+  descripción, o que renombrar se vuelva frecuente.
 
 - **La entidad Proyecto es post-MVP.** La 2 del funcional la nombra como objetivo
   ("permitir múltiples tableros y proyectos sin introducir complejidad innecesaria

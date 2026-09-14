@@ -677,8 +677,10 @@ export function ColumnList({
       )}
 
       {/*
-        `data-cambios` publica si el tablero esta ESCUCHANDO. Es el mismo criterio
-        que `data-correcciones`: el modo de fallo de este mecanismo es el
+        `data-cambios` publica si el tablero esta ESCUCHANDO, salvo cuando la
+        conexion `LISTEN` muere sin cerrarse y nadie se entera (deuda en
+        CLAUDE.md). Es el mismo criterio que `data-correcciones`: el modo de
+        fallo de este mecanismo es el
         silencio, y un tablero que dejo de enterarse se ve identico a uno donde no
         pasa nada. Sin este dato, ni una persona ni una prueba pueden distinguir
         los dos casos.

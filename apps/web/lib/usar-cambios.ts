@@ -53,6 +53,8 @@ export interface ManejadoresDeCambios {
  * CONECTADO QUIERE DECIR ESCUCHANDO LA BASE, no "socket abierto". Se enciende con
  * el `listo`, que el servidor manda cuando su `LISTEN` ya esta puesto, y se apaga
  * cuando el flujo se cierra, que el servidor hace en cuanto ese `LISTEN` se cae.
+ * SALVO una conexion que muere sin cerrarse: `pg` no se entera, el flujo sigue
+ * abierto y esto sigue diciendo conectado (deuda en CLAUDE.md, sin medir).
  * El latido NO cuenta: lo emite el servidor web por su cuenta y siguio llegando
  * con la escucha muerta, que es como este valor llego a mentir.
  */

@@ -37,9 +37,9 @@ import { suscribirseACambios } from "../../lib/cambios";
  * libreria ni de un lado ni del otro. Un WebSocket agregaria una segunda pila de
  * protocolo para no usar la mitad de ida.
  *
- * --- UN FLUJO ABIERTO ES UNA ESCUCHA VIVA -----------------------------------
+ * --- UN FLUJO ABIERTO ES UNA ESCUCHA VIVA, SALVO UN CASO --------------------
  *
- * Este flujo NO sobrevive a la escucha que lo alimenta. Si la conexion `LISTEN`
+ * Este flujo NO sobrevive a una escucha que se CAE. Si la conexion `LISTEN`
  * se cae, `lib/cambios.ts` echa a los suscriptores y el flujo se CIERRA; si al
  * abrirse no se puede escuchar, se cierra sin haber mandado `listo`. En los dos
  * casos el navegador vuelve a pedir esta ruta a los `REINTENTO_MS`, y cuando la
@@ -48,6 +48,11 @@ import { suscribirseACambios } from "../../lib/cambios";
  * Es lo que hace que `data-cambios` pueda decir la verdad: "conectado" sale del
  * `listo`, y se apaga en cuanto el flujo se cierra. Antes el flujo seguia abierto
  * con la escucha muerta, y el tablero se creia conectado estando sordo.
+ *
+ * EL CASO QUE QUEDA: una conexion `LISTEN` que muere SIN CERRARSE —corte de red,
+ * portatil suspendido—. `pg` no recibe `error` ni `end`, nadie echa a los
+ * suscriptores, y el flujo sigue abierto con su latido y el atributo en
+ * "conectado". Esta en la deuda de CLAUDE.md, sin medir.
  */
 
 /**
@@ -72,7 +77,8 @@ export const dynamic = "force-dynamic";
  * `EventSource` no tiene temporizador de inactividad, asi que el latido dejando
  * de llegar no dispara nada en el navegador. Si el servidor desaparece, lo que
  * provoca la reconexion es el cierre del socket, no la falta de latido. La salud
- * de la escucha la da el propio flujo, que se cierra cuando ella muere.
+ * de la escucha la da el propio flujo, que se cierra cuando ella se cae, salvo
+ * que muera sin cerrarse (ver la cabecera).
  */
 const LATIDO_MS = 30_000;
 
