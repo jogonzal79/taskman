@@ -255,19 +255,57 @@ contador de pruebas no tiene ese commit.
   se edita el titulo y se pasa con Tab a la descripcion, el blur guarda, y cuando
   llega la revalidacion el editor se remonta: la descripcion pierde el foco, y lo
   que ya se hubiera tecleado en ella se pierde, porque desmontar no dispara
-  `blur`. Las pruebas del panel no lo ven: guardan con `.blur()`, que saca el
-  foco sin llevarlo a otro campo, y ninguna pulsa Tab. DEDUCIDO DEL CODIGO, NO
-  REPRODUCIDO.
+  `blur`. REPRODUCIDO en `e2e/panel-remontaje.spec.ts` ("DEUDA 1"), marcado con
+  `test.fail()`: la prueba afirma que la descripcion conserva foco y texto, hoy
+  falla, y la marca se quita el dia que se arregle. Tiene al lado una prueba de
+  MONTAJE sin marca ("MONTAJE 1"), y no es redundante: `test.fail()` acepta
+  CUALQUIER fallo, asi que si la retencion de Server Actions dejara de retener,
+  o Tab dejara de llegar a la descripcion, la marcada fallaria por eso y seguiria
+  verde. La de montaje es la que se pone roja en ese caso.
 - LA PRIORIDAD GUARDA AL CAMBIAR y no al perder el foco, que es lo que pide la
   9.3: `CampoPrioridad` llama a `guardar` desde el `onChange` del `<select>`. Con
-  teclado, en Chrome sobre Windows, cada flecha sobre el select cerrado cambia el
-  valor y dispara `change`, asi que guarda un valor intermedio; y como la
-  prioridad esta en el `key` del editor (entrada anterior), la revalidacion lo
-  remonta y el select pierde el foco. Si la flecha siguiente llega con ese
+  teclado, cada flecha sobre el select cerrado cambia el valor y dispara
+  `change` —medido en este Chromium, headless y con ventana—, asi que guarda un
+  valor intermedio; y como la prioridad esta en el `key` del editor (entrada
+  anterior), la revalidacion lo remonta. Si la flecha siguiente llega con ese
   guardado todavia en vuelo, la guarda `enVuelo` de `guardar` la descarta: el
   select muestra un valor que no se guardo hasta que el remontaje lo pisa.
-  Ninguna prueba lo cubre: la de prioridad usa `selectOption`, que fija el valor
-  y dispara un solo `change` sin teclado. DEDUCIDO DEL CODIGO, NO REPRODUCIDO.
+  REPRODUCIDO en `e2e/panel-remontaje.spec.ts` ("DEUDA 2"), marcado con
+  `test.fail()` y con su prueba de MONTAJE sin marca al lado ("MONTAJE 2", que
+  afirma que la flecha cambia el valor), por lo mismo que la entrada anterior.
+  LO QUE LA PRUEBA AFIRMA ES EL VALOR GUARDADO: dos flechas y Tab tienen que
+  guardar MEDIUM, y hoy queda HIGH. La perdida de foco del select tras el
+  remontaje se vio en la sonda de medicion y NO esta en la suite.
+- EL AVISO PROPIO LLEGA ANTES DE QUE LA PESTANA ANOTE SU `requestId`, y el
+  filtro de `lib/cambios-propios.ts` queda sin efecto. MEDIDO en 10 de 10
+  creaciones con QuickAdd —`next start`, Chromium headless, base local, una
+  pestana, flujo `/eventos` vivo, sin retencion y sin carga—: llegaron 10 avisos
+  y salieron 10 refrescos del router. Con `/eventos` cortado, 0 avisos y 0
+  refrescos. Un refresco solo lo pide `ColumnList` ante un aviso que
+  `esCambioPropio` no reconoce, asi que ninguno de los 10 se reconocio. El por
+  que, como explicacion NO MEDIDA: el `NOTIFY` sale en el COMMIT, y la respuesta
+  de la accion —despues de la cual se anota el `requestId`— sale cuando el
+  servidor termino de renderizar el arbol revalidado.
+  CONSECUENCIA REAL: cada escritura desde la UI pide un refresco de mas, que
+  sale recien cuando la accion responde (medido reteniendo la respuesta), asi que
+  la pagina se renderiza dos veces en el servidor y el arbol se actualiza dos
+  veces en el cliente. Es rendimiento, no correccion.
+  LO QUE NO PASA, para no leerlo de mas: un cambio propio NO se marca como
+  ajeno. La marca exige actor distinto de USER y toda escritura de la UI audita
+  como USER; lo mide `cambios-ajenos.spec.ts` en cada verify.
+  LO QUE NO SE MIDIO: una base remota con latencia, Chrome con ventana y los
+  otros tipos de escritura —editar, borrar, mover, crear tablero—, aunque por
+  codigo se espera lo mismo, porque todos anotan el `requestId` despues de la
+  respuesta.
+  ARREGLO ELEGIDO Y NO HECHO: mientras la pestana tenga una accion en vuelo,
+  retener los avisos de actor USER y volver a compararlos contra los propios
+  cuando la accion responda; AGENT y API nunca son propios y siguen de largo.
+  DESCARTADO anotar el `requestId` antes de invocar la accion: haria que el
+  `request_id` de `audit_log` venga del navegador, y aceptar que un cliente
+  elija lo que queda en la auditoria es un precio alto para ahorrar un refresco.
+  Al arreglarlo, esta medicion se vuelve prueba de regresion: tres creaciones
+  con QuickAdd y el flujo vivo tienen que dar CERO refrescos del router, contando
+  las peticiones GET con cabecera `rsc: 1` que no llevan `next-router-prefetch`.
 
 ## Desvíos declarados de la especificación
 
