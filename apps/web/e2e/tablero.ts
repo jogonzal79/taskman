@@ -256,6 +256,60 @@ export async function retenerReconexiones(page: Page): Promise<Reconexiones> {
   return { retenidas: () => retenidas, soltar };
 }
 
+/** Lo que devuelve `retenerAcciones`. */
+export interface AccionesRetenidas {
+  /** Cuantas Server Actions salieron del navegador desde que se empezo a retener. */
+  retenidas: () => number;
+  /** Deja pasar las retenidas y todas las que vengan despues. */
+  soltar: () => void;
+}
+
+/**
+ * RETIENE LAS SERVER ACTIONS antes de que lleguen al servidor, hasta que la
+ * prueba las suelte.
+ *
+ * Existe para ordenar sin carrera lo que en la pantalla de una persona depende
+ * de cuanto tarda la respuesta. Con la accion retenida, lo que la prueba haga
+ * despues —pulsar Tab, teclear, otra flecha— ocurre SEGURO antes de que llegue
+ * el arbol revalidado, porque ese arbol viaja en la respuesta y la respuesta no
+ * puede existir antes de soltar. Es lo que ve alguien con la base lenta,
+ * estirado lo que la prueba necesite y sin esperas fijas.
+ *
+ * Se retiene la PETICION y no la respuesta: mientras esta retenida el servidor
+ * todavia no escribio, asi que ni siquiera hay `NOTIFY` ni aviso por
+ * `/eventos`. Tampoco haria falta cortar ese flujo para retener la respuesta:
+ * medido con el servidor ya escrito y el aviso ya recibido, el refresco que ese
+ * aviso dispara no sale hasta que la accion responde, asi que por ahi tampoco
+ * llega un arbol antes de soltar.
+ *
+ * Se reconocen por la cabecera `next-action`, que Next pone en toda Server
+ * Action (`ACTION_HEADER` en `app-router-headers.js`). Lo demas sigue con
+ * `fallback` y no con `continue`, para no saltearse otra ruta de la prueba.
+ */
+export async function retenerAcciones(page: Page): Promise<AccionesRetenidas> {
+  let soltar: () => void = () => {};
+  const suelta = new Promise<void>((resolver) => {
+    soltar = resolver;
+  });
+  let retenidas = 0;
+
+  await page.route("**/*", async (ruta) => {
+    const peticion = ruta.request();
+
+    if (peticion.method() !== "POST" || (await peticion.headerValue("next-action")) === null) {
+      await ruta.fallback();
+
+      return;
+    }
+
+    retenidas += 1;
+    await suelta;
+    await ruta.continue();
+  });
+
+  return { retenidas: () => retenidas, soltar };
+}
+
 /** Las tarjetas con la marca de "lo cambio otro y todavia no lo viste". */
 export function tarjetasMarcadas(page: Page): Locator {
   return page.locator(".tarjeta--ajena");
