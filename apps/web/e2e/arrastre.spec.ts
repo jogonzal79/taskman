@@ -27,6 +27,7 @@ import {
   columna,
   correcciones,
   cortarElFlujoDeCambios,
+  esperarColumnaEnLaBase,
   esperarSordo,
   expect,
   filtroPuesto,
@@ -69,33 +70,6 @@ const COMPLETADO = "Completado";
 /** Los titulos que se ven en una columna, como localizador (reintenta). */
 function titulos(page: import("@playwright/test").Page, nombreColumna: string) {
   return tarjetasDe(page, nombreColumna).locator(".tarjeta__titulo");
-}
-
-/**
- * Que la columna quede densa 0..n-1 en la base y con estos titulos en orden.
- *
- * ESPERA (`expect.poll`) en vez de leer una vez, y la razon es el paso entero:
- * la pantalla se reordena de INMEDIATO —punto 1 de la 9.2— y la transaccion
- * termina despues. Una lectura suelta justo despues de soltar corre contra el
- * commit y falla una de cada tantas veces, que es como se fabrica una prueba
- * intermitente. Lo que se afirma no es "ya esta escrito" sino "termina escrito".
- *
- * Las POSITIONS se comprueban en una lectura aparte y sin reintento, ya con el
- * orden estable: si estuvieran dentro del `poll` bastaria un intento con el
- * orden bueno y las positions malas para que el siguiente intento las tapara.
- */
-async function esperarColumnaEnLaBase(
-  nombreColumna: string,
-  esperados: readonly string[],
-): Promise<void> {
-  await expect
-    .poll(async () => (await columnaEnLaBase(nombreColumna)).map((fila) => fila.title), {
-      message: `titulos de "${nombreColumna}" en la base`,
-    })
-    .toEqual([...esperados]);
-
-  // La mitad que no se ve en pantalla: sin huecos y empezando en cero.
-  expect(positionsDe(await columnaEnLaBase(nombreColumna))).toEqual(densa(esperados.length));
 }
 
 test.beforeEach(async ({ page, sembrado }) => {

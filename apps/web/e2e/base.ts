@@ -43,6 +43,19 @@ export const TABLERO = "1 Tablero sembrado";
 export interface FilaDeTarea {
   readonly title: string;
   readonly position: number;
+  /**
+   * `due_date` COMO TEXTO `AAAA-MM-DD`, no como `Date`, y eso es la mitad de lo
+   * que hace util este campo.
+   *
+   * `due_date` es una columna DATE y el driver `pg` la convierte a un `Date` de
+   * JavaScript anclado a la MEDIANOCHE LOCAL. Con el proceso en UTC-4, leer esa
+   * fecha y volver a serializarla en UTC devuelve el DIA SIGUIENTE: la prueba
+   * que quiere detectar un corrimiento de un dia lo introduciria ella misma al
+   * leer, y entonces no podria distinguir un fallo de su propia lectura.
+   * `to_char` en el SQL saca al driver del medio: lo que vuelve es el dia tal
+   * como PostgreSQL lo tiene escrito.
+   */
+  readonly dueDate: string | null;
 }
 
 async function consultar<T>(sql: string, parametros: readonly unknown[]): Promise<T[]> {
@@ -79,7 +92,7 @@ export async function columnaEnLaBase(
   tablero: string = TABLERO,
 ): Promise<FilaDeTarea[]> {
   return consultar<FilaDeTarea>(
-    `SELECT t.title, t.position
+    `SELECT t.title, t.position, to_char(t.due_date, 'YYYY-MM-DD') AS "dueDate"
        FROM task t
        JOIN board_column c ON c.id = t.column_id
        JOIN board b ON b.id = c.board_id

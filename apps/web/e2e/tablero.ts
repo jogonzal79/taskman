@@ -1,5 +1,6 @@
 import { test as base, expect, type Locator, type Page } from "@playwright/test";
 
+import { columnaEnLaBase, densa, positionsDe } from "./base";
 import {
   sembrar,
   tableroActivo,
@@ -343,41 +344,44 @@ export async function llevarA(page: Page, titulo: string, destino: Destino): Pro
 }
 
 export async function soltar(page: Page): Promise<void> {
-  await soltandoYEsperandoAlServidor(page, () => page.keyboard.press("Space"));
+  await esperandoAlServidor(page, () => page.keyboard.press("Space"));
 }
 
 /**
- * SUELTA Y ESPERA A QUE EL SERVIDOR CONTESTE.
+ * HACE ALGO QUE ESCRIBE Y ESPERA A QUE EL SERVIDOR CONTESTE.
  *
  * NO es una espera de cortesia: sin ella la prueba sigue mientras la Server
  * Action esta en vuelo, y lo siguiente que haga puede matarla. Costo una
  * intermitente de 1 de cada 8 para verlo, y siempre en la PRIMERA prueba
  * despues de arrancar el servidor, que es la unica lo bastante lenta para que
- * la ventana se note: `page.reload()` del CT-03 aborta la peticion de la accion
- * a mitad de la transaccion, el movimiento no llega a escribirse, y la prueba
- * lee un tablero sin mover. Se lee como "el arrastre no persiste" cuando lo que
- * pasa es que la prueba lo interrumpio.
+ * la ventana se note: el `page.reload()` del CT-03 abortaba la peticion de la
+ * accion a mitad de la transaccion, el movimiento no llegaba a escribirse, y la
+ * prueba leia un tablero sin mover. Se lee como "el arrastre no persiste"
+ * cuando lo que pasa es que la prueba lo interrumpio.
  *
  * Se espera la RESPUESTA POST y no un estado de la pantalla porque es el unico
- * hito que no tiene carrera: cuando llega, la transaccion ya commiteo —el
- * cuerpo trae el `MoveResult` y el arbol revalidado— y a partir de ahi recargar,
- * leer la base o arrastrar otra vez es seguro. Esperar a que se apague el "en
- * vuelo" de la pantalla, en cambio, obliga a verlo encenderse primero, y eso si
- * es una carrera.
+ * hito SIN CARRERA: cuando llega, la transaccion ya commiteo —el cuerpo trae el
+ * valor de la accion y el arbol revalidado— y a partir de ahi recargar, leer la
+ * base o volver a escribir es seguro. Esperar a que se apague un "en vuelo" de
+ * la pantalla, en cambio, obliga a verlo encenderse primero, y eso si es una
+ * carrera.
  *
- * CONSECUENCIA: `arrastrar` exige que el gesto produzca un movimiento. Un
+ * LO USAN LAS TRES SUITES QUE ESCRIBEN —arrastre, QuickAdd y panel— porque el
+ * problema es el mismo en las tres: toda mutacion de esta UI es una Server
+ * Action, o sea un POST a la ruta actual.
+ *
+ * CONSECUENCIA: la accion que se le pase TIENE que producir una escritura. Un
  * arrastre que termina donde empezo no manda nada (ver `alSoltar`) y esto
- * agotaria su espera. Hoy ninguna prueba hace eso; el dia que haga falta, la
- * espera se hace opcional.
+ * agotaria su espera; hoy ninguna prueba hace eso.
  */
-async function soltandoYEsperandoAlServidor(
+export async function esperandoAlServidor(
   page: Page,
-  soltar: () => Promise<void>,
+  accion: () => Promise<void>,
 ): Promise<void> {
-  // La promesa se arma ANTES de soltar: la accion sale en el mismo tic.
+  // La promesa se arma ANTES de la accion: el POST sale en el mismo tic.
   const respuesta = page.waitForResponse((r) => r.request().method() === "POST");
 
-  await soltar();
+  await accion();
   await respuesta;
 }
 
@@ -530,7 +534,7 @@ export async function arrastrarConRaton(
   await page.mouse.move(hasta.x, hasta.y, { steps: 12 });
   await page.mouse.move(hasta.x, hasta.y);
 
-  await soltandoYEsperandoAlServidor(page, () => page.mouse.up());
+  await esperandoAlServidor(page, () => page.mouse.up());
 }
 
 // --- Filtros -----------------------------------------------------------------
@@ -596,6 +600,39 @@ export function panel(page: Page): Locator {
  */
 export function campoDelPanel(page: Page, etiqueta: string): Locator {
   return panel(page).getByLabel(etiqueta, { exact: true });
+}
+
+// --- La base, como afirmacion ------------------------------------------------
+
+/**
+ * Que la columna termine DENSA 0..n-1 en la base y con estos titulos en orden.
+ *
+ * Vivia dentro de `arrastre.spec.ts` y sube aca porque ya la usan tres suites:
+ * el arrastre, el QuickAdd (CT-02) y el borrado del panel (CT-05). Tres copias
+ * de una espera con esta explicacion se separan solas.
+ *
+ * ESPERA (`expect.poll`) en vez de leer una vez, y la razon es el modelo entero:
+ * la pantalla se actualiza ANTES que la base —optimista al soltar, revalidada al
+ * crear— asi que una lectura suelta justo despues corre contra el commit y falla
+ * una de cada tantas veces, que es como se fabrica una prueba intermitente. Lo
+ * que se afirma no es "ya esta escrito" sino "termina escrito".
+ *
+ * Las POSITIONS se comprueban en una lectura aparte y sin reintento, ya con el
+ * orden estable: si estuvieran dentro del `poll` bastaria un intento con el
+ * orden bueno y las positions malas para que el siguiente intento las tapara.
+ */
+export async function esperarColumnaEnLaBase(
+  nombreColumna: string,
+  esperados: readonly string[],
+): Promise<void> {
+  await expect
+    .poll(async () => (await columnaEnLaBase(nombreColumna)).map((fila) => fila.title), {
+      message: `titulos de "${nombreColumna}" en la base`,
+    })
+    .toEqual([...esperados]);
+
+  // La mitad que no se ve en pantalla: sin huecos y empezando en cero.
+  expect(positionsDe(await columnaEnLaBase(nombreColumna))).toEqual(densa(esperados.length));
 }
 
 // --- Lectura del render ------------------------------------------------------

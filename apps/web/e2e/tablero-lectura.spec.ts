@@ -292,21 +292,26 @@ test("por debajo de 1024 px sale el aviso, no una version degradada", async ({ p
  *          "columnas" a este CT —o sea a que aparezcan las cuatro de la 4.3— y el
  *          "Columnas: CRUD y orden" de la 3 ya lo satisface la API.
  *   CT-02  QuickAdd, recargar, verificar la posicion.
- *          PARCIAL, en `quick-add.spec.ts`. Crear y que aparezca AL FINAL de la
- *          columna esta; lo que falta es la RECARGA, y no por descuido: esas
- *          pruebas comprueban a proposito que NO hubo carga de documento (ver su
- *          cabecera). La position en la base tampoco se afirma ahi; hoy ya se
- *          podria con `e2e/base.ts`, que no existia cuando se escribieron.
+ *          CUBIERTO, en `quick-add.spec.ts`. La ultima prueba del archivo recarga
+ *          y afirma la position por SQL; las otras siguen comprobando lo
+ *          contrario a proposito —que la pantalla se actualiza SIN recargar— y
+ *          las dos cosas no se pisan: una pantalla que se refrescara sola sin
+ *          escribir pasaria aquellas y no esta.
  *   CT-03  Arrastrar entre columnas y recargar.
  *          CUBIERTO, en `arrastre.spec.ts`, con la recarga y con el orden denso
  *          comprobado por SQL en las dos columnas.
  *   CT-04  Editar titulo, prioridad y fecha en el panel de detalle.
- *          PARCIAL, en `task-detail.spec.ts`: titulo, descripcion y prioridad, con
- *          su reflejo en la tarjeta. La FECHA se lee pero no se edita.
+ *          CUBIERTO, en `task-detail.spec.ts`: titulo, descripcion, prioridad y
+ *          FECHA, los cuatro con su reflejo en la tarjeta. La fecha se comprueba
+ *          en los dos extremos —el dia en la base con `to_char` y el texto de la
+ *          tarjeta— porque el corrimiento de un dia se puede introducir al
+ *          escribir o al leer, y una sola punta no distingue los dos casos.
  *   CT-05  Eliminar una tarea intermedia y verificar que el orden queda denso.
- *          PARCIAL, en `task-detail.spec.ts`: borra la tercera de cuatro y
- *          comprueba las que quedan y en que orden, pero EN PANTALLA. La densidad
- *          0..n-1 no se ve ahi y hace falta SQL (`e2e/base.ts`).
+ *          CUBIERTO, en `task-detail.spec.ts`, con una prueba propia que borra la
+ *          tercera de cuatro y comprueba la densidad 0..n-1 por SQL. Hacia falta
+ *          separarla: en pantalla las tres que quedan se ven igual con positions
+ *          0,1,2 que con 0,1,3, asi que la prueba de borrado que ya existia no
+ *          podia medir esto.
  *   CT-06  Crear por API con la UI abierta y revalidar.
  *          CUBIERTO, en `cambios-ajenos.spec.ts`, con una peticion HTTP real y su
  *          API key (asi el actor es API y no uno inventado). Comprueba ademas que

@@ -1,5 +1,14 @@
+import { columnaEnLaBase } from "./base";
 import { columnaDe } from "./semilla";
-import { campoNuevaTarea, columna, expect, tarjetasDe, test } from "./tablero";
+import {
+  campoNuevaTarea,
+  columna,
+  esperandoAlServidor,
+  esperarColumnaEnLaBase,
+  expect,
+  tarjetasDe,
+  test,
+} from "./tablero";
 
 /**
  * QuickAdd (9.3): crear una tarea escribiendo el titulo al pie de una columna.
@@ -15,6 +24,11 @@ import { campoNuevaTarea, columna, expect, tarjetasDe, test } from "./tablero";
  * recarga. Se marca `window` antes de teclear y se comprueba que la marca
  * sobrevive, o sea que no hubo carga de documento: si la actualizacion de la
  * pantalla dependiera de un `location.reload()` encubierto, la marca se perderia.
+ *
+ * LA EXCEPCION ES LA ULTIMA, que es el CT-02 completo y RECARGA a proposito.
+ * Las dos cosas no se contradicen: las de arriba comprueban que la pantalla se
+ * actualiza SOLA, y aquella que lo que se creo esta DE VERDAD en la base. Una
+ * pantalla que se actualiza sola sin escribir pasaria todas las de arriba.
  */
 
 /** Lo que se escribe en el campo en el caso normal. */
@@ -199,4 +213,84 @@ test("un titulo de mas de 200 caracteres muestra el error y conserva lo escrito"
     ...sembradas,
     "Titulo corto al fin",
   ]);
+});
+
+// --- 2. CT-02 completo: crear, RECARGAR, y la position en la base -----------
+
+/**
+ * CT-02 de la 10.2: "Crear tarea con QuickAdd, recargar, verificar que persiste
+ * en la posicion correcta".
+ *
+ * LAS DOS MITADES QUE LE FALTABAN a las pruebas de arriba, y ninguna es
+ * decorativa:
+ *
+ *   - LA RECARGA. Sin ella, todo lo que se afirma sale del arbol que la
+ *     revalidacion mando al navegador; un servidor que revalidara con la tarea
+ *     en memoria y no la escribiera pasaria igual. Con documento nuevo, lo que
+ *     se ve vuelve a salir de la base por el camino de lectura del Server
+ *     Component.
+ *   - LA POSITION POR SQL. "En la posicion correcta" no se ve: una tarjeta
+ *     ultima en pantalla es compatible con `position` 0, 1, 2, 7 en la base, y
+ *     el hueco no se paga hasta que algo reordene. `esperarColumnaEnLaBase`
+ *     comprueba ademas que la columna sigue DENSA con la nueva dentro (ADR-004).
+ *
+ * EL ORDEN IMPORTA: primero se espera la respuesta del servidor, DESPUES se
+ * recarga. Es lo que costo una intermitente en el CT-03 —`page.reload()` con la
+ * Server Action en vuelo aborta la escritura— y el hito sin carrera es el mismo,
+ * la respuesta POST. Ver `esperandoAlServidor`.
+ */
+test("CT-02: la tarea creada persiste al recargar, al final de la columna y sin huecos", async ({
+  page,
+  sembrado,
+}) => {
+  const porHacer = columnaDe(sembrado.activo, "TODO");
+  const sembradas = porHacer.tareas.map((tarea) => tarea.title);
+  const campo = campoNuevaTarea(page, porHacer.name);
+
+  await expect(tarjetasDe(page, porHacer.name).locator(".tarjeta__titulo")).toHaveText(sembradas);
+
+  await campo.fill(TITULO_NUEVO);
+  // Se espera a que el servidor conteste ANTES de recargar: con la accion en
+  // vuelo, la recarga aborta la peticion y la tarea no llega a escribirse.
+  await esperandoAlServidor(page, () => campo.press("Enter"));
+
+  const esperadas = [...sembradas, TITULO_NUEVO];
+
+  await expect(tarjetasDe(page, porHacer.name).locator(".tarjeta__titulo")).toHaveText(esperadas);
+
+  // RECARGA: documento nuevo, y lo que se ve sale otra vez de la base.
+  await page.reload();
+
+  await expect(tarjetasDe(page, porHacer.name).locator(".tarjeta__titulo")).toHaveText(esperadas);
+  await expect(columna(page, porHacer.name).locator(".columna__recuento")).toHaveText(
+    String(esperadas.length),
+  );
+
+  // Y EN LA BASE: los mismos titulos en orden y las positions densas 0..n-1.
+  await esperarColumnaEnLaBase(porHacer.name, esperadas);
+
+  /**
+   * Y la position de la nueva, dicha como NUMERO y por su nombre.
+   *
+   * Honestamente: no atrapa nada que las dos aserciones de arriba dejen pasar.
+   * El listado ordena por `position` y la columna ya se comprobo densa, asi que
+   * la position de cada tarea ES su indice en pantalla; esto se deduce. Esta por
+   * lo que dice el MENSAJE cuando algo falla —"la nueva quedo en la 0 y se
+   * esperaba la 4" localiza el problema mucho mas rapido que una lista de
+   * enteros— y porque escribe "al final de la columna" como el numero que es, que
+   * es literalmente lo que pide el CT-02.
+   */
+  const nueva = (await columnaEnLaBase(porHacer.name)).find(
+    (fila) => fila.title === TITULO_NUEVO,
+  );
+
+  expect(nueva?.position).toBe(sembradas.length);
+
+  // La columna de al lado no se movio.
+  const backlog = columnaDe(sembrado.activo, "BACKLOG");
+
+  await esperarColumnaEnLaBase(
+    backlog.name,
+    backlog.tareas.map((tarea) => tarea.title),
+  );
 });

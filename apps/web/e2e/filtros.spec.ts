@@ -207,6 +207,23 @@ test("quitar filtros devuelve el tablero completo en un paso", async ({ page, se
   await expect(page.getByRole("link", { name: "Quitar filtros" })).toHaveCount(0);
 
   await filtro(page, "Alta").click();
+  /**
+   * SE ESPERA A QUE EL PRIMER FILTRO ESTE PUESTO antes de pulsar el segundo, y
+   * no es cortesia: cada chip es un ENLACE cuyo `href` se calcula con los
+   * filtros que habia AL RENDERIZARLO (ver `enlaceTablero`). Pulsar "Vencidas"
+   * antes de que llegue el arbol con "Alta" aplicado sigue el href viejo —el que
+   * dice "solo vencidas"— y el tablero termina con UN filtro en vez de dos.
+   *
+   * No es un fallo del producto: un enlace apunta a donde apuntaba cuando se
+   * dibujo, y eso es justamente lo que hace que lo que se ve encendido y lo que
+   * se aplica no puedan discrepar. Es la prueba la que tiene que encadenar.
+   *
+   * Estaba latente desde que se escribio y salto la primera vez con la maquina
+   * cargada: 1 de 42 en una corrida completa, 0 de 10 corriendo el archivo solo.
+   * Por eso se arregla y no se reintenta (ver `playwright.config.ts`).
+   */
+  await expect(filtroPuesto(page, "Alta")).toBeVisible();
+
   await filtro(page, "Vencidas").click();
   // Alta y vencidas a la vez no deja ninguna: es el estado mas distinto posible
   // del tablero completo, asi que el paso siguiente tiene todo que recuperar.

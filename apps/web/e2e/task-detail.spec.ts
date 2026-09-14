@@ -1,3 +1,4 @@
+import { columnaEnLaBase } from "./base";
 import {
   columnaDe,
   DESCRIPCION_DE_CONTRATO,
@@ -8,6 +9,8 @@ import {
 import {
   campoDelPanel,
   columna,
+  esperandoAlServidor,
+  esperarColumnaEnLaBase,
   estiloCalculado,
   expect,
   panel,
@@ -293,3 +296,137 @@ test("un parametro de tarea que no existe dibuja el tablero sin panel", async ({
   await expect(page.locator(".columna__nombre")).toHaveCount(4);
 });
 
+
+// --- 6. CT-04: editar la FECHA, sin corrimiento de dia ----------------------
+
+/**
+ * LA MITAD DEL CT-04 QUE FALTABA. El caso 1 LEE la fecha sembrada; este la
+ * ESCRIBE, que es donde esta el riesgo.
+ *
+ * POR QUE LA FECHA ES EL CAMPO PELIGROSO. `due_date` es una columna DATE y el
+ * proceso corre en UTC-4. Un `new Date("2026-09-20")` construido en el CLIENTE y
+ * serializado se convierte en el instante `2026-09-20T00:00:00Z`, que en la zona
+ * local es el 19 a las 20:00; formatearlo localmente muestra el 19. Por eso el
+ * valor viaja como CADENA `AAAA-MM-DD` y se ancla en el servidor con `aFechaUtc`
+ * (ver `editarTarea`), y por eso esta prueba mira los DOS extremos del viaje:
+ *
+ *   - LA BASE, con `to_char` para que el driver no meta su propia conversion (el
+ *     `pg` devuelve un DATE como medianoche LOCAL, asi que leerlo como `Date`
+ *     introduciria el corrimiento que se esta buscando).
+ *   - LA PANTALLA, que es donde una persona veria el dia equivocado.
+ *
+ * Un corrimiento de un dia en cualquier direccion rompe las dos aserciones.
+ *
+ * LA FECHA ELEGIDA es relativa a `hoy` y no un literal: una fecha fija futura
+ * deja de ser futura sola. Se elige un dia lejano —mas de un mes— para que el
+ * texto de la tarjeta lleve mes distinto del de las demas y no se pueda
+ * confundir con otra tarjeta al afirmarlo.
+ */
+test("CT-04: cambiar la fecha limite la guarda sin corrimiento y se ve en la tarjeta", async ({
+  page,
+  sembrado,
+}) => {
+  const { hoy } = sembrado;
+  const porHacer = columnaDe(sembrado.activo, "TODO");
+
+  /** Cuarenta dias despues de hoy, leido en UTC como toda fecha de este sistema. */
+  const elegida = new Date(
+    Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth(), hoy.getUTCDate() + 40),
+  );
+  const comoTexto = elegida.toISOString().slice(0, 10);
+
+  await marcar(page);
+  await tarjeta(page, TITULO_VENCIDA_FUERA).click();
+
+  const campo = campoDelPanel(page, "Fecha limite");
+
+  await campo.fill(comoTexto);
+  // El guardado es al PERDER EL FOCO (9.3), asi que el blur ES la accion; y se
+  // espera la respuesta antes de leer la base.
+  await esperandoAlServidor(page, () => campo.blur());
+
+  // EN LA BASE, el dia exacto que se tecleo.
+  await expect
+    .poll(
+      async () =>
+        (await columnaEnLaBase(porHacer.name)).find(
+          (fila) => fila.title === TITULO_VENCIDA_FUERA,
+        )?.dueDate,
+      { message: "due_date en la base" },
+    )
+    .toBe(comoTexto);
+
+  // EN LA TARJETA, el mismo dia. Se compara con el texto que produce la misma
+  // `Intl` que usa la aplicacion, en UTC: escribir "30 oct" aca ataria la prueba
+  // al idioma de la hoja en vez de al dia.
+  const enPantalla = new Intl.DateTimeFormat("es-ES", {
+    timeZone: "UTC",
+    day: "numeric",
+    month: "short",
+  }).format(elegida);
+
+  await expect(tarjeta(page, TITULO_VENCIDA_FUERA).locator("time")).toHaveText(enPantalla);
+
+  // Y el atributo `datetime`, que es el dia en forma legible por maquina: si el
+  // texto y el atributo discreparan, uno de los dos estaria formateado en otra
+  // zona. Los dos salen de la misma `Date`, asi que esto ata las dos lecturas.
+  await expect(tarjeta(page, TITULO_VENCIDA_FUERA).locator("time")).toHaveAttribute(
+    "datetime",
+    comoTexto,
+  );
+
+  /**
+   * Y DEJA DE ESTAR VENCIDA. La tarea se sembro con la fecha tres dias en el
+   * pasado y llevaba la marca (9.3); con una fecha futura la pierde. Es la
+   * comprobacion que ata el cambio de fecha a su consecuencia visible, y de paso
+   * confirma que la fecha nueva se leyo como futura y no como pasada —que es
+   * exactamente lo que un corrimiento grande produciria—.
+   */
+  await expect(tarjeta(page, TITULO_VENCIDA_FUERA).locator("time.fecha--vencida")).toHaveCount(0);
+
+  // Sin recarga de documento: lo repinto la revalidacion.
+  expect(await sigueElMismoDocumento(page)).toBe(true);
+});
+
+// --- 7b. CT-05: el orden restante queda DENSO, comprobado por SQL -----------
+
+/**
+ * LA MITAD DEL CT-05 QUE FALTABA. El caso de borrado de arriba comprueba que la
+ * tarjeta se va y que las demas quedan en su orden EN PANTALLA; el CT-05 pide
+ * que "el orden restante queda denso", y eso no se ve.
+ *
+ * LA DIFERENCIA ES CONCRETA: borrar la tercera de cuatro sin reindexar deja
+ * positions 0, 1, 3. En pantalla se ven exactamente las mismas tres tarjetas en
+ * el mismo orden —el `ORDER BY position` no necesita que sean consecutivas— asi
+ * que la pantalla no puede distinguir el caso bueno del malo. El hueco se paga
+ * mucho despues, cuando algo calcule un indice contra esa columna.
+ *
+ * SE BORRA LA TERCERA DE CUATRO, o sea una INTERMEDIA, que es lo que pide el
+ * escenario: borrar la ultima dejaria la columna densa aunque no se reindexara
+ * nada, y la prueba pasaria sin medir nada.
+ */
+test("CT-05: borrar una tarea intermedia deja la columna densa en la base", async ({
+  page,
+  sembrado,
+}) => {
+  const porHacer = columnaDe(sembrado.activo, "TODO");
+  const sembradas = porHacer.tareas.map((tarea) => tarea.title);
+
+  // La que se borra es la tercera de cuatro. Se afirma aca para que la prueba
+  // falle si la semilla cambia de orden, en vez de pasar a borrar la ultima.
+  expect(sembradas.indexOf(TITULO_VENCIDA_FUERA)).toBe(2);
+  expect(sembradas).toHaveLength(4);
+
+  await tarjeta(page, TITULO_VENCIDA_FUERA).click();
+  await panel(page).getByRole("button", { name: "Borrar tarea" }).click();
+  await esperandoAlServidor(page, () =>
+    panel(page).getByRole("button", { name: "Si, borrar" }).click(),
+  );
+
+  const restantes = sembradas.filter((titulo) => titulo !== TITULO_VENCIDA_FUERA);
+
+  await expect(tarjetasDe(page, porHacer.name).locator(".tarjeta__titulo")).toHaveText(restantes);
+
+  // LO QUE NO SE VE: las positions son 0, 1, 2 y no 0, 1, 3.
+  await esperarColumnaEnLaBase(porHacer.name, restantes);
+});
