@@ -8,6 +8,7 @@ import type {
   TaskMatch,
   TaskOrderBy,
 } from "../domain/types";
+import { COLUMNA_TERMINAL } from "../domain/vencimiento";
 import type { AuditRow, AuditTransaction } from "./audit-repository";
 import { insertAuditRow } from "./audit-repository";
 import type { EscrituraIdempotente, IdempotencyRow } from "./idempotency-repository";
@@ -422,10 +423,14 @@ export class TaskRepository {
       condiciones.push(Prisma.sql`due_date > ${query.dueAfter}::date`);
     }
     if (query.overdue === true) {
-      // Vencida: con fecha pasada y fuera de la columna terminal.
+      // Vencida: con fecha pasada y fuera de la columna terminal. La regla entera
+      // —y la key terminal, que es la parte que se presta a divergir— esta escrita
+      // en `domain/vencimiento.ts`; aca se la expresa en SQL porque tiene que
+      // entrar en un indice. Ver ahi que dos cosas tienen que coincidir para que
+      // el filtro y la marca de la UI den siempre lo mismo.
       condiciones.push(Prisma.sql`due_date < CURRENT_DATE`);
       condiciones.push(
-        Prisma.sql`column_id IN (SELECT id FROM board_column WHERE upper(key) <> 'DONE')`,
+        Prisma.sql`column_id IN (SELECT id FROM board_column WHERE upper(key) <> ${COLUMNA_TERMINAL})`,
       );
     }
 

@@ -36,8 +36,8 @@ import { Client } from "pg";
  *
  * La siembra de tableros y tareas NO esta duplicada en SQL crudo: va por el
  * `CorePort`, que es el mismo camino que usan los Route Handlers del otro lado.
- * Cuando existan los endpoints de columnas y tareas (6.2) la siembra puede pasar
- * a ellos sin tocar las aserciones.
+ * Los endpoints de columnas y tareas de la 6.2 ya existen, asi que la siembra
+ * podria pasar a ellos sin tocar las aserciones; hoy sigue por el `CorePort`.
  */
 
 const TABLAS = [

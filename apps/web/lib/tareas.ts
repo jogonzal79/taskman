@@ -5,9 +5,9 @@ import type { Task } from "@taskman/core";
  * La traduccion de una tarea entre el borde HTTP y el dominio (6.1), incluido lo
  * unico delicado que tiene: `due_date`.
  *
- * Sale a `lib/` por lo mismo que `aColumnaSalida`: la van a necesitar POST
- * /api/tasks, GET /api/tasks/{id} y los endpoints de tarea que faltan, y copiarla
- * en cada uno dejaria varias versiones de la conversion de fecha libres de
+ * Sale a `lib/` por lo mismo que `aColumnaSalida`: la usan todos los Route
+ * Handlers de tarea —y `aFechaUtc`, ademas, las Server Actions— y copiarla en
+ * cada uno dejaria varias versiones de la conversion de fecha libres de
  * separarse. Esa es justo la que no puede tener dos versiones.
  */
 
@@ -21,8 +21,11 @@ import type { Task } from "@taskman/core";
  * sin hora ni zona, y el unico instante que representa el dia sin ambiguedad es
  * su medianoche UTC.
  *
- * El formato y la existencia del dia ya los valido el contrato (`fechaSola`), asi
- * que aca no se vuelve a comprobar: seria una segunda definicion de fecha valida.
+ * En el borde REST el formato y la existencia del dia ya los valido el contrato
+ * (`fechaSola`), y por eso aca no se vuelve a comprobar: seria una segunda
+ * definicion de fecha valida. OJO: `editarTarea` (`lib/acciones.ts`) tambien la
+ * llama y NO pasa por el contrato, asi que por ese camino un dia inexistente se
+ * corre sin avisar ("2026-02-30" da el 2 de marzo; ver la deuda en CLAUDE.md).
  */
 export function aFechaUtc(valor: string): Date {
   return new Date(`${valor}T00:00:00.000Z`);

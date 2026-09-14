@@ -15,19 +15,43 @@ Si estás por escribir acá un número o una enumeración de lo que ya existe, l
 hace falta es el comando que lo averigua, no el dato.
 
 - **Cuántas pruebas hay y si pasan**: `pnpm run verify`. Levanta la base, migra y
-  corre las suites contra PostgreSQL real; cada paquete imprime su total, y al
-  final levanta `next dev` y le pide dos rutas (`pnpm run humo:dev`).
+  corre las suites contra PostgreSQL real; cada paquete imprime su total, después
+  levanta `next dev` y le pide tres rutas (`pnpm run humo:dev`) y al final compila
+  y sirve la app para pasarle Playwright (`pnpm run e2e`).
+- **Qué cubre el nivel de extremo a extremo** de la 10, y sobre todo qué NO: los
+  `apps/web/e2e/*.spec.ts`, y al pie de `tablero-lectura.spec.ts` está el mapeo
+  contra los diez escenarios CT de la 10.2 con el motivo de cada hueco. Los datos
+  de los que parte son la siembra determinista de la 10.3, en `e2e/semilla.ts`.
 - **Qué endpoints existen**, con su verbo y su scope, uno por línea:
 
   ```
   grep -rnE "^export (const|async function) (GET|POST|PATCH|PUT|DELETE)" apps/web/app --include=route.ts
   ```
 
-  El `conAuth("…")` de cada línea es el scope que ese endpoint exige (7.2).
-  `/api/health` sale sin `conAuth` porque es el único sin autenticación (6.2), y
+  El `conAuth("…")` de cada línea es el scope que ese endpoint exige (7.2). DOS
+  líneas salen sin `conAuth`, y no son el mismo caso:
+
+  `/api/health` es el único endpoint DEL CONTRATO de la 6.2 sin autenticación, y
   eso es TODO lo que lo hace distinto: no tiene 401, 403 ni el 429 de la 7.3, que
   se cobra por clave. El X-Request-Id SÍ lo lleva, como toda respuesta (6.1);
   genera el suyo con la misma `nuevoRequestId()` que usa `conAuth`.
+
+  `/eventos` NO ES DEL CONTRATO: es el flujo de Server-Sent Events con el que el
+  tablero se entera de que algo cambió (CT-06 y CT-07). Aparece en este grep
+  porque también es un `route.ts` bajo `app/`, no porque sea un endpoint público,
+  y por eso está fuera de `/api`: la lista de la 6.2 dice algo simple y cierto
+  —todos autentican menos health— y meter ahí una ruta que no puede autenticar la
+  ensuciaría. NO autentica porque la UI no usa ninguna API key: invoca los
+  servicios en el mismo proceso y no consume su propia API pública (9.1), así que
+  no tiene con qué. LO QUE EXPONE, por cada escritura del sistema: el tipo de
+  actor, la acción, el tipo de entidad y su UUID. Nada de títulos, descripciones,
+  fechas ni contenido. Y que no lleve contenido NO quiere decir que el contenido
+  esté protegido: la UI entera no autentica. `GET /` sirve todos los tableros con
+  sus títulos y fechas, con `?tarea=` también la descripción, y las Server
+  Actions crean, editan, mueven y borran sin clave ni scopes (las dos lecturas,
+  medidas con `curl` sin cabecera `Authorization`: 200 y los datos en el HTML).
+  O sea que `/eventos` no expone nada que la página no exponga ya. Es el desvío
+  "La UI no tiene autenticación", más abajo.
 - **Qué endpoints faltan**: la tabla de la 6.2 es el objetivo y el comando de
   arriba es el estado; la resta de los dos es la lista. Cualquier copia escrita
   acá empieza a envejecer el mismo día.
@@ -38,13 +62,13 @@ hace falta es el comando que lo averigua, no el dato.
   Los nombres de fase (F1b, F3, F4…) salen del plan de la 12.
 
 Lo que no caduca está en las secciones de abajo, que son las que valen: la deuda
-conocida, las trampas del entorno, las reglas que no se negocian y los
-invariantes del servidor MCP.
+conocida, los desvíos declarados de la especificación, las trampas del entorno,
+las reglas que no se negocian y los invariantes del servidor MCP.
 
 ## Deuda conocida
 
-Salio del uso real, no de la especificacion. Ninguna esta arreglada; anotarlas
-aca es para que no se redescubran de cero.
+Salio del uso real y de las revisiones, no de la especificacion. Ninguna esta
+arreglada; anotarlas aca es para que no se redescubran de cero.
 
 Esta lista SÍ va escrita a mano, a diferencia del inventario de arriba, y la
 diferencia no es el formato: una entrada de acá se borra en el mismo commit que
@@ -160,6 +184,268 @@ contador de pruebas no tiene ese commit.
   su propio riesgo— y (2) recien entonces LISTEN/NOTIFY o un cache compartido,
   porque el problema real es entre procesos. `reiniciarCacheDeClaves()` ya existe
   y es el gancho que usaria cualquiera de las dos.
+- El aviso de cambios NO DISTINGUE TABLERO. `taskman_cambios` es un canal unico y
+  `AvisoDeCambio` no lleva el tablero, asi que una escritura en OTRO tablero hace
+  que `ColumnList` refresque el que se esta mirando. Hoy cuesta un render de mas y
+  nada visible: la marca de cambio ajeno se cuelga del id de la tarea, y un id de
+  otro tablero no encuentra tarjeta. Scopearlo exige que el aviso sepa el tablero
+  de cada escritura, o un canal por tablero con quien escucha re-suscribiendose
+  al cambiar de tablero.
+- No hay INDICADOR VISIBLE de que el flujo de cambios se cayo. El estado vive en
+  `data-cambios` de `ColumnList` ("conectado" o "conectando") y nada lo pinta:
+  una persona con el tablero sordo no tiene como enterarse salvo mirando el DOM.
+  Desde be319a6 el atributo dice la verdad cuando la escucha se cae y se cierra;
+  lo que falta es mostrarlo. Tampoco distingue "reintentando" de "se rindio": si
+  `EventSource` abandona —ante una respuesta que no es 200, como el 204 con el
+  que las pruebas cortan el flujo— el atributo se queda en "conectando".
+- Una conexion `LISTEN` que muere SIN CERRARSE —corte de red, portatil
+  suspendido— deja el tablero SORDO y "conectado". `pg` solo se entera de una
+  caida por un `error` o un `end`, y sin FIN ni RST no llega ninguno, asi que
+  `lib/cambios.ts` no tiene nada que atender y los flujos siguen abiertos con su
+  latido. Es la mitad que be319a6 NO arreglo, y es mas frecuente que el caso
+  arreglado. NO ESTA MEDIDA.
+- SILENCIO EN EL LOG durante una caida larga de la base. Cuando el `LISTEN` se
+  cae, el cliente `pg` emite `error` y eso escribe dos lineas `listen`; los
+  reintentos que siguen —cada pestana abierta vuelve a pedir `/eventos` cada
+  ~3 s, y cada pedido intenta conectar— no escriben ninguna, porque el `catch`
+  de la ruta cierra el flujo sin registrar. MEDIDO con `docker compose stop
+  postgres`: la caida sumo dos lineas `listen` al log, y no sumo ninguna mas
+  durante cuatro reintentos fallidos. Si el `LISTEN` no pudiera volver con la
+  base arriba —por credenciales, por ejemplo— quedaria solo esa primera traza
+  mientras las pestanas reintentan.
+- `ColumnList` SIGUE MONTADO al cambiar de tablero: la pagina lo renderiza sin
+  `key`, asi que React reusa la instancia y su estado de cliente cruza de un
+  tablero al otro. Lo visible: el aviso de un arrastre fallado en un tablero sigue
+  arriba del otro hasta el siguiente arrastre, porque el error solo se limpia al
+  empezar uno. Sin `key` A PROPOSITO: ponerla remontaria `ColumnList` en cada
+  cambio y con el reabriria `/eventos`, y un aviso que llegue en ese hueco se
+  pierde.
+- Un tablero FUERA DE LA PRIMERA PAGINA del listado —mas de
+  `LIMITE_PAGINA_MAXIMO` tableros— se abre por su enlace, porque `cargarVista` lo
+  carga por id, pero no aparece en la barra ni queda marcado: la barra lista solo
+  la primera pagina y dice "y mas sin mostrar". En uso personal no pasa.
+- Las Server Actions NO VALIDAN CON EL CONTRATO. `lib/acciones.ts` llama al
+  nucleo sin pasar por los esquemas de `packages/contracts`, y la existencia del
+  dia de `due_date` solo la valida el contrato (`fechaSola`): `editarTarea` la
+  convierte con `aFechaUtc`, que no comprueba nada, y `TaskService.update` la
+  asigna como llega. O sea que un POST armado a mano contra la accion con
+  "2026-02-30" guarda el 2 de marzo sin avisar, igual que la entrada de `aFecha`
+  para MCP. Lo medido es la conversion (`new Date("2026-02-30T00:00:00.000Z")`
+  da `2026-03-02`); el POST a mano no se reprodujo. Desde la UI real no pasa,
+  porque `<input type="date">` solo produce fechas validas. Incumple ademas la
+  3.2, que pide a los adaptadores validar con el esquema de contratos, y vale
+  para cualquier campo que el contrato restrinja y el dominio no: una accion es
+  un POST publico y sus tipos no existen en tiempo de ejecucion.
+- Un BORRADO que falla por error interno NO MUESTRA EL `requestId`: `borrar` en
+  `task-editor.tsx` pinta solo `resultado.mensaje`, mientras `ResultadoAccion`
+  (`lib/acciones.ts`) dice que el `requestId` se muestra justamente en el fallo
+  no controlado, que es cuando es lo unico util que copiar. El guardado del mismo
+  panel, el QuickAdd, "Nuevo tablero" y el arrastre si lo agregan.
+- "HOY" SE CALCULA EN UTC, y la marca de vencida sale antes de tiempo. `esVencida`
+  compara contra el dia UTC y el filtro `overdue` contra el `CURRENT_DATE` de una
+  sesion en UTC (`domain/vencimiento.ts` explica por que tienen que coincidir),
+  pero la fecha limite la elige una persona en su calendario local. En UTC-4 —la
+  zona de esta maquina en verano— desde las 20:00 locales una tarea que vence HOY
+  sale "Vencida" y entra en el filtro de vencidas, hasta la medianoche. La prueba
+  de "vence hoy" no lo ve porque siembra relativo al dia UTC. La salida no es
+  tocar `esVencida` sola: las dos puntas tienen que moverse juntas a la zona de
+  quien mira, que el sistema hoy no conoce.
+- La LINEA DE LOG POR PETICION de la 11.1 —request_id, metodo, ruta, estado,
+  duracion, prefijo de clave y actor— solo la escriben `conAuth` y `/api/health`
+  (`registrarPeticion`). Las Server Actions no escriben ninguna: dejan rastro en
+  el log solo cuando fallan sin controlar (`registrarFallo`, con su request_id),
+  asi que una accion que sale bien, o que devuelve un error de dominio, no
+  aparece. Tampoco escriben linea el render de `GET /` ni `/eventos`. El
+  request_id de una accion que escribe si queda en `audit_log`.
+- GUARDAR UN CAMPO DEL PANEL REMONTA EL EDITOR ENTERO, y el campo al que se paso
+  pierde el foco. El `key` de `TaskEditor` en `task-detail-panel.tsx` incluye
+  los cuatro valores editables —a proposito, para que un cambio de otro actor
+  entre en campos ya montados—, asi que el guardado propio tambien lo cambia. Si
+  se edita el titulo y se pasa con Tab a la descripcion, el blur guarda, y cuando
+  llega la revalidacion el editor se remonta: la descripcion pierde el foco, y lo
+  que ya se hubiera tecleado en ella se pierde, porque desmontar no dispara
+  `blur`. REPRODUCIDO en `e2e/panel-remontaje.spec.ts` ("DEUDA 1"), marcado con
+  `test.fail()`: la prueba afirma que la descripcion conserva foco y texto, hoy
+  falla, y la marca se quita el dia que se arregle. Tiene al lado una prueba de
+  MONTAJE sin marca ("MONTAJE 1"), y no es redundante: `test.fail()` acepta
+  CUALQUIER fallo, asi que si la retencion de Server Actions dejara de retener,
+  o Tab dejara de llegar a la descripcion, la marcada fallaria por eso y seguiria
+  verde. La de montaje es la que se pone roja en ese caso.
+- LA PRIORIDAD GUARDA AL CAMBIAR y no al perder el foco, que es lo que pide la
+  9.3: `CampoPrioridad` llama a `guardar` desde el `onChange` del `<select>`. Con
+  teclado, cada flecha sobre el select cerrado cambia el valor y dispara
+  `change` —medido en este Chromium, headless y con ventana—, asi que guarda un
+  valor intermedio; y como la prioridad esta en el `key` del editor (entrada
+  anterior), la revalidacion lo remonta. Si la flecha siguiente llega con ese
+  guardado todavia en vuelo, la guarda `enVuelo` de `guardar` la descarta: el
+  select muestra un valor que no se guardo hasta que el remontaje lo pisa.
+  REPRODUCIDO en `e2e/panel-remontaje.spec.ts` ("DEUDA 2"), marcado con
+  `test.fail()` y con su prueba de MONTAJE sin marca al lado ("MONTAJE 2", que
+  afirma que la flecha cambia el valor), por lo mismo que la entrada anterior.
+  LO QUE LA PRUEBA AFIRMA ES EL VALOR GUARDADO: dos flechas y Tab tienen que
+  guardar MEDIUM, y hoy queda HIGH. La perdida de foco del select tras el
+  remontaje se vio en la sonda de medicion y NO esta en la suite.
+- MONTAJE 2 y DEUDA 2 dependen de que una flecha sobre un `<select>` cerrado
+  cambie su valor, y eso esta MEDIDO SOLO en Chromium sobre Windows, headless y
+  con ventana. En macOS NO ESTA MEDIDO: si ahi el navegador trata las flechas de
+  otra forma, MONTAJE 2 se pone rojo, que es justo para lo que esta —avisar que
+  el montaje de DEUDA 2 dejo de valer, en vez de dejarla verde por un motivo
+  equivocado—.
+- EL AVISO PROPIO LLEGA ANTES DE QUE LA PESTANA ANOTE SU `requestId`, y el
+  filtro de `lib/cambios-propios.ts` queda sin efecto. MEDIDO en 10 de 10
+  creaciones con QuickAdd —`next start`, Chromium headless, base local, una
+  pestana, flujo `/eventos` vivo, sin retencion y sin carga—: llegaron 10 avisos
+  y salieron 10 refrescos del router. Con `/eventos` cortado, 0 avisos y 0
+  refrescos. El unico `router.refresh()` esta en `ColumnList` y lo piden dos
+  cosas: un aviso que `esCambioPropio` no reconoce, o una reconexion del flujo.
+  En esa corrida no hubo reconexion, asi que la medicion no cambia: ninguno de
+  los 10 avisos se reconocio. El por
+  que, como explicacion NO MEDIDA: el `NOTIFY` sale en el COMMIT, y la respuesta
+  de la accion —despues de la cual se anota el `requestId`— sale cuando el
+  servidor termino de renderizar el arbol revalidado.
+  CONSECUENCIA REAL: cada escritura desde la UI pide un refresco de mas, que
+  sale recien cuando la accion responde (medido reteniendo la respuesta), asi que
+  la pagina se renderiza dos veces en el servidor y el arbol se actualiza dos
+  veces en el cliente. Es rendimiento, no correccion.
+  LO QUE NO PASA, para no leerlo de mas: un cambio propio NO se marca como
+  ajeno. La marca exige actor distinto de USER y toda escritura de la UI audita
+  como USER; lo mide `cambios-ajenos.spec.ts` en cada verify.
+  LO QUE NO SE MIDIO: una base remota con latencia, Chrome con ventana y los
+  otros tipos de escritura —editar, borrar, mover, crear tablero—, aunque por
+  codigo se espera lo mismo, porque todos anotan el `requestId` despues de la
+  respuesta.
+  ARREGLO ELEGIDO Y NO HECHO: mientras la pestana tenga una accion en vuelo,
+  retener los avisos de actor USER y volver a compararlos contra los propios
+  cuando la accion responda; AGENT y API nunca son propios y siguen de largo.
+  DESCARTADO anotar el `requestId` antes de invocar la accion: haria que el
+  `request_id` de `audit_log` venga del navegador, y aceptar que un cliente
+  elija lo que queda en la auditoria es un precio alto para ahorrar un refresco.
+  Al arreglarlo, esta medicion se vuelve prueba de regresion: tres creaciones
+  con QuickAdd y el flujo vivo tienen que dar CERO refrescos del router, contando
+  las peticiones GET con cabecera `rsc: 1` que no llevan `next-router-prefetch`.
+
+## Desvíos declarados de la especificación
+
+Cosas que la especificación pide y que este repo NO hace, A PROPÓSITO.
+
+**NO ES DEUDA Y NO HAY QUE SALDARLA.** La sección de arriba lista trabajo
+pendiente: cada entrada de allí se borra en el commit que arregla lo que
+describe. Ésta lista DECISIONES YA TOMADAS, y una entrada de acá solo se borra
+si alguien decide lo contrario, no si alguien "se pone al día". Están juntas y
+separadas por eso: quien lee "deuda" intenta pagarla, y pagar una de éstas es
+deshacer una decisión sin haberla discutido.
+
+Cada una dice de QUÉ sección se desvía y POR QUÉ, no solo qué falta. Si el
+motivo dejó de valer, ahí está el disparador para volver a mirarla.
+
+- **La UI es SOLO ESCRITORIO.** La 9.3 pide responsive —"en pantallas estrechas
+  las columnas se muestran de una en una con navegación por pestañas"— y la 13
+  del funcional lo pide entre los requisitos no funcionales —"diseño responsive
+  para uso personal en desktop y móvil"—. Los dos quedan descartados: por debajo
+  de 1024 px no se sirve una versión degradada sino un aviso. El motivo es que un
+  tablero Kanban de a una columna deja de ser un tablero: lo que se mira en él es
+  la relación entre columnas, y con pestañas hay
+  que recordar lo que no se ve. Antes que hacerlo mal, no hacerlo y decirlo.
+  Ya está escrito en `globals.css` y `layout.tsx`, está probado
+  (`tablero-lectura.spec.ts`, el caso de 1023 px) y el usuario ve el motivo en
+  pantalla. OJO: la definición de terminado de F3 (fila F3 de la 12) dice
+  "comportamiento responsive verificado", así que este desvío la contradice de
+  frente. EL CIERRE DE F3 SE ACEPTÓ CON ESTE DESVÍO, de forma explícita, el 14 de
+  septiembre de 2026, pese a ese punto del DoD.
+
+- **Sin TanStack Query**, que la 9.1 nombra con clave de caché `["board", boardId]`.
+  El argumento largo está en la cabecera de `column-list.tsx`; en corto: es una
+  caché de estado de servidor sobre una capa de fetch, y acá no hay ninguna de las
+  dos —la carga inicial son propiedades de un Server Component y las mutaciones
+  son Server Actions con `revalidatePath`—. Darle un fetcher exigiría o guardar
+  una API key para que la UI hable consigo misma (7.2) o duplicar el render del
+  servidor. Y lo que decide: NO PODRÍA dar el punto 3 de la 9.2. Una caché
+  invalidada solo puede volver a PREGUNTAR después, y entre el commit y esa
+  pregunta cabe otra escritura; el orden autoritativo tiene que venir en la
+  respuesta de la acción, releído dentro de la transacción que lo escribió.
+  El disparador que esa cabecera nombraba para volver a mirarlo —las
+  notificaciones de cambios de agentes— ya ocurrió (`/eventos`) y no cambia el
+  argumento: un aviso dispara `router.refresh()`, que vuelve a pedir el render
+  del servidor, así que sigue sin haber una capa de fetch en el cliente. Queda el
+  otro: una pantalla con varios tableros a la vez.
+
+- **Sin "acción de nueva tarea" en BoardHeader**, que la 9.3 le asigna junto al
+  nombre, el selector y los filtros. El QuickAdd al pie de cada columna (que la
+  misma 9.3 pide como componente aparte) ya cubre la intención, y la cubre mejor:
+  crear desde la cabecera obligaría a elegir la columna en un formulario, mientras
+  que escribir al pie de una columna ya la eligió. Dos caminos para lo mismo, uno
+  peor. De las otras dos, el nombre y los filtros están en BoardHeader. El
+  SELECTOR de tablero está, pero en `BoardSidebar` y no en la cabecera: la barra
+  ya era la lista de tableros, y un selector es esa lista pulsable; en la cabecera
+  habría que esconder los otros tableros detrás de un desplegable para ahorrar un
+  ancho que la barra ya ocupa.
+
+- **Sin buscador libre en la UI.** El capítulo 9 no lo pide, así que esto no se
+  desvía de ningún requisito; se declara igual porque la capacidad SÍ existe
+  debajo —`GET /api/tasks/search` y la herramienta `search_tasks`— y su ausencia
+  arriba se lee como un olvido. El motivo es que hoy se leería como roto: la
+  búsqueda full-text no es incremental (`plainto_tsquery` no agrega `:*`, así que
+  un prefijo no encuentra nada mientras se escribe) y no tolera acentos de forma
+  uniforme (ver las dos entradas de deuda correspondientes). Disparador: entra
+  cuando entre `unaccent` en la configuración de búsqueda.
+
+- **Sin editar tableros desde la UI.** La 3 del funcional pone "crear, listar,
+  editar" para los tableros, y el RF-01 pide crearlos "indicando nombre y
+  descripción opcional". La UI los crea y los lista, y los crea sin descripción;
+  editar el nombre o la descripción de un tablero se hace por la API
+  (`PATCH /api/boards/{id}`), y el catálogo MCP de la 8.2 no trae herramienta
+  para eso. El motivo: la descripción de un tablero no se muestra en ningún sitio
+  de esta UI, así que pedirla o editarla sería escribir un dato que la pantalla
+  no usa; renombrar un tablero pasa pocas veces en uso personal; y el capítulo 9
+  no le asigna esa acción a ningún componente. Disparador: que la UI muestre la
+  descripción, o que renombrar se vuelva frecuente.
+
+- **La entidad Proyecto es post-MVP.** La 2 del funcional la nombra como objetivo
+  ("permitir múltiples tableros y proyectos sin introducir complejidad innecesaria
+  en el MVP") y el modelo de datos no la tiene. El motivo es que un proyecto sin
+  permisos ni miembros es solo una carpeta: lo que le da sentido es agrupar
+  tableros de gente distinta, o sea que el disparador real es el MULTIUSUARIO, no
+  el número de tableros. Cuando llegue es ADITIVO y no una migración dolorosa:
+  `board_id` sigue siendo la referencia estable de tareas, columnas, herramientas
+  MCP y auditoría, y un proyecto se cuelga por encima del tablero.
+
+- **Sin UI de gestión de API keys.** La 7.1 define las claves y su ciclo de vida;
+  se emiten por CLI (`pnpm run apikey:create`) y se revocan tipeando SQL. Una
+  pantalla que las emita, las liste y las revoque necesita antes una pantalla de
+  AJUSTES que no existe —hoy la UI es una sola página, el tablero— así que sería
+  inventar una sección entera para un uso que en un sistema personal ocurre dos
+  veces. Disparador: el día que esto se le entregue a alguien más, porque ahí
+  emitir una clave deja de ser una tarea de quien administra la máquina.
+
+- **La UI NO TIENE AUTENTICACIÓN.** Quien llega al puerto de la aplicación lee y
+  escribe todo sin clave: `GET /` sirve todos los tableros con sus títulos y
+  fechas, `?tarea=` agrega la descripción (las dos medidas con `curl` sin cabecera
+  `Authorization`: 200 y los datos en el HTML), y las Server Actions crean,
+  editan, mueven y borran sin clave ni scopes (7.2). De paso quedan fuera el
+  límite de la 7.3, que se cobra por clave dentro de `conAuth`, y el `client_id`
+  de la auditoría: la UI escribe como USER con `client_id` NULL. `/eventos` no
+  agrega exposición a eso. El motivo: es un sistema personal en un contenedor, y
+  la UI invoca los servicios en el mismo proceso y no consume su propia API
+  pública (9.1), así que no tiene clave que presentar ni a quién presentársela.
+  OJO, la especificación se contradice sola en este punto. La ADR-005 (2.5) dice
+  que "la sesión de la UI web usa el mismo mecanismo mediante una clave de
+  servidor que nunca llega al navegador"; la 7.3 dice que "los Server Components
+  y las Server Actions invocan el núcleo directamente en el servidor", y no nombra
+  ninguna clave. El repo sigue a la 7.3 y a la 9.1, y por eso el CT-08 no tiene
+  superficie en la UI (ver el mapa CT). Disparador: que el puerto de la
+  aplicación sea alcanzable por alguien más que quien administra la máquina.
+
+- **Sin el aislamiento de pruebas de la 10.3**, que pide "un esquema PostgreSQL
+  propio, creado y destruido en el ciclo de vida de la suite, para permitir
+  paralelismo sin interferencias". El repo usa UNA base compartida, `TRUNCATE` en
+  cada `beforeEach`, `fileParallelism: false` y `maxWorkers: 1`. Es ANTERIOR a F3
+  y nunca se decidió explícitamente: se llegó por el camino simple y funciona. Lo
+  que se paga es tiempo de pared —las suites no pueden correr en paralelo— y lo
+  que se gana es que no hay que crear ni destruir esquemas. Disparador: que la
+  corrida de `verify` moleste de verdad.
+  OJO, la otra mitad de la 10.3 SÍ está: el script de siembra determinista
+  invocable con una semilla fija existe (`apps/web/e2e/semilla.ts`, una semilla
+  por clave de `SEMILLAS`), y de él parten las pruebas de extremo a extremo.
 
 ## Entorno
 
@@ -174,8 +460,21 @@ contador de pruebas no tiene ese commit.
   residuo cambia con el orden de las suites —este archivo decía "fixture de
   `apps/mcp-stdio`" y dejó de ser cierto en cuanto `apps/web` pasó a correr
   después—, así que no lo anotes acá: si ves algo y dudás, buscá de dónde sale
-  con `grep -rn "<lo que viste>" --include=*.test.ts .`. Ya engañó una vez, con
-  un título de TAREA leído como nombre de tablero.
+  con
+
+  ```
+  grep -rn "<lo que viste>" apps packages --include=*.ts \
+    --exclude-dir=node_modules --exclude-dir=generated --exclude-dir=.next \
+    --exclude-dir=.next-humo --exclude-dir=.next-e2e
+  ```
+
+  Ya engañó una vez, con un título de TAREA leído como nombre de tablero. NO
+  filtra por `*.test.ts`, y es a propósito: la última suite que corre es la de
+  extremo a extremo, que parte de la siembra de la 10.3 —trunca y siembra igual—,
+  y los textos de esa siembra viven en `apps/web/e2e/semilla.ts` y `base.ts`, que
+  no son archivos de prueba. Este
+  archivo mandaba antes un `--include=*.test.ts` que, con ese residuo, no
+  devolvía nada.
 - Eso incluye `api_key`: verify también la vacía, así que cualquier clave
   emitida a mano desaparece en el próximo verify y hay que reemitirla con
   `pnpm run apikey:create`.
@@ -204,13 +503,52 @@ contador de pruebas no tiene ese commit.
   ```
   grep -rnoE '"[.][.]?/[^"]*[.]js"' . --include=*.ts --include=*.tsx \
     --exclude-dir=node_modules --exclude-dir=.next --exclude-dir=.next-humo \
-    --exclude-dir=generated
+    --exclude-dir=.next-e2e --exclude-dir=generated
   ```
 
   Pide `./` o `../` al principio y la comilla de cierre al final a propósito:
   sin lo primero cuenta los subpaths de paquete, que son legítimos, y sin lo
   segundo `.js` también matchea dentro de `"../package.json"`. Hoy la única
   línea que devuelve son los dos `../dist/index.js` de `apps/mcp-stdio`.
+
+  La lista de `--exclude-dir` tiene que llevar TODOS los distDir, no sólo
+  `.next`: `next build` genera un `types/validator.ts` lleno de specifiers
+  `"../../app/…/route.js"` que son legítimos y generados, y catorce líneas de
+  ruido tapan la que importa. `.next-e2e` entró por eso cuando se montó
+  Playwright; si aparece otro distDir, va también acá.
+- El navegador de Playwright NO está en el repo y `pnpm install` NO lo baja: un
+  clon nuevo necesita, una vez,
+
+  ```
+  pnpm --filter @taskman/web exec playwright install chromium
+  ```
+
+  Son ~115 MB que van a `%LOCALAPPDATA%\ms-playwright`, FUERA del repo y
+  compartidos con cualquier otro proyecto de la máquina, así que puede que ya
+  estén. No se enganchó a un `postinstall` a propósito: descargar cien megas en
+  cada `pnpm install` para una suite que quizá no se corra es peor que el
+  mensaje que da Playwright cuando falta, que dice exactamente qué comando
+  correr.
+- `pnpm run e2e` compila con `next build` en su PROPIO distDir (`.next-e2e`) y lo
+  sirve con `next start`, nunca con `next dev`. Los tres motivos, en orden de
+  importancia: mide lo que se publica —dev inyecta 6 KB de cliente de HMR y la
+  superposición de errores en el mismo documento, y hay pruebas que miden
+  ALTURAS renderizadas—; `next start` no crea el candado `lock` que vive dentro
+  del distDir y que ya mordió al humo; y arranca en 1,4 s contra los 6,4 s de
+  dev, con el primer GET / en 0,17 s contra 3,08 s (medido). El distDir propio
+  es porque el `.next` del desarrollador puede ser una compilación de dev, y
+  `next start` sobre eso no arranca.
+
+  Eso NO reemplaza a `humo:dev`, que sigue siendo lo único que levanta
+  `next dev`: el fallo del runtime edge de `instrumentation.ts` sólo se ve ahí.
+  Los dos están en verify y cubren cosas distintas.
+
+  Efecto colateral que confunde: `next build` REESCRIBE `next-env.d.ts` para que
+  importe los tipos del distDir que acaba de compilar, así que después de un e2e
+  ese archivo nombra `.next-e2e` y después de un `build` normal nombra `.next`.
+  Está gitignoreado, no genera churn, y borrar el distDir al que apunta no rompe
+  el typecheck (comprobado: `tsc --noEmit` sale 0 sin `.next-e2e` en disco). No
+  es un archivo que haya que "arreglar" cuando se lo ve cambiado.
 - Un paquete listado en `serverExternalPackages` tiene que ser RESOLUBLE desde
   `apps/web` o la entrada es inerte: Next declara externo algo que no puede
   externalizar, lo empaqueta igual, y en dev lo empaqueta partido en

@@ -9,25 +9,31 @@
     "start": "dotenv -e ../../.env -- next start",
     "test": "dotenv -e ../../.env -- vitest run",
     "humo:dev": "dotenv -e ../../.env -- node scripts/humo-dev.mjs",
+    "e2e:build": "dotenv -e ../../.env -v TASKMAN_DIST_DIR=.next-e2e -- next build",
+    "e2e": "pnpm run e2e:build && dotenv -e ../../.env -v TASKMAN_DIST_DIR=.next-e2e -- playwright test",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@dnd-kit/core": "6.3.1",
+    "@dnd-kit/sortable": "10.0.0",
+    "@dnd-kit/utilities": "3.2.2",
     "@prisma/client": "7.10.0",
     "@taskman/contracts": "workspace:*",
     "@taskman/core": "workspace:*",
     "next": "16.3.4",
+    "pg": "8.23.0",
     "pino": "10.3.1",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "zod": "4.5.4"
   },
   "devDependencies": {
+    "@playwright/test": "1.63.0",
     "@types/node": "24.13.3",
     "@types/pg": "8.23.1",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.7",
     "dotenv-cli": "11.0.0",
-    "pg": "8.23.0",
     "typescript": "7.0.2",
     "vitest": "5.0.0"
   }

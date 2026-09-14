@@ -1,0 +1,1026 @@
+/*
+ * La 1.2 dice que la especificacion NO define paleta ni tipografia, asi que la
+ * eleccion es de este paso y va justificada:
+ *
+ *   TIPOGRAFIA: la del sistema. Ninguna webfont. Un tablero se lee de un vistazo
+ *   y en diagonal; una fuente remota agrega una peticion bloqueante y un salto de
+ *   texto al cargar, que es exactamente el momento en que se esta mirando.
+ *
+ *   PALETA: una sola escala de grises frios para TODO lo estructural —fondo,
+ *   columnas, tarjetas, bordes, texto— y color saturado unicamente en prioridad
+ *   (URGENT, HIGH) y en la marca de vencida. Es la consigna: si todo tiene color,
+ *   nada resalta. La consecuencia practica es que en una pantalla llena de
+ *   tarjetas grises, las tres o cuatro que importan son las UNICAS con tinta.
+ *
+ * Una sola hoja global y no un modulo CSS por componente: lo que hay que poder
+ * revisar de un vistazo es justamente la lista completa de lo que lleva color, y
+ * repartida en cuatro archivos deja de ser revisable. Los tokens de abajo son esa
+ * lista.
+ */
+
+:root {
+  --fuente: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+
+  /* Estructura: gris, sin excepciones. */
+  --lienzo: #f5f6f8;
+  --columna: #eceef1;
+  --tarjeta: #ffffff;
+  --borde: #dcdfe4;
+  --borde-suave: #e6e8eb;
+  --texto: #1c2024;
+  --texto-tenue: #5c6570;
+  --texto-apagado: #8b929b;
+
+  /* Senal: los unicos colores saturados de la pagina. */
+  --urgente: #b3261e;
+  --urgente-fondo: #fdecea;
+  --alta: #8a5a00;
+  --alta-fondo: #fdf4e3;
+  --alta-borde: #e8c98a;
+  --vencida: #b3261e;
+
+  /*
+   * El acento de "lo cambio otro" (9.1). Es AZUL y no rojo ni ambar a proposito:
+   * los dos calidos ya significan urgencia y vencimiento (9.3), y reutilizar uno
+   * haria que una tarea movida por un agente se leyera como una tarea en
+   * problemas. Este no dice "atencion", dice "esto es nuevo para vos".
+   */
+  --acento-ajeno: #1f6feb;
+  --acento-ajeno-borde: #9dc1f5;
+  --acento-ajeno-fondo: #f2f7fe;
+  --acento-ajeno-halo: rgb(31 111 235 / 28%);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--lienzo);
+  color: var(--texto);
+  font-family: var(--fuente);
+  font-size: 14px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+
+/*
+ * SOLO ESCRITORIO (decision de producto de F3). El responsive de la 9.3 —columnas
+ * de a una con pestanas— queda descartado, asi que por debajo de 1024px no se
+ * sirve una version degradada sino un aviso. Se resuelve con una media query y
+ * NADA de JavaScript: medir el ancho en el cliente obligaria a un "use client" y a
+ * un primer render equivocado.
+ */
+.solo-escritorio {
+  display: block;
+  height: 100%;
+}
+
+.aviso-angosto {
+  display: none;
+}
+
+@media (max-width: 1023px) {
+  .solo-escritorio {
+    display: none;
+  }
+
+  .aviso-angosto {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    margin: 0;
+    padding: 32px;
+    color: var(--texto-tenue);
+    text-align: center;
+    text-wrap: balance;
+  }
+}
+
+/* --- Marco y barra lateral ------------------------------------------------ */
+
+.marco {
+  display: flex;
+  height: 100%;
+}
+
+/*
+ * La barra lateral es el SELECTOR de tablero: lista los tableros, marca cual se
+ * esta viendo, lleva a cualquiera de los otros y, al pie, crea uno nuevo. Nacio
+ * como armazon —ocupando su ancho desde el primer dia para que el layout no se
+ * rehiciera— y es lo que dejo que navegar y crear entraran sin mover nada.
+ *
+ * El tablero activo se distingue SIN COLOR: peso, tinta plena y un fondo apenas
+ * mas claro. El color esta reservado para prioridad y vencimiento, y gastarlo
+ * aca —en algo que siempre esta y siempre es uno solo— le quitaria fuerza justo
+ * a lo que tiene que resaltar.
+ */
+.barra {
+  flex: 0 0 150px;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 20px 0 16px;
+  border-right: 1px solid var(--borde);
+}
+
+.barra__titulo {
+  flex: none;
+  margin: 0 0 8px;
+  padding: 0 12px;
+  color: var(--texto-apagado);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/*
+ * `flex: 0 1 auto` y no `flex: 1`: la lista mide lo que sus tableros y "Nuevo
+ * tablero" va JUSTO DEBAJO del ultimo, que es lo que significa "al pie de la
+ * lista". Con `flex: 1` la lista se comeria el alto entero y el campo quedaria
+ * abajo del todo, lejos de lo que crea. Con muchos tableros la lista se encoge
+ * (`min-height: 0`) y desplaza, y el campo sigue a la vista.
+ */
+.barra__lista {
+  flex: 0 1 auto;
+  min-height: 0;
+  margin: 0;
+  padding: 0 8px;
+  overflow-y: auto;
+  list-style: none;
+}
+
+/*
+ * Cada item es un ENLACE, pero no se pinta como uno: una lista de nombres
+ * subrayados en azul se leeria como enlaces a otro sitio y no como la lista de
+ * tableros de esta pantalla. Lo que delata que se puede pulsar es el cambio de
+ * tinta al pasar por encima y el foco visible.
+ */
+.barra__item {
+  display: block;
+  padding: 5px 8px;
+  overflow: hidden;
+  border-radius: 5px;
+  color: var(--texto-tenue);
+  font-size: 13px;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.barra__item:hover {
+  color: var(--texto);
+}
+
+.barra__item:focus-visible {
+  outline: 2px solid var(--texto-tenue);
+  outline-offset: -2px;
+}
+
+.barra__item--activo {
+  background: var(--columna);
+  color: var(--texto);
+  font-weight: 600;
+}
+
+.barra__resto {
+  padding: 6px 8px 0;
+  color: var(--texto-apagado);
+  font-size: 12px;
+}
+
+/*
+ * "NUEVO TABLERO", al pie de la lista. En reposo NO parece un campo: sin borde,
+ * sin fondo y en tinta apagada, alineado con los items, asi que se lee como uno
+ * mas. Un tablero se crea una vez cada mucho, y un boton lleno competiria todos
+ * los dias con la lista. Al enfocarlo toma forma de campo, igual que el QuickAdd.
+ */
+.barra__nuevo {
+  flex: none;
+  padding: 2px 8px 0;
+}
+
+.barra__nuevo-campo {
+  width: 100%;
+  padding: 5px 8px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--texto);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.barra__nuevo-campo::placeholder {
+  color: var(--texto-apagado);
+}
+
+.barra__nuevo-campo:hover {
+  background: var(--tarjeta);
+}
+
+.barra__nuevo-campo:focus-visible {
+  border-color: var(--borde);
+  background: var(--tarjeta);
+  outline: 2px solid var(--texto-tenue);
+  outline-offset: -1px;
+}
+
+/*
+ * El mismo rojo que el error del QuickAdd. `overflow-wrap: anywhere` porque la
+ * barra mide 150 px, y el identificador de peticion que acompana a un fallo no
+ * controlado es una sola palabra mas ancha que eso.
+ */
+.barra__nuevo-error {
+  margin: 6px 2px 0;
+  color: var(--urgente);
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+/* --- Pagina y cabecera (BoardHeader, 9.3) --------------------------------- */
+
+.pagina {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.cabecera {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid var(--borde);
+  background: var(--lienzo);
+}
+
+.cabecera__nombre {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.cabecera__recuento {
+  color: var(--texto-tenue);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- Filtros (9.3, dentro de BoardHeader) --------------------------------- */
+
+/*
+ * Los chips van pegados a la derecha del recuento, no al borde de la pantalla:
+ * `margin-left: auto` los empujaria al otro extremo del ancho y quedarian lejos
+ * del nombre del tablero, que es lo que estan calificando.
+ */
+.filtros {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-left: 12px;
+}
+
+/*
+ * Un chip apagado no lleva color: es un contorno gris con el texto en tinta
+ * tenue. El color de esta pagina esta reservado a prioridad y vencimiento, y
+ * cuatro chips de colores permanentes en la cabecera se lo gastarian entero.
+ */
+.filtro {
+  padding: 3px 9px;
+  border: 1px solid var(--borde);
+  border-radius: 999px;
+  background: var(--tarjeta);
+  color: var(--texto-tenue);
+  font-size: 12px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.filtro:hover {
+  border-color: var(--texto-apagado);
+  color: var(--texto);
+}
+
+.filtro:focus-visible {
+  outline: 2px solid var(--texto-tenue);
+  outline-offset: 1px;
+}
+
+/*
+ * PUESTO SE VE SIN COLOR: se invierte. Tinta plena de fondo y texto claro, que
+ * es el contraste mas fuerte que hay en la hoja sin gastar un color, y ademas
+ * sobrevive a una captura en gris.
+ */
+.filtro--puesto {
+  border-color: var(--texto);
+  background: var(--texto);
+  color: var(--lienzo);
+  font-weight: 600;
+}
+
+.filtro--puesto:hover {
+  color: var(--lienzo);
+}
+
+/* Sin recuadro: es una accion sobre los chips, no otro chip mas. */
+.filtro--limpiar {
+  border-color: transparent;
+  background: transparent;
+  text-decoration: underline;
+}
+
+/* --- ColumnList (9.3): contenedor con scroll horizontal ------------------- */
+
+.columnas {
+  flex: 1;
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  min-height: 0;
+  padding: 20px 24px 24px;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+/* --- ColumnCard (9.3): cabecera con nombre y recuento --------------------- */
+
+.columna {
+  flex: 0 0 288px;
+  display: flex;
+  flex-direction: column;
+  max-height: 100%;
+  border-radius: 8px;
+  background: var(--columna);
+}
+
+.columna__cabecera {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 12px 8px;
+}
+
+.columna__nombre {
+  margin: 0;
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.columna__recuento {
+  flex: none;
+  color: var(--texto-tenue);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.columna__tareas {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  margin: 0;
+  padding: 0 8px 12px;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.columna__vacia {
+  padding: 10px 4px 2px;
+  color: var(--texto-apagado);
+  font-size: 13px;
+}
+
+/* El aviso de corte de pagina: ver `LIMITE_PAGINA_MAXIMO` en lib/tablero.ts. */
+.columna__resto {
+  padding: 6px 4px 0;
+  color: var(--texto-apagado);
+  font-size: 12px;
+}
+
+/* --- QuickAddInput (9.3): el campo al pie de cada columna ----------------- */
+
+/*
+ * Va FUERA del `<ul>` que desplaza (ver ColumnCard), asi que `flex: none` lo
+ * mantiene pegado al pie de la columna incluso cuando la lista se llena.
+ */
+.nueva {
+  flex: none;
+  padding: 0 8px 8px;
+}
+
+/*
+ * En reposo NO parece un campo: sin borde y sobre el fondo de la columna, con el
+ * texto en la tinta apagada. Cuatro cajas de formulario dibujadas al pie de
+ * cuatro columnas compiten con las tarjetas, que son el contenido; el campo se
+ * declara cuando se lo toca. Es el mismo criterio de la paleta —color solo donde
+ * hay senal— aplicado al peso visual.
+ */
+.nueva__campo {
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--texto);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.nueva__campo::placeholder {
+  color: var(--texto-apagado);
+}
+
+.nueva__campo:hover {
+  background: var(--tarjeta);
+}
+
+/*
+ * Al enfocarlo si toma la forma de una tarjeta: mismo fondo y mismo borde que
+ * `.tarjeta`, porque lo que se esta escribiendo ahi es una.
+ *
+ * `:focus-visible` y no `:focus`, con `outline` y no `box-shadow`: el anillo del
+ * sistema respeta el modo de alto contraste, que es donde un borde pintado a
+ * mano desaparece.
+ */
+.nueva__campo:focus-visible {
+  border-color: var(--borde);
+  background: var(--tarjeta);
+  outline: 2px solid var(--texto-tenue);
+  outline-offset: -1px;
+}
+
+/*
+ * El error usa el MISMO rojo que la marca de vencida, y es deliberado: la 9.3
+ * reserva el color saturado para lo que exige atencion, y un titulo rechazado lo
+ * exige. No hay un segundo rojo en la hoja.
+ */
+.nueva__error {
+  margin: 6px 2px 0;
+  color: var(--urgente);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+/* --- TaskCard (9.3): titulo, prioridad, fecha y marca de vencida ---------- */
+
+/*
+ * La tarjeta entera es un enlace al panel (`tarea=<id>` en la URL del tablero,
+ * ver `enlaceTablero`). El `<a>` no aporta
+ * apariencia: hereda la tinta y no subraya, porque una tarjeta subrayada en azul
+ * dentro de un tablero gris se leeria como un enlace a otro sitio y no como la
+ * tarjeta que ya se ve. Lo que si tiene es foco visible, que es lo unico que
+ * delata que se puede abrir con el teclado.
+ */
+.tarjeta-enlace {
+  display: block;
+  border-radius: 6px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.tarjeta-enlace:focus-visible {
+  outline: 2px solid var(--texto-tenue);
+  outline-offset: 1px;
+}
+
+.tarjeta {
+  padding: 8px 10px;
+  border: 1px solid var(--borde);
+  border-left-width: 3px;
+  border-left-color: var(--borde);
+  border-radius: 6px;
+  background: var(--tarjeta);
+  box-shadow: 0 1px 1px rgb(28 32 36 / 5%);
+}
+
+/*
+ * El borde izquierdo es la unica diferencia visible a nivel COLUMNA: se ve sin
+ * leer la tarjeta, que es como se escanea un tablero. Por eso lo llevan solo las
+ * dos prioridades que la 9.3 exige diferenciar.
+ */
+.tarjeta--urgente {
+  border-left-color: var(--urgente);
+}
+
+.tarjeta--alta {
+  border-left-color: var(--alta-borde);
+}
+
+/*
+ * La tarjeta que el panel esta mostrando. Con `outline` y NO con el borde: el
+ * borde izquierdo es la senal de prioridad, y pisarlo aca borraria la unica
+ * diferencia que se ve a nivel columna justo en la tarjeta que se esta mirando.
+ */
+.tarjeta--abierta {
+  outline: 2px solid var(--texto-tenue);
+  outline-offset: 1px;
+}
+
+/*
+ * DOS lineas como maximo, con puntos suspensivos. El titulo ES el contenido de la
+ * tarjeta: recortado a una sola linea, dos tareas que empiezan igual se vuelven
+ * indistinguibles, que es peor que la altura variable que el limite evita. Con dos
+ * la altura sigue siendo casi fija y el caso ambiguo se resuelve. El titulo entero
+ * queda igual en el `title` del elemento.
+ */
+.tarjeta__titulo {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  /*
+   * Sitio para el asa de arrastre, que va posicionada sobre esta esquina. Sin
+   * esto, un titulo largo pasa POR DEBAJO del glifo y se lee mal justo en la
+   * primera linea, que es la que se escanea.
+   */
+  padding-right: 18px;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.4;
+}
+
+/* No se renderiza si no hay nada que poner, asi que no reserva alto. */
+.tarjeta__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 0;
+}
+
+.prioridad {
+  flex: none;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/*
+ * MEDIUM y LOW NO TIENEN CHIP: no hay `.prioridad--normal`, y la ausencia es la
+ * decision. Una etiqueta gris repetida en la mayoria de las tarjetas es texto
+ * identico que no distingue ninguna de ninguna; lo unico que hace es competir por
+ * la linea con la fecha. Que una tarjeta no diga nada ES la senal de que su
+ * prioridad es la corriente.
+ */
+
+/* La unica pieza con relleno solido de toda la pagina. */
+.prioridad--urgente {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--urgente);
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.prioridad--alta {
+  padding: 1px 6px;
+  border: 1px solid var(--alta-borde);
+  border-radius: 4px;
+  background: var(--alta-fondo);
+  color: var(--alta);
+  font-weight: 600;
+}
+
+.fecha {
+  margin-left: auto;
+  color: var(--texto-tenue);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/*
+ * La marca de vencida NO es solo el color: la palabra "Vencida" va en el texto.
+ * Un tablero que solo tinera la fecha de rojo no dice nada a quien no distingue
+ * el rojo, ni en una captura en escala de grises.
+ */
+.fecha--vencida {
+  color: var(--vencida);
+  font-weight: 600;
+}
+
+/* --- TaskDetailPanel (9.3): panel LATERAL, no modal ----------------------- */
+
+/*
+ * Hermano del `<main>` dentro de `.marco`, que es flex: al aparecer, las columnas
+ * se estrechan y ninguna queda tapada. Eso es lo que lo hace un panel y no un
+ * modal, y es una decision de producto: un modal obliga a cerrarlo para ver donde
+ * estabas, y donde estabas es justo lo que hace falta mirar mientras se edita.
+ *
+ * `flex: 0 0 320px` y no un porcentaje: el ancho del panel no tiene que depender
+ * del de la ventana, porque lo que hay dentro son campos de formulario con un
+ * ancho comodo propio. Lo que se estrecha es el tablero, que para eso desplaza.
+ */
+.panel {
+  flex: 0 0 320px;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border-left: 1px solid var(--borde);
+  background: var(--lienzo);
+}
+
+.panel__cabecera {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 20px 16px 16px;
+  border-bottom: 1px solid var(--borde);
+}
+
+.panel__titulo {
+  margin: 0;
+  color: var(--texto-apagado);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.panel__cerrar {
+  color: var(--texto-tenue);
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.panel__cerrar:hover,
+.panel__cerrar:focus-visible {
+  color: var(--texto);
+  text-decoration: underline;
+}
+
+.panel__cuerpo {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 0;
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.panel__campo {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+/*
+ * Es un `label` asociado por `for` y HERMANO del control, no un envoltorio: ver
+ * el comentario de `Etiqueta` en task-editor.tsx. `display: block` porque un
+ * label es inline por defecto y aca el campo se apila.
+ */
+.panel__etiqueta {
+  display: block;
+  color: var(--texto-apagado);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/*
+ * Los tres controles comparten reglas —campo, area de texto y selector— para que
+ * no haya tres formas de la misma cosa en una columna de 320 px. A diferencia del
+ * QuickAdd, aca SI se dibuja el borde en reposo: el QuickAdd es una invitacion
+ * que no tiene que competir con las tarjetas, y esto es un formulario donde hay
+ * que ver de un vistazo cuantos campos hay y donde empieza cada uno.
+ */
+.panel__control {
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid var(--borde);
+  border-radius: 6px;
+  background: var(--tarjeta);
+  color: var(--texto);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+textarea.panel__control {
+  resize: vertical;
+}
+
+.panel__control:focus-visible {
+  outline: 2px solid var(--texto-tenue);
+  outline-offset: -1px;
+}
+
+/* De que columna es. Es LECTURA: cambiarla requiere move (5.2). */
+.panel__columna {
+  margin: 2px 0 0;
+  color: var(--texto-apagado);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.panel__columna strong {
+  color: var(--texto-tenue);
+  font-weight: 600;
+}
+
+/* Mismo rojo que la marca de vencida y que el error del QuickAdd. */
+.panel__error {
+  margin: 0;
+  color: var(--urgente);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+/*
+ * El borrado, abajo y separado del resto: `margin-top: auto` lo empuja al pie del
+ * panel, lejos de los campos que se editan a diario. Que el boton mas peligroso
+ * este a un tabulador del menos peligroso es la forma de que se pulse sin querer.
+ */
+.panel__borrado {
+  margin-top: auto;
+  padding-top: 14px;
+  border-top: 1px solid var(--borde-suave);
+}
+
+.panel__aviso-borrado {
+  margin: 0 0 8px;
+  color: var(--texto-tenue);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.panel__aviso-borrado strong {
+  color: var(--texto);
+  font-weight: 600;
+}
+
+.panel__botones {
+  display: flex;
+  gap: 8px;
+}
+
+.boton {
+  padding: 6px 11px;
+  border: 1px solid var(--borde);
+  border-radius: 6px;
+  background: var(--tarjeta);
+  color: var(--texto);
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.boton:disabled {
+  color: var(--texto-apagado);
+  cursor: default;
+}
+
+/*
+ * DOS PESOS PARA EL BORRADO, y la diferencia es el punto: el primer clic es sobre
+ * un boton discreto —solo el texto en rojo— y el segundo sobre uno con relleno
+ * solido. Asi el estado armado se ve sin leer, que es lo que hace que el segundo
+ * clic sea una decision y no la continuacion del primero.
+ */
+.boton--peligro-suave {
+  border-color: transparent;
+  background: transparent;
+  color: var(--urgente);
+}
+
+.boton--peligro-suave:hover {
+  border-color: var(--borde);
+  background: var(--tarjeta);
+}
+
+.boton--peligro {
+  border-color: var(--urgente);
+  background: var(--urgente);
+  color: #ffffff;
+  font-weight: 600;
+}
+
+/* --- Estado vacio de la pagina -------------------------------------------- */
+
+.sin-tablero {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 32px;
+  color: var(--texto-tenue);
+  text-align: center;
+}
+
+/* --- Arrastre (9.1 y 9.2): dnd-kit sobre las tarjetas --------------------- */
+
+/*
+ * El `<li>` que envuelve la tarjeta. Es el nodo que dnd-kit mueve —le escribe
+ * `transform` desde JavaScript— y ademas el ancla del asa, que va posicionada
+ * sobre la esquina.
+ *
+ * `position: relative` y nada mas: ni fondo, ni borde, ni relleno. Todo lo que
+ * se ve sigue siendo `.tarjeta`, que es lo que hace que la copia que viaja con
+ * el puntero se vea identica a la tarjeta quieta.
+ */
+.tarjeta-caja {
+  position: relative;
+  cursor: grab;
+}
+
+.tarjeta-caja:active {
+  cursor: grabbing;
+}
+
+/*
+ * EL ASA, que existe por el TECLADO. Con raton se agarra la tarjeta entera, asi
+ * que esto no es donde se arrastra sino donde se ENFOCA para arrastrar sin
+ * raton.
+ *
+ * Discreta pero NUNCA invisible: con `opacity: 0` desapareceria tambien del
+ * radar de quien la necesita, y una funcionalidad que solo aparece al pasar el
+ * puntero por encima no existe para quien no usa puntero. Al enfocar y al pasar
+ * por encima de la tarjeta sube a tinta plena.
+ */
+.tarjeta__asa {
+  position: absolute;
+  z-index: 1;
+  top: 2px;
+  right: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  opacity: 0.35;
+  background: transparent;
+  color: var(--texto-tenue);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1;
+  cursor: grab;
+}
+
+.tarjeta-caja:hover .tarjeta__asa,
+.tarjeta__asa:focus-visible {
+  opacity: 1;
+}
+
+.tarjeta__asa:focus-visible {
+  outline: 2px solid var(--texto-tenue);
+  outline-offset: 1px;
+}
+
+/*
+ * Mientras hay un movimiento en vuelo no se puede empezar otro (ver
+ * `ColumnList`): el asa lo dice con el cursor, no solo con `aria-disabled`.
+ */
+.tarjeta__asa[aria-disabled="true"] {
+  opacity: 0.2;
+  cursor: default;
+}
+
+/*
+ * EL HUECO que deja la tarjeta mientras su copia viaja con el puntero. Se
+ * atenua en vez de desaparecer: el hueco con su forma es lo que muestra de
+ * donde salio y cuanto sitio va a ocupar donde caiga.
+ */
+.tarjeta--fantasma {
+  opacity: 0.35;
+}
+
+/*
+ * LA COPIA QUE VIAJA. La inclinacion no es un adorno: es lo unico que la
+ * distingue de una tarjeta quieta cuando pasa por encima de las otras, y lo que
+ * hace que se lea como "en la mano" y no como "ya soltada ahi".
+ */
+.tarjeta-volando {
+  cursor: grabbing;
+  transform: rotate(1.5deg);
+  filter: drop-shadow(0 6px 12px rgb(28 32 36 / 18%));
+}
+
+/* La columna sobre la que se soltaria ahora mismo. */
+.columna__tareas--destino {
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 2px var(--borde);
+}
+
+/*
+ * EL AVISO DE UN MOVIMIENTO QUE FALLO (punto 4 de la 9.2). Va sobre el tablero
+ * y no sobre la tarjeta porque para cuando aparece, la tarjeta ya volvio a su
+ * sitio: colgarselo a ella diria que el problema es de esa tarjeta y no del
+ * movimiento que no se pudo hacer.
+ */
+.aviso-movimiento {
+  flex: none;
+  margin: 0;
+  padding: 10px 24px;
+  border-bottom: 1px solid var(--borde);
+  background: var(--alta-fondo);
+  color: var(--alta);
+  font-size: 13px;
+}
+
+/* --- Cambios de otro actor (9.1, 7.4) ------------------------------------- */
+
+/*
+ * UNA TARJETA QUE CAMBIO OTRO se ve distinta de una que cambio el usuario, y esa
+ * diferencia es una decision de producto: el usuario sabe lo que hizo el mismo,
+ * asi que realzarlo seria ruido; lo que necesita ver es lo que hizo OTRO
+ * mientras el no miraba.
+ *
+ * SON DOS COSAS, no una. La ANIMACION DE ENTRADA se ve una vez y dice "esto
+ * acaba de pasar": sin ella la tarjeta simplemente estaria en otro sitio, que es
+ * lo que se lee como un bug. El REALCE se queda hasta que el usuario mira (ver
+ * `lib/usar-mirada.ts`) y dice "esto es lo que cambio": sin el, quien vuelve a la
+ * pestaña un minuto despues no tiene forma de saber que se movio.
+ *
+ * EL REALCE SE APAGA SOLO hasta un resto tenue —del color de acento a un borde
+ * y un fondo apenas teñidos— porque un realce a pleno color durante minutos
+ * compite con la prioridad y el vencimiento, que son las dos señales que la 9.3
+ * declara obligatorias. Lo que queda es suficiente para encontrar la tarjeta de
+ * un vistazo y no tanto como para tapar nada.
+ */
+.tarjeta--ajena {
+  border-color: var(--acento-ajeno-borde);
+  background: var(--acento-ajeno-fondo);
+  animation:
+    entrada-ajena 320ms ease-out,
+    realce-ajeno 2.4s ease-out forwards;
+}
+
+/*
+ * El borde izquierdo NO se toca: es la señal de prioridad (ver `.tarjeta`), y
+ * pisarla dejaria a una tarjeta urgente sin su marca justo cuando alguien la
+ * acaba de mover.
+ */
+.tarjeta--ajena.tarjeta--urgente {
+  border-left-color: var(--urgente);
+}
+
+.tarjeta--ajena.tarjeta--alta {
+  border-left-color: var(--alta-borde);
+}
+
+@keyframes entrada-ajena {
+  from {
+    transform: translateY(-6px);
+    opacity: 0;
+  }
+
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+/*
+ * De realce fuerte a resto tenue. `forwards` deja el estado final puesto: la
+ * animacion termina, la marca NO, y quitarla es cosa de que el usuario mire.
+ */
+@keyframes realce-ajeno {
+  from {
+    box-shadow: 0 0 0 3px var(--acento-ajeno-halo);
+  }
+
+  to {
+    box-shadow: 0 1px 1px rgb(28 32 36 / 5%);
+  }
+}
+
+/*
+ * Quien pidio menos movimiento no ve la entrada ni el desvanecido; el realce
+ * SI se queda, porque es informacion y no decoracion.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .tarjeta--ajena {
+    animation: none;
+  }
+}

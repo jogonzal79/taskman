@@ -26,3 +26,11 @@ next-env.d.ts
 # que compartirlo haria fallar la comprobacion cada vez que el desarrollador
 # tiene su propio `next dev` abierto.
 .next-humo/
+
+# distDir y artefactos de las pruebas de extremo a extremo (apps/web,
+# playwright.config.ts). El distDir va aparte de .next por lo mismo que el del
+# humo: el .next del desarrollador puede ser una compilacion de dev, y
+# `next start` sobre eso no arranca.
+.next-e2e/
+apps/web/test-results/
+apps/web/playwright-report/

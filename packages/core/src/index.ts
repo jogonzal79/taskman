@@ -101,6 +101,8 @@ export { resolverColumna } from "./services/column-reference";
 export type { BuscadorDeColumnas } from "./services/column-reference";
 
 export { AuditRepository, insertAuditRow } from "./db/audit-repository";
+export { CANAL_DE_CAMBIOS, leerAvisoDeCambio } from "./db/cambios";
+export type { AvisoDeCambio } from "./db/cambios";
 export type { AuditRow, AuditTransaction } from "./db/audit-repository";
 
 // --- Idempotencia (6.5) ------------------------------------------------------
@@ -119,6 +121,7 @@ export { comprobarConexion } from "./db/health";
 
 export { LIMITE_COLUMN_KEY, LIMITE_COLUMN_NAME, normalizarColumnKey } from "./domain/column-key";
 export type { ColumnReference } from "./domain/column-key";
+export { COLUMNA_TERMINAL, esVencida } from "./domain/vencimiento";
 export { normalizarTexto, recortarBlancos } from "./domain/text";
 
 // --- API keys (ADR-005, 7.1 y 7.2) ------------------------------------------
