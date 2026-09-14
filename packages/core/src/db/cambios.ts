@@ -39,10 +39,11 @@ export const CANAL_DE_CAMBIOS = "taskman_cambios";
  * que se desincronizaria en cuanto la pantalla mostrara un campo mas—. El aviso
  * solo dice "mira otra vez, y de paso: fue este actor sobre esta entidad".
  *
- * `actor` y `entityId` no son decoracion: son lo que le permite a la pantalla
- * distinguir un cambio propio de uno ajeno (7.4) y saber a que tarjeta ponerle
- * la marca. `requestId` es lo que le permite reconocer sus PROPIOS cambios y no
- * marcarse a si misma.
+ * `actor` y `entityId` no son decoracion: el actor decide si la pantalla marca
+ * el cambio —solo se marcan AGENT y API (7.4)— y el `entityId` dice a que
+ * tarjeta ponerle la marca. `requestId` es con lo que la pestaña que escribio
+ * intenta reconocer su propio aviso para no refrescar de mas; hoy no llega a
+ * tiempo (ver la deuda en CLAUDE.md), y no interviene en la marca.
  */
 export interface AvisoDeCambio {
   /** USER es la UI, AGENT es MCP, API es el resto de clientes REST (7.4). */

@@ -301,9 +301,12 @@ export function ColumnList({
    */
   const escuchando = useCambios({
     alCambiar: useCallback((aviso: AvisoDeCambio) => {
-      // Lo que escribio esta pestaña ya se vio: la Server Action revalido la
-      // ruta antes de contestar. Refrescar otra vez seria un render de mas, y
-      // marcarlo convertiria el realce en ruido sobre lo que uno acaba de hacer.
+      // Lo que escribio esta pestaña ya lo revalido su Server Action: si el
+      // aviso se reconoce como propio, refrescar otra vez seria un render de mas.
+      // HOY NO SE RECONOCE A TIEMPO —el aviso llega antes de que la escritura
+      // anote su `requestId`, 10 de 10 medido— y el refresco sale igual (ver la
+      // deuda en CLAUDE.md). La MARCA no pasa por aca: la decide el actor, mas
+      // abajo, y un cambio propio es USER y no se marca nunca.
       if (esCambioPropio(aviso.requestId)) {
         return;
       }
@@ -366,11 +369,14 @@ export function ColumnList({
     }
 
     /**
-     * Solo se marca lo AJENO Y SOBRE UNA TAREA. Lo ajeno, porque marcar lo propio
-     * volveria el realce ruido permanente —es la mitad explicita del requisito—;
-     * y solo TASK, porque un cambio de tablero o de columna no tiene tarjeta a la
-     * que colgarle la marca. Un DELETE tampoco deja nada que marcar, pero no hace
-     * falta filtrarlo: su id ya no encuentra tarjeta.
+     * Solo se marca lo que NO escribio un USER, y sobre una tarea. Lo de USER no,
+     * porque realzarle a la persona lo que hizo ella —en esta pestaña o en otra—
+     * volveria el realce ruido permanente, que es la mitad explicita del
+     * requisito. La decision sale del ACTOR del aviso, no de si esta pestaña lo
+     * reconocio como propio. Y solo TASK, porque un cambio de tablero o de
+     * columna no tiene tarjeta a la que colgarle la marca. Un DELETE tampoco deja
+     * nada que marcar, pero no hace falta filtrarlo: su id ya no encuentra
+     * tarjeta.
      */
     const ajenas = pendientes.flatMap((aviso) =>
       aviso !== "reconexion" && aviso.actor !== "USER" && aviso.entityType === "task"
@@ -589,9 +595,11 @@ export function ColumnList({
        * conserva el calculado localmente ni se comparan los dos para quedarse
        * con "el que parezca mejor": se sustituye, y punto.
        */
-      // Antes de nada: este movimiento es NUESTRO. El aviso por `/eventos` llega
-      // a continuacion y hay que poder descartarlo, o el tablero se marcaria a si
-      // mismo cada vez que el usuario arrastra algo.
+      // Este movimiento es NUESTRO, y se anota para que su aviso por `/eventos`
+      // no pida un refresco de mas. Lo esperable es que llegue tarde, como en la
+      // creacion, donde esta medido: el aviso entra antes que esta respuesta y
+      // queda encolado como ajeno (ver `alCambiar`). No evita ninguna marca: un
+      // movimiento de la UI es USER, y USER no se marca.
       recordarCambioPropio(resultado.requestId);
 
       const corregido = aplicarOrdenDelServidor(optimista, resultado.valor.columnas);

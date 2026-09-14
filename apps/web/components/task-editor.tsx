@@ -136,7 +136,8 @@ export function TaskEditor({
     iniciar(async () => {
       const resultado = await editarTarea(tarea.id, cambios);
 
-      // Ver `QuickAdd`: lo que escribe esta pestaña no se marca como ajeno.
+      // Ver `QuickAdd`: se anota para ahorrar el refresco del aviso propio, que
+      // hoy llega antes y no lo ahorra. La marca no depende de esto.
       if (resultado.ok) {
         recordarCambioPropio(resultado.requestId);
       }

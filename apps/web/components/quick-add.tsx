@@ -80,9 +80,11 @@ export function QuickAdd({
       const resultado = await crearTarea({ boardId, columnId, title: titulo });
 
       if (resultado.ok) {
-        // Esta creacion es NUESTRA: el aviso que llega a continuacion por
-        // `/eventos` se descarta, asi que la tarjeta recien creada no se marca
-        // como cambio ajeno. Ver `lib/cambios-propios.ts`.
+        // Esta creacion es NUESTRA: se anota para que su aviso por `/eventos` no
+        // pida un refresco de mas. Hoy llega tarde —el aviso entra antes que esta
+        // respuesta, 10 de 10 medido— y el refresco sale igual; ver la deuda en
+        // CLAUDE.md. La tarjeta no se marca por otro motivo: la marca la decide
+        // el actor, y lo que escribe la UI es USER.
         recordarCambioPropio(resultado.requestId);
 
         // El campo queda LISTO PARA LA SIGUIENTE: se vacia y nunca se deshabilita,

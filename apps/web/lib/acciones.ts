@@ -71,14 +71,18 @@ export type ResultadoAccion<T = void> =
       /**
        * El `X-Request-Id` de la 6.1 con el que se escribio, TAMBIEN cuando sale
        * bien. En la rama de error existia desde el principio para que el usuario
-       * tenga algo que copiar; aca sirve para otra cosa: es como la pantalla
-       * RECONOCE SUS PROPIOS CAMBIOS.
+       * tenga algo que copiar; aca sirve para otra cosa: es con lo que la
+       * pantalla INTENTA RECONOCER SUS PROPIOS CAMBIOS.
        *
        * Cada escritura publica un aviso por `NOTIFY` con este mismo id (ver
-       * `insertAuditRow`), asi que la pestaña que lo produjo puede descartar el
-       * suyo y no marcarse a si misma como cambio ajeno. Sin esto habria que
-       * adivinar por tiempo o por actor, y por actor no alcanza: otra pestaña
-       * tambien escribe como USER y esa SI tiene que refrescar esta.
+       * `insertAuditRow`), y la pestaña que lo produjo lo anota para no pedir un
+       * refresco de mas cuando le llegue el suyo. Por actor no alcanza: otra
+       * pestaña tambien escribe como USER y esa SI tiene que refrescar esta.
+       *
+       * HOY NO LLEGA A TIEMPO: el id vuelve con la respuesta y el aviso llega
+       * antes (10 de 10 medido, ver la deuda en CLAUDE.md). Y NO decide la marca
+       * de cambio ajeno, que sale del actor: lo que escribe la UI es USER y no se
+       * marca nunca.
        */
       readonly requestId: string;
     }
