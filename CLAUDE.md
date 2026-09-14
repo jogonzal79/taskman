@@ -248,6 +248,26 @@ contador de pruebas no tiene ese commit.
   asi que una accion que sale bien, o que devuelve un error de dominio, no
   aparece. Tampoco escriben linea el render de `GET /` ni `/eventos`. El
   request_id de una accion que escribe si queda en `audit_log`.
+- GUARDAR UN CAMPO DEL PANEL REMONTA EL EDITOR ENTERO, y el campo al que se paso
+  pierde el foco. El `key` de `TaskEditor` en `task-detail-panel.tsx` incluye
+  los cuatro valores editables —a proposito, para que un cambio de otro actor
+  entre en campos ya montados—, asi que el guardado propio tambien lo cambia. Si
+  se edita el titulo y se pasa con Tab a la descripcion, el blur guarda, y cuando
+  llega la revalidacion el editor se remonta: la descripcion pierde el foco, y lo
+  que ya se hubiera tecleado en ella se pierde, porque desmontar no dispara
+  `blur`. Las pruebas del panel no lo ven: guardan con `.blur()`, que saca el
+  foco sin llevarlo a otro campo, y ninguna pulsa Tab. DEDUCIDO DEL CODIGO, NO
+  REPRODUCIDO.
+- LA PRIORIDAD GUARDA AL CAMBIAR y no al perder el foco, que es lo que pide la
+  9.3: `CampoPrioridad` llama a `guardar` desde el `onChange` del `<select>`. Con
+  teclado, en Chrome sobre Windows, cada flecha sobre el select cerrado cambia el
+  valor y dispara `change`, asi que guarda un valor intermedio; y como la
+  prioridad esta en el `key` del editor (entrada anterior), la revalidacion lo
+  remonta y el select pierde el foco. Si la flecha siguiente llega con ese
+  guardado todavia en vuelo, la guarda `enVuelo` de `guardar` la descarta: el
+  select muestra un valor que no se guardo hasta que el remontaje lo pisa.
+  Ninguna prueba lo cubre: la de prioridad usa `selectOption`, que fija el valor
+  y dispara un solo `change` sin teclado. DEDUCIDO DEL CODIGO, NO REPRODUCIDO.
 
 ## Desvíos declarados de la especificación
 
