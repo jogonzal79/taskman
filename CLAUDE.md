@@ -124,9 +124,31 @@ contador de pruebas no tiene ese commit.
   invalida— pero el dia no, que es el caso que alguien escribe de verdad. El
   contrato REST no comparte ese helper: `fechaSola` de `packages/contracts`
   valida con un ida y vuelta —reconstruye la fecha y la compara con lo que
-  entro— y eso si lo atrapa. El arreglo es el mismo ida y vuelta dentro de
-  `aFecha`, y conviene hacerlo ahi y no duplicar el de contracts, porque el borde
-  MCP no puede importar del paquete de contratos HTTP.
+  entro— y eso si lo atrapa. Que haya DOS validaciones de la misma fecha es la
+  causa y no un detalle: la 3.3 permite que `packages/core` importe `contracts`, y
+  la ADR-006 pide que los esquemas de las herramientas se deriven de ahi, asi que
+  el arreglo es que la fecha de las herramientas se valide con `fechaSola`,
+  dentro del paso de la entrada siguiente. Copiar el ida y vuelta en `aFecha`
+  cerraria este caso y dejaria abierto el hueco que lo produjo. (Esta entrada
+  decia antes que el borde MCP no puede importar del paquete de contratos: era
+  FALSO, lo desmienten la 3.3 y la ADR-006, y no hay que volver a leerlo como
+  regla.)
+- Los ESQUEMAS DE ENTRADA DE LAS HERRAMIENTAS MCP NO SE DERIVAN DE
+  `packages/contracts`, y la ADR-006 lo pide con esas palabras: los esquemas de
+  contracts son "la unica definicion", y de ellos se derivan los tipos, el
+  OpenAPI "y los esquemas JSON de las herramientas MCP". Hoy `packages/core` no
+  depende de `@taskman/contracts` —ni en su package.json ni en un import— y cada
+  herramienta escribe su esquema a mano en `packages/core/src/mcp/tools/`:
+  `PRIORIDADES` de `campos.ts` repite la de `contracts/src/task.ts`, y `aFecha`
+  reimplementa `fechaSola` con un agujero (entrada anterior). Es el RT-03 de la
+  12.2 ya ocurrido, no un riesgo. La 3.3 lo permite —`packages/core` y
+  `apps/mcp-stdio` pueden importar `contracts`, que sigue siendo hoja— asi que no
+  hay regla que mover. Lo que ese paso tiene que decidir es QUE se deriva: las
+  entradas de las herramientas no son los cuerpos REST —`move_task` recibe
+  `task`, `board` y `to_column` por nombre, donde POST /api/tasks/{id}/move pide
+  `column_id` o `column_key`—, asi que el cuerpo entero no sale de ahi; lo que
+  comparten son piezas, como la prioridad, la fecha y los limites de largo. Es su
+  propio paso, no un arreglo al pasar.
 - GET /api/audit NO se puede filtrar por `request_id`, y es el filtro que mas se
   va a extra~nar: correlacionar el `X-Request-Id` que devolvio una respuesta con
   lo que esa peticion escribio es el uso mas natural del log, y es exactamente lo
@@ -434,6 +456,14 @@ motivo dejó de valer, ahí está el disparador para volver a mirarla.
   ninguna clave. El repo sigue a la 7.3 y a la 9.1, y por eso el CT-08 no tiene
   superficie en la UI (ver el mapa CT). Disparador: que el puerto de la
   aplicación sea alcanzable por alguien más que quien administra la máquina.
+  PRECISIÓN DEL DISPARADOR, decidida el 14 de septiembre de 2026 al empezar F4:
+  el puerto NO se expone a internet, y el "cliente remoto" de la 8.1 NO lo
+  dispara. Ese cliente es un cliente MCP que no es el proceso stdio local —otra
+  máquina en la red del usuario, o el mismo host—, no un servicio público. Abrir
+  `/mcp` a internet abriría con él `GET /`, las Server Actions y `/eventos`, que
+  no autentican por este desvío: exponerlo no es un paso de F4, es el
+  disparador. El día que el producto se venda eso cambia, y arrastra la UI
+  entera con él.
 
 - **Sin el aislamiento de pruebas de la 10.3**, que pide "un esquema PostgreSQL
   propio, creado y destruido en el ciclo de vida de la suite, para permitir

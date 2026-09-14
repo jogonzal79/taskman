@@ -81,6 +81,7 @@ export function definirListTasks(port: TaskManagerPort, entorno: EntornoMcp): Mc
       "Devuelve el estado de cada columna en orden, con el id de cada tarea, para poder mover o actualizar despues sin volver a consultar. " +
       "Es la herramienta con la que se resuelve una operacion masiva: primero listar, despues mover una por una.",
     inputSchema: shape,
+    scope: "READ",
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,

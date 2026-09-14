@@ -84,6 +84,7 @@ export function definirUpdateTask(
       "Es un patch parcial: solo los campos que mandes cambian, y null en description o due_date los borra. " +
       "No cambia ni la columna ni la posicion: para eso esta move_task.",
     inputSchema: shape,
+    scope: "WRITE",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,

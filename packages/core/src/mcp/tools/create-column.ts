@@ -42,6 +42,7 @@ export function definirCreateColumn(
       "El tablero se puede indicar por nombre, asi que no hace falta consultarlo antes. " +
       "Devuelve el tablero con TODAS sus columnas en su orden final, para poder crear o mover tareas a continuacion.",
     inputSchema: shape,
+    scope: "WRITE",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,

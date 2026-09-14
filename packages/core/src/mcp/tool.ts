@@ -1,5 +1,7 @@
 import type { ZodType } from "zod";
 
+import type { Scope } from "../domain/api-key";
+
 /**
  * La forma de una herramienta MCP, descrita como DATO.
  *
@@ -32,6 +34,25 @@ export interface McpToolDefinition {
   title: string;
   description: string;
   inputSchema: EsquemaEntrada;
+  /**
+   * El scope de la 7.2 que exige la herramienta: la columna Scope de la 8.2
+   * convertida en dato, en vez de vivir solo en el documento.
+   *
+   * OBLIGATORIO y sin valor por defecto, por lo mismo que el scope de `conAuth`
+   * en el borde REST: una herramienta nueva que no lo declare no compila, asi que
+   * la forma de dejar una abierta por descuido no existe. Falla cerrado.
+   *
+   * En el vocabulario del DOMINIO (`READ`, `WRITE`, `DELETE`) y no en el de la
+   * 8.2, que lo escribe en minuscula como el borde HTTP. Es el mismo tipo que
+   * `ClaveAutenticada.scopes`, asi que compararlos no necesita traduccion; la de
+   * minuscula a mayuscula es del borde (`apps/web/lib/auth.ts`).
+   *
+   * No es un campo del protocolo y ningun transporte lo envia: es lo que necesita
+   * un transporte que conozca la clave de quien llama para decidir que
+   * herramientas ofrecerle (8.1). Tampoco depende de MCP_DESTRUCTIVE_POLICY: el
+   * scope dice que necesita la clave, la politica dice que permite el servidor.
+   */
+  scope: Scope;
   annotations: {
     readOnlyHint: boolean;
     destructiveHint: boolean;

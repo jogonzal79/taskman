@@ -56,6 +56,7 @@ export function definirCreateTask(
       "asi que no hace falta consultar el tablero antes: 'crea X en TODO del tablero QA' es una sola llamada. " +
       "Devuelve la tarea creada y el orden final de la columna.",
     inputSchema: shape,
+    scope: "WRITE",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,

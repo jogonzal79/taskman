@@ -33,6 +33,7 @@ export function definirMoveTask(
       "Acepta la tarea y la columna por nombre, asi que 'move Revisar HU-25 a IN PROGRESS' es una sola llamada. " +
       "Devuelve el orden final completo de las columnas afectadas.",
     inputSchema: shape,
+    scope: "WRITE",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,

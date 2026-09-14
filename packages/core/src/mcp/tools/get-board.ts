@@ -18,6 +18,7 @@ export function definirGetBoard(port: TaskManagerPort, entorno: EntornoMcp): Mcp
       "Es lo que hace falta para encadenar create_task, move_task o list_tasks sobre ese tablero sin volver a resolver nada. " +
       "No devuelve las tareas: para verlas esta list_tasks.",
     inputSchema: shape,
+    scope: "READ",
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,

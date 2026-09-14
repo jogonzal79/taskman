@@ -32,6 +32,7 @@ export function definirListBoards(port: TaskManagerPort, entorno: EntornoMcp): M
       "Es la herramienta con la que se descubre que tableros hay cuando el usuario no nombra ninguno, o cuando un nombre resulto ambiguo. " +
       "No devuelve columnas ni tareas: para el detalle de uno esta get_board, y para su contenido, list_tasks.",
     inputSchema: shape,
+    scope: "READ",
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
