@@ -147,6 +147,7 @@ export function TarjetaVisual({
 }
 
 export function TaskCard({
+  boardId,
   tarea,
   columnId,
   bloqueado,
@@ -155,6 +156,8 @@ export function TaskCard({
   abierta,
   filtros,
 }: {
+  /** El tablero que se esta viendo. Va en el enlace, igual que los filtros. */
+  boardId: string;
   tarea: TarjetaEnPantalla;
   /** La columna donde se esta pintando AHORA, que durante un arrastre no es la suya. */
   columnId: string;
@@ -166,9 +169,9 @@ export function TaskCard({
   /** Si es la que el panel de detalle esta mostrando. */
   abierta: boolean;
   /**
-   * Los filtros puestos. Van EN EL ENLACE: abrir una tarjeta con un filtro
-   * puesto no puede perderlo, porque el destino es el mismo tablero con el panel
-   * abierto y no un tablero distinto.
+   * Los filtros puestos. Van EN EL ENLACE junto con `boardId`: abrir una tarjeta
+   * no puede perder ninguno de los dos, porque el destino es el mismo tablero con
+   * el panel abierto y no un tablero distinto.
    */
   filtros: Filtros;
 }) {
@@ -253,7 +256,7 @@ export function TaskCard({
       */}
       <Link
         className="tarjeta-enlace"
-        href={enlaceTablero(filtros, tarea.id)}
+        href={enlaceTablero(boardId, filtros, tarea.id)}
         scroll={false}
         draggable={false}
       >

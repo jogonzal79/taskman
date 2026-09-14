@@ -176,7 +176,9 @@ test("la barra lateral lista los tableros y marca exactamente el que se muestra"
     semilla.tableros.map((tablero) => tablero.name),
   );
 
-  const marcado = page.locator('.barra__item[aria-current="true"]');
+  // "page" y no "true": los items son enlaces, y en un enlace "page" es lo que
+  // se anuncia como la pagina actual (ver `BoardSidebar`).
+  const marcado = page.locator('.barra__item[aria-current="page"]');
 
   // EXACTAMENTE uno: con dos tableros sembrados, "marca el activo" y "marca
   // todos" darian lo mismo si solo se comprobara que el activo esta marcado.
@@ -268,7 +270,7 @@ test("por debajo de 1024 px sale el aviso, no una version degradada", async ({ p
 });
 
 /**
- * COBERTURA RESPECTO DE LA 10.2, para los SEIS archivos de este directorio y no
+ * COBERTURA RESPECTO DE LA 10.2, para todos los archivos de este directorio y no
  * solo para este.
  *
  * Vive al pie de esta suite porque es la primera que existio y porque CLAUDE.md
@@ -277,16 +279,17 @@ test("por debajo de 1024 px sale el aviso, no una version degradada", async ({ p
  * faltaban el QuickAdd, el panel y los filtros cuando ya estaban.)
  *
  *   CT-01  Crear tablero y ver las cuatro columnas por defecto.
- *          PARCIAL. "Ver las cuatro columnas" esta cubierto arriba y en
- *          `tablero-vacio.spec.ts`, sobre un tablero creado por la siembra con el
- *          mismo `createBoard` que usaria la UI. Falta CREARLO desde la pantalla,
- *          que es lo que pide la 18 del funcional ("se puede crear un tablero y
- *          sus columnas desde la UI") y que la 12.1 traza justamente a este CT.
- *          Aparte —y no es lo mismo, aunque se arreglen juntos— falta el
- *          "selector de tablero" que la 9.3 le asigna a BoardHeader: hoy la
- *          pagina muestra siempre el primero por nombre (`cargarVista`), asi que
- *          con mas de un tablero el segundo es inalcanzable. Crear sin poder
- *          cambiar dejaria el tablero nuevo invisible si no ordena primero.
+ *          CUBIERTO, en `tableros.spec.ts`: se crea desde "Nuevo tablero" en la
+ *          barra lateral, con un nombre que ordena ULTIMO para que quedar
+ *          seleccionado no pueda ser casualidad, y las cuatro columnas se
+ *          comprueban en pantalla y por SQL —key, nombre y position de la 4.3—
+ *          con el actor USER en `audit_log`. El primer tablero de una base vacia,
+ *          que solo se puede crear desde la barra, en `sin-tableros.spec.ts`. El
+ *          mismo archivo cubre el selector de la 9.3 (que vive en la barra y no
+ *          en BoardHeader, ver CLAUDE.md): llegar al segundo tablero, que el
+ *          elegido sobreviva al recargado y se comparta por URL, y que ningun
+ *          enlace de la pagina —filtros, tarjetas, cierre del panel— devuelva al
+ *          primero.
  *          Lo que NO falta: crear, borrar o reordenar COLUMNAS desde la UI. El
  *          capitulo 9 no se lo asigna a ningun componente, la 18 traza sus
  *          "columnas" a este CT —o sea a que aparezcan las cuatro de la 4.3— y el

@@ -29,7 +29,10 @@ import {
 export interface DatosSembrados {
   /** La semilla completa, tal como se escribio. */
   semilla: Semilla;
-  /** El tablero que la pagina muestra: el primero del listado. */
+  /**
+   * El tablero que muestra `/`: el primero del listado. Con la semilla `ninguno`
+   * no hay, y pedirlo LANZA: es un error de la prueba, no un caso a contemplar.
+   */
   activo: TableroSembrado;
   /**
    * El instante contra el que se resolvieron los desplazamientos de fecha. Las
@@ -48,11 +51,70 @@ export const test = base.extend<{
     const hoy = new Date();
     const datos = await sembrar(semilla, hoy);
 
-    await use({ semilla: datos, activo: tableroActivo(datos), hoy });
+    await use({
+      semilla: datos,
+      /**
+       * Se resuelve AL PEDIRLO y no al sembrar. Casi todas las pruebas lo leen,
+       * y para ellas no cambia nada; la que siembra `ninguno` no lo lee, y con
+       * la resolucion adelantada esa semilla haria fallar la fixture antes de
+       * que la prueba empezara.
+       */
+      get activo() {
+        return tableroActivo(datos);
+      },
+      hoy,
+    });
   },
 });
 
 export { expect };
+
+// --- Barra lateral: el selector de tablero -----------------------------------
+
+/** La barra lateral, por su nombre accesible: la navegacion "Tableros". */
+export function barra(page: Page): Locator {
+  return page.getByRole("navigation", { name: "Tableros", exact: true });
+}
+
+/**
+ * El enlace de un tablero en la barra, POR SU ROL Y SU NOMBRE. Pedirlo como
+ * `link` es lo que comprueba de paso que el item ES un enlace: mientras fueron
+ * `<li>` sueltos esto no encontraba nada, que es exactamente el hueco que cierra
+ * este paso.
+ */
+export function enlaceDeTablero(page: Page, nombre: string): Locator {
+  return barra(page).getByRole("link", { name: nombre, exact: true });
+}
+
+/** Los items de la barra, en su orden. Sirve para `toHaveText` con la lista entera. */
+export function itemsDeLaBarra(page: Page): Locator {
+  return barra(page).locator(".barra__item");
+}
+
+/** El item que la barra marca como el que se esta viendo. */
+export function tableroMarcado(page: Page): Locator {
+  return barra(page).locator('a[aria-current="page"]');
+}
+
+/** El nombre del tablero que se muestra, en la cabecera. */
+export function nombreDelTablero(page: Page): Locator {
+  return page.locator(".cabecera__nombre");
+}
+
+/** El campo "Nuevo tablero" al pie de la barra, por su nombre accesible. */
+export function campoNuevoTablero(page: Page): Locator {
+  return barra(page).getByRole("textbox", { name: "Nuevo tablero", exact: true });
+}
+
+/** El error de ese campo. */
+export function errorNuevoTablero(page: Page): Locator {
+  return barra(page).locator(".barra__nuevo-error");
+}
+
+/** El aviso que ocupa el lugar del tablero cuando no hay ninguno que mostrar. */
+export function avisoSinTablero(page: Page): Locator {
+  return page.locator(".sin-tablero");
+}
 
 // --- Localizadores -----------------------------------------------------------
 

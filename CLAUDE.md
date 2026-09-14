@@ -223,8 +223,11 @@ motivo dejó de valer, ahí está el disparador para volver a mirarla.
   misma 9.3 pide como componente aparte) ya cubre la intención, y la cubre mejor:
   crear desde la cabecera obligaría a elegir la columna en un formulario, mientras
   que escribir al pie de una columna ya la eligió. Dos caminos para lo mismo, uno
-  peor. Las otras dos responsabilidades de BoardHeader NO son desvío: el nombre y
-  los filtros están, y el selector de tablero falta de verdad.
+  peor. De las otras dos, el nombre y los filtros están en BoardHeader. El
+  SELECTOR de tablero está, pero en `BoardSidebar` y no en la cabecera: la barra
+  ya era la lista de tableros, y un selector es esa lista pulsable; en la cabecera
+  habría que esconder los otros tableros detrás de un desplegable para ahorrar un
+  ancho que la barra ya ocupa.
 
 - **Sin buscador libre en la UI.** El capítulo 9 no lo pide, así que esto no se
   desvía de ningún requisito; se declara igual porque la capacidad SÍ existe

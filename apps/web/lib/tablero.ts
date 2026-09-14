@@ -1,6 +1,8 @@
 import {
   crearCorePort,
+  esUuid,
   esVencida,
+  isDomainError,
   LIMITE_PAGINA_MAXIMO,
   type ColumnWithTaskCount,
   type Task,
@@ -110,41 +112,62 @@ export interface VistaDelTablero {
   tableros: TableroEnBarra[];
   /** Cuantos tableros no entraron en la pagina. Cero salvo en lo absurdo. */
   tablerosOmitidos: number;
-  /** El tablero que se muestra, o `undefined` si no hay ninguno. */
+  /** El tablero que se muestra, o `undefined` si no hay ninguno que mostrar. */
   actual: TableroEnPantalla | undefined;
+  /**
+   * La URL pidio un tablero y NO EXISTE: se borro, o el enlace esta mal copiado.
+   * `actual` es `undefined` y la pagina lo dice, en vez de mostrar otro en su
+   * lugar (ver `page.tsx`). Falso cuando no se pidio ninguno.
+   */
+  inexistente: boolean;
 }
 
 /**
  * Lo que la pagina necesita: la lista de tableros para la barra y el tablero
  * activo entero.
  *
- * CUAL ES EL ACTIVO: el primero del listado, que el nucleo ordena por nombre
- * ascendente (`ORDEN_BOARD` en `board-repository.ts`). F3 todavia no tiene
- * navegacion entre tableros —la barra lateral los lista y marca el actual, pero
- * no se puede cambiar— asi que hace falta una regla y esta es la unica que no
- * inventa nada: es la misma que veria quien llama a GET /api/boards sin cursor.
+ * CUAL ES EL ACTIVO: el que nombra la URL (`?tablero=<id>`, ver
+ * `leerTableroElegido`). Sin parametro, el primero del listado, que el nucleo
+ * ordena por nombre ascendente (`ORDEN_BOARD` en `board-repository.ts`): era la
+ * unica regla cuando no se podia cambiar de tablero y sigue siendo la del `/` a
+ * secas, porque es la unica que no inventa nada —la misma que veria quien llama a
+ * GET /api/boards sin cursor—.
+ *
+ * EL PEDIDO SE CARGA POR ID, NO SE BUSCA EN EL LISTADO. El listado pagina, y un
+ * tablero que no entro en la pagina de la barra sigue existiendo y se tiene que
+ * poder abrir por su enlace; lo unico que no tendra es la marca en la barra, que
+ * ya dice "y mas sin mostrar".
  */
-export async function cargarVista(hoy: Date, filtros: Filtros): Promise<VistaDelTablero> {
+export async function cargarVista(
+  hoy: Date,
+  filtros: Filtros,
+  pedido: string | undefined,
+): Promise<VistaDelTablero> {
   const listado = await taskman.listBoards({ limit: LIMITE_PAGINA_MAXIMO });
-  const activo = listado.items[0];
+  const primero = listado.items[0];
+
+  // El mismo metodo que sirve GET /api/boards/{id}: columnas EN ORDEN y el
+  // recuento de cada una agregado en la base, no contado sobre lo que se trajo.
+  const detalle =
+    pedido !== undefined
+      ? await cargarPedido(pedido)
+      : primero === undefined
+        ? undefined
+        : await taskman.getBoardWithTaskCounts(primero.id);
 
   const tableros = listado.items.map((tablero) => ({
     id: tablero.id,
     name: tablero.name,
-    activo: tablero.id === activo?.id,
+    activo: tablero.id === detalle?.id,
   }));
 
   // Mismo criterio que `omitidas` en una columna: el listado pagina, asi que si
   // corto hay que decirlo en vez de mostrar una lista que parece completa.
   const tablerosOmitidos = listado.nextCursor === null ? 0 : 1;
 
-  if (activo === undefined) {
-    return { tableros, tablerosOmitidos, actual: undefined };
+  if (detalle === undefined) {
+    return { tableros, tablerosOmitidos, actual: undefined, inexistente: pedido !== undefined };
   }
-
-  // El mismo metodo que sirve GET /api/boards/{id}: columnas EN ORDEN y el
-  // recuento de cada una agregado en la base, no contado sobre lo que se trajo.
-  const detalle = await taskman.getBoardWithTaskCounts(activo.id);
 
   const columns = await Promise.all(
     detalle.columns.map((columna) => cargarColumna(columna, hoy, filtros)),
@@ -159,7 +182,35 @@ export async function cargarVista(hoy: Date, filtros: Filtros): Promise<VistaDel
       taskCount: detalle.taskCount,
       columns,
     },
+    inexistente: false,
   };
+}
+
+/**
+ * El tablero que nombra la URL, o `undefined` si no hay ninguno con ese id.
+ *
+ * UN VALOR QUE NO ES UN UUID NO LLEGA A LA BASE. La columna es `uuid`, y
+ * `?tablero=cualquier-cosa` convertido en consulta no daria "no existe": daria un
+ * error del driver y un 500. Es texto tecleado en la barra de direcciones, no un
+ * fallo del sistema.
+ *
+ * Y BOARD_NOT_FOUND ES UNA RESPUESTA, NO UN FALLO: es el enlace a un tablero que
+ * alguien borro. Cualquier otro error sigue subiendo, porque ese si lo es.
+ */
+async function cargarPedido(pedido: string) {
+  if (!esUuid(pedido)) {
+    return undefined;
+  }
+
+  try {
+    return await taskman.getBoardWithTaskCounts(pedido.trim());
+  } catch (error: unknown) {
+    if (isDomainError(error) && error.code === "BOARD_NOT_FOUND") {
+      return undefined;
+    }
+
+    throw error;
+  }
 }
 
 /**

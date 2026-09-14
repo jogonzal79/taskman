@@ -4,7 +4,8 @@ import { PRIORIDADES } from "./prioridad";
 
 /**
  * Los filtros del tablero (9.3: "BoardHeader ... filtros"), leidos y escritos en
- * la URL.
+ * la URL. Y con ellos el resto del estado de la pantalla que tambien vive ahi: el
+ * panel abierto (`tarea`) y el tablero elegido (`tablero`).
  *
  * EN LA URL Y NO EN ESTADO DE CLIENTE, por lo mismo que el panel de detalle: el
  * estado de la pantalla entero vive en un solo lugar. Un tablero filtrado se
@@ -95,23 +96,70 @@ export function leerFiltros(parametros: Parametros): Filtros {
 
 /** El id del panel abierto, si el parametro apunta a algo. */
 export function leerTareaAbierta(parametros: Parametros): string | undefined {
-  const valor = parametros["tarea"];
+  return leerUnico(parametros, "tarea");
+}
+
+/**
+ * El id del tablero elegido, si la URL nombra uno.
+ *
+ * Solo LEE: no comprueba que sea un UUID ni que el tablero exista. Las dos cosas
+ * las resuelve `cargarVista` en `lib/tablero.ts`, y no por reparto de tareas sino
+ * porque este modulo lo importan componentes de CLIENTE (`TaskCard`) y no puede
+ * traer nada del nucleo que no sea un tipo: `esUuid` sale del barril de
+ * `@taskman/core`, y con el barril viene `pg`.
+ *
+ * Ausente es "el tablero por defecto" —el primero por nombre, la misma regla que
+ * GET /api/boards sin cursor— y por eso `/` sigue siendo una URL valida. Lo que
+ * NO es: una URL de un tablero concreto. Todos los enlaces que arma esta pagina
+ * llevan el parametro (ver `enlaceTablero`), asi que la barra de direcciones pasa
+ * a nombrar el tablero en cuanto se toca cualquier cosa.
+ */
+export function leerTableroElegido(parametros: Parametros): string | undefined {
+  return leerUnico(parametros, "tablero");
+}
+
+/**
+ * Un parametro de valor unico. Vacio o repetido (`?tarea=a&tarea=b`) cuenta como
+ * ausente: los dos vienen de alguien tecleando la URL, y elegir uno de los dos
+ * seria adivinar.
+ */
+function leerUnico(parametros: Parametros, nombre: string): string | undefined {
+  const valor = parametros[nombre];
 
   return typeof valor === "string" && valor !== "" ? valor : undefined;
 }
 
 /**
- * La URL del tablero con estos filtros y este panel. Es la UNICA forma en que se
- * arma un enlace de esta pagina: los chips, las tarjetas y el cierre del panel
- * pasan todos por aca, que es lo que hace que ninguno pierda el estado del otro.
+ * La URL de la pantalla: este tablero, con estos filtros y este panel. Es la
+ * UNICA forma en que se arma un enlace de esta pagina: los chips, las tarjetas,
+ * el cierre del panel y la barra lateral pasan todos por aca, que es lo que hace
+ * que ninguno pierda el estado de los otros.
  *
- * El orden de los parametros es fijo —prioridades en el orden canonico, despues
- * vencidas, despues la tarea— para que la misma pantalla sea siempre la misma
+ * EL TABLERO ES OBLIGATORIO, y es a proposito que sea el primer argumento y no un
+ * opcional al final. Antes de que existiera el selector, estos enlaces no lo
+ * llevaban porque solo habia un tablero alcanzable; con varios, un enlace sin el
+ * te devuelve al primero, que es el fallo tipico de este cambio y no da ningun
+ * error. Siendo obligatorio, ese enlace no compila: el typecheck recorre todos los
+ * sitios que arman una URL, cosa que ninguna prueba puede hacer.
+ *
+ * SIEMPRE SE ESCRIBE, tambien cuando es el tablero por defecto. Omitirlo para el
+ * primero acortaria la URL y la volveria ambigua: `/` significa "el que ordene
+ * primero", y eso cambia en cuanto alguien crea un tablero con un nombre anterior.
+ * Un enlace compartido tiene que seguir apuntando a lo que se compartio.
+ *
+ * El orden de los parametros es fijo —el tablero, las prioridades en el orden
+ * canonico, vencidas y la tarea— para que la misma pantalla sea siempre la misma
  * cadena. Dos URL distintas para el mismo estado harian que el enlace que uno
  * comparte dependa de en que orden pulso los chips.
  */
-export function enlaceTablero(filtros: Filtros, tarea?: string | undefined): string {
+export function enlaceTablero(
+  tablero: string,
+  filtros: Filtros,
+  tarea?: string | undefined,
+): string {
   const parametros = new URLSearchParams();
+
+  parametros.set("tablero", tablero);
 
   for (const prioridad of filtros.prioridades) {
     parametros.append("prioridad", prioridad);
@@ -125,9 +173,7 @@ export function enlaceTablero(filtros: Filtros, tarea?: string | undefined): str
     parametros.set("tarea", tarea);
   }
 
-  const cadena = parametros.toString();
-
-  return cadena === "" ? "/" : `/?${cadena}`;
+  return `/?${parametros.toString()}`;
 }
 
 /** Los filtros que resultarian de encender o apagar una prioridad. */
@@ -149,4 +195,29 @@ export function alternarPrioridad(filtros: Filtros, prioridad: Priority): Filtro
 /** Los filtros que resultarian de encender o apagar "vencidas". */
 export function alternarVencidas(filtros: Filtros): Filtros {
   return { ...filtros, vencidas: !filtros.vencidas };
+}
+
+/**
+ * EL ENLACE PARA CAMBIAR DE TABLERO: el de cada item de la barra lateral, y el
+ * destino al que se va despues de crear uno. Es `enlaceTablero` sin `tarea`, y
+ * existe con nombre propio para que la decision de abajo este escrita una vez y
+ * no repartida entre los dos sitios que la aplican.
+ *
+ * LO QUE CRUZA AL OTRO TABLERO ES LO QUE SIGUE SIGNIFICANDO ALGO ALLI:
+ *
+ *   - LOS FILTROS SE CONSERVAN. Son valores de un enum que es el mismo en todos
+ *     los tableros y un booleano: "Alta" y "Vencidas" quieren decir lo mismo en
+ *     cualquiera, asi que no hay nada que traducir. Y no pueden esconder nada sin
+ *     decirlo, porque la pantalla dibuja lo que aplico —los chips encendidos,
+ *     "0 de 12 tareas" en la cabecera, "Ninguna con este filtro" en cada columna—.
+ *     El caso de uso es real: repasar lo urgente tablero por tablero. Quitarlos
+ *     es un clic; volver a ponerlos en cada tablero serian varios.
+ *   - EL PANEL SE CIERRA. `tarea` es el id de una entidad DEL tablero que se deja,
+ *     y una tarea no cambia de tablero. `ubicarEnVista` no la encontraria en el
+ *     nuevo y el panel no se abriria igual, pero el parametro quedaria en la barra
+ *     de direcciones apuntando a nada: la URL dejaria de describir la pantalla, y
+ *     compartirla mandaria un id que no se puede abrir ahi.
+ */
+export function enlaceAOtroTablero(tablero: string, filtros: Filtros): string {
+  return enlaceTablero(tablero, filtros);
 }

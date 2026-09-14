@@ -114,10 +114,10 @@ body {
 }
 
 /*
- * La barra lateral es el ARMAZON, no una funcionalidad: lista los tableros y
- * marca cual se esta viendo. No navega y no crea nada —las dos cosas son
- * interactividad y entran despues— pero ocupa su ancho desde el primer dia, para
- * que el layout no se rehaga cuando lleguen.
+ * La barra lateral es el SELECTOR de tablero: lista los tableros, marca cual se
+ * esta viendo, lleva a cualquiera de los otros y, al pie, crea uno nuevo. Nacio
+ * como armazon —ocupando su ancho desde el primer dia para que el layout no se
+ * rehiciera— y es lo que dejo que navegar y crear entraran sin mover nada.
  *
  * El tablero activo se distingue SIN COLOR: peso, tinta plena y un fondo apenas
  * mas claro. El color esta reservado para prioridad y vencimiento, y gastarlo
@@ -144,22 +144,47 @@ body {
   text-transform: uppercase;
 }
 
+/*
+ * `flex: 0 1 auto` y no `flex: 1`: la lista mide lo que sus tableros y "Nuevo
+ * tablero" va JUSTO DEBAJO del ultimo, que es lo que significa "al pie de la
+ * lista". Con `flex: 1` la lista se comeria el alto entero y el campo quedaria
+ * abajo del todo, lejos de lo que crea. Con muchos tableros la lista se encoge
+ * (`min-height: 0`) y desplaza, y el campo sigue a la vista.
+ */
 .barra__lista {
-  flex: 1;
+  flex: 0 1 auto;
+  min-height: 0;
   margin: 0;
   padding: 0 8px;
   overflow-y: auto;
   list-style: none;
 }
 
+/*
+ * Cada item es un ENLACE, pero no se pinta como uno: una lista de nombres
+ * subrayados en azul se leeria como enlaces a otro sitio y no como la lista de
+ * tableros de esta pantalla. Lo que delata que se puede pulsar es el cambio de
+ * tinta al pasar por encima y el foco visible.
+ */
 .barra__item {
+  display: block;
   padding: 5px 8px;
   overflow: hidden;
   border-radius: 5px;
   color: var(--texto-tenue);
   font-size: 13px;
+  text-decoration: none;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.barra__item:hover {
+  color: var(--texto);
+}
+
+.barra__item:focus-visible {
+  outline: 2px solid var(--texto-tenue);
+  outline-offset: -2px;
 }
 
 .barra__item--activo {
@@ -172,6 +197,57 @@ body {
   padding: 6px 8px 0;
   color: var(--texto-apagado);
   font-size: 12px;
+}
+
+/*
+ * "NUEVO TABLERO", al pie de la lista. En reposo NO parece un campo: sin borde,
+ * sin fondo y en tinta apagada, alineado con los items, asi que se lee como uno
+ * mas. Un tablero se crea una vez cada mucho, y un boton lleno competiria todos
+ * los dias con la lista. Al enfocarlo toma forma de campo, igual que el QuickAdd.
+ */
+.barra__nuevo {
+  flex: none;
+  padding: 2px 8px 0;
+}
+
+.barra__nuevo-campo {
+  width: 100%;
+  padding: 5px 8px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--texto);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.barra__nuevo-campo::placeholder {
+  color: var(--texto-apagado);
+}
+
+.barra__nuevo-campo:hover {
+  background: var(--tarjeta);
+}
+
+.barra__nuevo-campo:focus-visible {
+  border-color: var(--borde);
+  background: var(--tarjeta);
+  outline: 2px solid var(--texto-tenue);
+  outline-offset: -1px;
+}
+
+/*
+ * El mismo rojo que el error del QuickAdd. `overflow-wrap: anywhere` porque la
+ * barra mide 150 px, y el identificador de peticion que acompana a un fallo no
+ * controlado es una sola palabra mas ancha que eso.
+ */
+.barra__nuevo-error {
+  margin: 6px 2px 0;
+  color: var(--urgente);
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 /* --- Pagina y cabecera (BoardHeader, 9.3) --------------------------------- */

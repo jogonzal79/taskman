@@ -124,12 +124,13 @@ export interface Semilla {
   /**
    * TODOS los tableros que va a haber, en el orden en que la barra lateral los
    * va a listar. El nucleo ordena por `name` ascendente (`ORDEN_BOARD`) y el
-   * PRIMERO es el que la pagina muestra (`cargarVista` en lib/tablero.ts).
+   * PRIMERO es el que muestra `/` a secas, sin `?tablero=` (`cargarVista` en
+   * lib/tablero.ts).
    */
   readonly tableros: readonly TableroSembrado[];
 }
 
-/** El tablero que la pagina va a mostrar: el primero del listado. */
+/** El tablero que muestra `/`: el primero del listado. */
 export function tableroActivo(semilla: Semilla): TableroSembrado {
   const primero = semilla.tableros[0];
 
@@ -138,6 +139,22 @@ export function tableroActivo(semilla: Semilla): TableroSembrado {
   }
 
   return primero;
+}
+
+/** Un tablero de la semilla, por nombre. */
+export function tableroSembrado(semilla: Semilla, nombre: string): TableroSembrado {
+  const tablero = semilla.tableros.find((candidato) => candidato.name === nombre);
+
+  if (tablero === undefined) {
+    throw new Error(`La semilla no tiene el tablero ${nombre}.`);
+  }
+
+  return tablero;
+}
+
+/** Los titulos de un tablero en el orden en que se pintan: columna por columna. */
+export function titulosSembrados(tablero: TableroSembrado): string[] {
+  return tablero.columnas.flatMap((columna) => columna.tareas.map((tarea) => tarea.title));
 }
 
 /** Una columna del tablero, por key. */
@@ -206,11 +223,28 @@ export const DESCRIPCION_DE_SOPORTE = "Hay que contestarle antes del viernes.";
 export const DESCRIPCION_DE_CONTRATO = "Comparar openapi.json con la tabla de la 6.3.";
 
 /**
- * Las cuatro columnas de la 4.3 sin tareas. Base de las dos semillas: asi la
- * diferencia entre `principal` y `vacio` es exactamente el contenido, y ninguna
- * de las dos puede quedarse sin una columna por descuido.
+ * El SEGUNDO tablero de `principal` y sus dos tareas. Los titulos no aparecen en
+ * el primero a proposito: una tarjeta en pantalla tiene que decir sin ambiguedad
+ * de que tablero es, porque lo que se prueba con ellas es justamente que un
+ * enlace no te haya devuelto al otro.
+ *
+ * Una de cada prioridad que importa para el filtro: con "Alta" puesto, este
+ * tablero muestra una y esconde la otra, asi que el filtro se ve actuar.
  */
-function columnasVacias(): ColumnaSembrada[] {
+export const TABLERO_OTRO = "2 Otro tablero";
+export const TITULO_OTRO_ALTA = "Reservar la sala para la demo";
+export const TITULO_OTRO_MEDIA = "Elegir el nombre del segundo proyecto";
+
+/**
+ * Las cuatro columnas de la 4.3 sin tareas. Base de todas las semillas: asi la
+ * diferencia entre `principal` y `vacio` es exactamente el contenido, y ninguna
+ * puede quedarse sin una columna por descuido.
+ *
+ * Se exporta porque ES LA TABLA DE LA 4.3 escrita a mano, key, nombre y orden, y
+ * eso es exactamente contra lo que el CT-01 compara un tablero creado desde la
+ * pantalla (por SQL, con la position como indice de esta lista).
+ */
+export function columnasVacias(): ColumnaSembrada[] {
   return [
     { key: "BACKLOG", name: BACKLOG, tareas: [] },
     { key: "TODO", name: POR_HACER, tareas: [] },
@@ -240,8 +274,9 @@ function conTareas(
 export const SEMILLAS = {
   /**
    * El caso normal: un tablero con las cuatro columnas y tareas conocidas en cada
-   * una, mas un SEGUNDO tablero que no se muestra y que existe solo para que la
-   * barra lateral tenga que elegir cual marcar.
+   * una, mas un SEGUNDO tablero con dos tareas propias. `/` muestra el primero;
+   * al segundo se llega desde la barra lateral, y es el que prueba que el
+   * selector lleva a otro tablero y que ningun enlace devuelve al primero.
    */
   principal: {
     tableros: [
@@ -280,7 +315,13 @@ export const SEMILLAS = {
           ],
         }),
       },
-      { name: "2 Otro tablero", columnas: columnasVacias() },
+      {
+        name: TABLERO_OTRO,
+        columnas: conTareas({
+          BACKLOG: [{ title: TITULO_OTRO_MEDIA, priority: "MEDIUM", vence: null }],
+          TODO: [{ title: TITULO_OTRO_ALTA, priority: "HIGH", vence: null }],
+        }),
+      },
     ],
   },
 
@@ -292,6 +333,17 @@ export const SEMILLAS = {
    */
   vacio: {
     tableros: [{ name: "1 Tablero recien creado", columnas: columnasVacias() }],
+  },
+
+  /**
+   * NINGUN tablero: la base recien migrada, antes de que nadie cree nada. Es el
+   * unico estado desde el que el primer tablero solo se puede crear en la barra
+   * lateral, porque no hay otro sitio de la pantalla que se dibuje. Una semilla
+   * con esto no tiene tablero ACTIVO, y la fixture lo resuelve al pedirlo (ver
+   * `sembrado` en `tablero.ts`).
+   */
+  ninguno: {
+    tableros: [],
   },
 } as const satisfies Record<string, Semilla>;
 

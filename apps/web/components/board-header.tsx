@@ -13,10 +13,11 @@ import { PRIORIDADES } from "../lib/prioridad";
  * BoardHeader (9.3): "Nombre del tablero, selector de tablero, filtros y accion
  * de nueva tarea".
  *
- * De los cuatro ya son dos: el NOMBRE y los FILTROS. El selector de tablero y la
- * accion de nueva tarea siguen fuera —la creacion se hace desde el QuickAdd al
- * pie de cada columna, que es donde se elige la columna sin un formulario— y
- * ninguno se deja esbozado.
+ * Aca viven dos de los cuatro: el NOMBRE y los FILTROS. El SELECTOR de tablero
+ * existe pero vive en `BoardSidebar`, que ya era la lista de tableros (ver ahi
+ * por que). La accion de nueva tarea no esta: la creacion se hace desde el
+ * QuickAdd al pie de cada columna, que es donde se elige la columna sin un
+ * formulario. Las dos decisiones estan declaradas en CLAUDE.md.
  *
  * LOS FILTROS SON ENLACES, no botones, y no hay un solo "use client" en esta
  * pieza. Cada chip apunta a la URL que resultaria de alternarlo, asi que:
@@ -35,12 +36,18 @@ import { PRIORIDADES } from "../lib/prioridad";
  * significa "el item actual de un conjunto" y un filtro no es eso.
  */
 export function BoardHeader({
+  boardId,
   nombre,
   taskCount,
   mostradas,
   filtros,
   tareaAbierta,
 }: {
+  /**
+   * Va en cada enlace de filtro: filtrar es cambiar la vista de ESTE tablero, y
+   * un chip que no lo llevara te devolveria al primero.
+   */
+  boardId: string;
   nombre: string;
   /** Total del tablero, agregado en la base y sin filtrar. */
   taskCount: number;
@@ -75,7 +82,7 @@ export function BoardHeader({
             <Link
               key={opcion.valor}
               className={puesta ? "filtro filtro--puesto" : "filtro"}
-              href={enlaceTablero(alternarPrioridad(filtros, opcion.valor), tareaAbierta)}
+              href={enlaceTablero(boardId, alternarPrioridad(filtros, opcion.valor), tareaAbierta)}
               scroll={false}
               aria-label={puesta ? `Quitar el filtro ${opcion.texto}` : `Filtrar por ${opcion.texto}`}
             >
@@ -86,7 +93,7 @@ export function BoardHeader({
 
         <Link
           className={filtros.vencidas ? "filtro filtro--puesto" : "filtro"}
-          href={enlaceTablero(alternarVencidas(filtros), tareaAbierta)}
+          href={enlaceTablero(boardId, alternarVencidas(filtros), tareaAbierta)}
           scroll={false}
           aria-label={filtros.vencidas ? "Quitar el filtro Vencidas" : "Filtrar por Vencidas"}
         >
@@ -100,7 +107,7 @@ export function BoardHeader({
           Conserva `tarea`, asi que quitar los filtros no cierra el panel.
         */}
         {filtrando && (
-          <Link className="filtro filtro--limpiar" href={enlaceTablero({ prioridades: [], vencidas: false }, tareaAbierta)} scroll={false}>
+          <Link className="filtro filtro--limpiar" href={enlaceTablero(boardId, { prioridades: [], vencidas: false }, tareaAbierta)} scroll={false}>
             Quitar filtros
           </Link>
         )}

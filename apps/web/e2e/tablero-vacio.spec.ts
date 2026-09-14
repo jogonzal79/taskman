@@ -49,5 +49,5 @@ test("un tablero sin tareas muestra las cuatro columnas vacias y no rompe", asyn
   }
 
   // La barra lateral con un solo tablero sigue marcandolo.
-  await expect(page.locator('.barra__item[aria-current="true"]')).toHaveText(activo.name);
+  await expect(page.locator('.barra__item[aria-current="page"]')).toHaveText(activo.name);
 });

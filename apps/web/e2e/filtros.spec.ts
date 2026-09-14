@@ -181,7 +181,9 @@ test("el filtro sobrevive al recargado y la URL se puede compartir", async ({ pa
   const altas = dePrioridad(activo, "HIGH");
 
   await filtro(page, "Alta").click();
-  await expect(page).toHaveURL(/\?prioridad=HIGH$/u);
+  // El tablero va PRIMERO en la cadena y siempre esta: todo enlace de la pagina
+  // lo lleva (ver `enlaceTablero`).
+  await expect(page).toHaveURL(/\?tablero=[^&]+&prioridad=HIGH$/u);
 
   await page.reload();
   await esperarTitulos(page, altas);

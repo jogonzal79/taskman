@@ -2,7 +2,12 @@ import { BoardHeader } from "../components/board-header";
 import { BoardSidebar } from "../components/board-sidebar";
 import { ColumnList } from "../components/column-list";
 import { TaskDetailPanel } from "../components/task-detail-panel";
-import { enlaceTablero, leerFiltros, leerTareaAbierta } from "../lib/filtros";
+import {
+  enlaceTablero,
+  leerFiltros,
+  leerTableroElegido,
+  leerTareaAbierta,
+} from "../lib/filtros";
 import { cargarVista, paraLaPantalla, ubicarEnVista } from "../lib/tablero";
 
 /**
@@ -41,12 +46,12 @@ import { cargarVista, paraLaPantalla, ubicarEnVista } from "../lib/tablero";
 export const dynamic = "force-dynamic";
 
 /**
- * TODO EL ESTADO DE LA PANTALLA VIVE EN LA URL: que tarea esta abierta
- * (`?tarea=<id>`) y que filtros hay puestos (`?prioridad=...&vencidas=1`). Ver
- * `TaskDetailPanel` y `lib/filtros.ts` para lo que resuelve cada uno; lo que
- * comparten es lo importante: los dos se resuelven en el SERVIDOR, conviven en la
- * misma cadena y ninguno pisa al otro, porque todos los enlaces de la pagina
- * salen de `enlaceTablero`.
+ * TODO EL ESTADO DE LA PANTALLA VIVE EN LA URL: que tablero se esta viendo
+ * (`?tablero=<id>`), que tarea esta abierta (`?tarea=<id>`) y que filtros hay
+ * puestos (`?prioridad=...&vencidas=1`). Ver `lib/filtros.ts` para lo que resuelve
+ * cada uno; lo que comparten es lo importante: los tres se resuelven en el
+ * SERVIDOR, conviven en la misma cadena y ninguno pisa a otro, porque todos los
+ * enlaces de la pagina salen de `enlaceTablero`, que no compila sin el tablero.
  *
  * Los parametros hay que LEERLOS ANTES de cargar la vista, porque los filtros son
  * parte de la consulta: no se trae el tablero entero para esconder tarjetas.
@@ -63,15 +68,43 @@ export default async function PaginaTablero({
   const filtros = leerFiltros(parametros);
   const tareaAbierta = leerTareaAbierta(parametros);
 
-  const { tableros, tablerosOmitidos, actual } = await cargarVista(hoy, filtros);
+  const { tableros, tablerosOmitidos, actual, inexistente } = await cargarVista(
+    hoy,
+    filtros,
+    leerTableroElegido(parametros),
+  );
 
-  // Sin tableros no hay barra que dibujar: estaria vacia al lado de un hueco.
+  /**
+   * LA BARRA SE DIBUJA SIEMPRE, tambien sin tablero que mostrar. Antes no —"sin
+   * tableros estaria vacia al lado de un hueco"— y desde que crea tableros es al
+   * reves: sin ningun tablero es el UNICO sitio de la pantalla desde donde crear
+   * el primero, y con un tablero pedido que no existe es donde se elige otro.
+   */
+  const barra = (
+    <BoardSidebar tableros={tableros} omitidos={tablerosOmitidos} filtros={filtros} />
+  );
+
+  /**
+   * UN TABLERO PEDIDO QUE NO EXISTE NO CAE AL PRIMERO, y es la diferencia con un
+   * `?tarea=` que no apunta a nada, que dibuja el tablero sin panel. La falta de
+   * un panel se ve sola; otro tablero en su lugar no: quien abre un enlace a un
+   * tablero borrado y ve otro con columnas y tareas puede no darse cuenta de que el
+   * suyo ya no esta. Seria el parametro inerte que CLAUDE.md anota para los
+   * listados REST, con la diferencia de que aca la pantalla SI puede decirlo. Ni
+   * 404 ni 500: un enlace viejo no es un fallo del sistema.
+   */
   if (actual === undefined) {
     return (
-      <p className="sin-tablero">
-        No hay ningun tablero todavia. Crea uno con POST /api/boards o con la
-        herramienta create_board del servidor MCP.
-      </p>
+      <div className="marco">
+        {barra}
+        <main className="pagina">
+          <p className="sin-tablero">
+            {inexistente
+              ? "Ese tablero no existe: puede que se haya borrado o que el enlace este mal copiado. Elegi otro en la barra de la izquierda."
+              : 'No hay ningun tablero todavia. Crea el primero con "Nuevo tablero", en la barra de la izquierda.'}
+          </p>
+        </main>
+      </div>
     );
   }
 
@@ -94,9 +127,10 @@ export default async function PaginaTablero({
 
   return (
     <div className="marco">
-      <BoardSidebar tableros={tableros} omitidos={tablerosOmitidos} />
+      {barra}
       <main className="pagina">
         <BoardHeader
+          boardId={actual.id}
           nombre={actual.name}
           taskCount={actual.taskCount}
           mostradas={mostradas}
@@ -120,14 +154,14 @@ export default async function PaginaTablero({
         por eso que no hay capa, ni superposicion, ni foco atrapado.
 
         `hrefCerrar` se calcula ACA y baja como cadena: cerrar el panel es volver
-        al tablero CON LOS FILTROS PUESTOS, y el componente de cliente que
+        a ESTE tablero CON LOS FILTROS PUESTOS, y el componente de cliente que
         tambien cierra (con Escape, y despues de borrar) no puede leer los
         parametros del servidor. Pasar la cadena ya armada es lo que hace que las
         tres formas de cerrar —el enlace, Escape y el borrado— vayan al mismo
         sitio.
       */}
       {ubicada !== undefined && (
-        <TaskDetailPanel ubicada={ubicada} hrefCerrar={enlaceTablero(filtros)} />
+        <TaskDetailPanel ubicada={ubicada} hrefCerrar={enlaceTablero(actual.id, filtros)} />
       )}
     </div>
   );

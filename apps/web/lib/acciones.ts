@@ -3,6 +3,7 @@
 import {
   crearCorePort,
   isDomainError,
+  recortarBlancos,
   recortarTitulo,
   type ActorContext,
   type Priority,
@@ -55,9 +56,10 @@ export type ResultadoAccion<T = void> =
   | {
       readonly ok: true;
       /**
-       * Lo que la operacion devolvio. `void` en las tres primeras acciones, que
-       * no tienen nada que contar mas alla de haber salido bien; el orden final
-       * y autoritativo en `moverTarea`, que es lo que la 9.2 exige devolver.
+       * Lo que la operacion devolvio. `void` en las que no tienen nada que contar
+       * mas alla de haber salido bien; el id del tablero nuevo en `crearTablero`,
+       * que es a donde hay que ir; y el orden final y autoritativo en
+       * `moverTarea`, que es lo que la 9.2 exige devolver.
        *
        * Es un parametro de tipo y no un `unknown` porque el llamador tiene que
        * poder leerlo sin comprobar: `resultado.valor.columnas` compila en el
@@ -99,7 +101,7 @@ export type ResultadoAccion<T = void> =
 const taskman = crearCorePort();
 
 /**
- * La politica de errores y la revalidacion, en UN solo lugar para las tres
+ * La politica de errores y la revalidacion, en UN solo lugar para todas las
  * acciones.
  *
  * Estaba escrita dentro de `crearTarea` cuando era la unica. Con tres, copiarla
@@ -157,9 +159,10 @@ async function ejecutar<T>(
    *
    * La ruta es "/" porque la UI tiene una sola pagina y el tablero es esa —el
    * panel de detalle es un parametro de consulta de esa misma ruta, asi que
-   * entra en la misma invalidacion y se repinta con los valores nuevos—. El dia
-   * que haya una ruta por tablero, esto pasa a ser la ruta del tablero afectado
-   * y no un comodin.
+   * entra en la misma invalidacion y se repinta con los valores nuevos—. El
+   * tablero elegido tambien es un parametro (`?tablero=`) y no una ruta, asi que
+   * "/" sigue cubriendo todos. El dia que haya una ruta por tablero, esto pasa a
+   * ser la ruta del tablero afectado y no un comodin.
    */
   revalidatePath("/");
 
@@ -210,6 +213,59 @@ export async function crearTarea(entrada: {
       { boardId: entrada.boardId, columnId: entrada.columnId, title: entrada.title },
       ctx,
     );
+  });
+}
+
+/** Lo que `crearTablero` devuelve: a donde hay que ir. */
+export interface TableroCreado {
+  readonly id: string;
+}
+
+/**
+ * Crea un tablero: el "Nuevo tablero" al pie de la barra lateral. Es la mitad de
+ * la 18 del funcional que faltaba ("se puede crear un tablero y sus columnas
+ * desde la UI") y la que traza el CT-01.
+ *
+ * SIN `columns`, y eso es todo lo que hace falta para las columnas.
+ * `BoardService.create` pone las cuatro de la 4.3 cuando la lista falta, en la
+ * misma transaccion que el tablero. Escribirlas aca seria una segunda copia de
+ * la 4.3 en un borde, libre de separarse de la del nucleo, y ademas un camino
+ * distinto del que usan POST /api/boards y `create_board`.
+ *
+ * DEVUELVE EL ID, a diferencia de `crearTarea`, y por el motivo contrario. Lo que
+ * crea el QuickAdd aparece en la pantalla que se esta viendo, asi que la
+ * revalidacion alcanza. Un tablero nuevo NO: se ve en la barra, pero la pagina
+ * sigue mostrando el tablero elegido, y un tablero que se crea y no se ve es el
+ * fallo que motivo juntar la creacion con el selector. El cliente navega a el con
+ * este id (ver `NuevoTablero`).
+ *
+ * NO NAVEGA CON `redirect()` DESDE ACA. `redirect` LANZA, y `ejecutar` captura
+ * todo lo que lanza la operacion para convertirlo en un resultado: lo registraria
+ * como un fallo. Y aunque se llamara fuera de `ejecutar`, la accion dejaria de
+ * devolver el `requestId`, que es lo que el cliente necesita para reconocer su
+ * propio aviso en `/eventos`.
+ *
+ * EL RECORTE PREVIO es la misma guarda de red que la de `crearTarea`, con el
+ * mismo `recortarBlancos` que usa el nucleo, y el mismo trato: la validacion que
+ * vale es `normalizarTexto` dentro de `BoardService.create`, que ademas es la
+ * unica que conoce el tope de 120. Lo que agrega esta es un mensaje escrito para
+ * una persona en vez de "El campo name no puede estar vacio".
+ */
+export async function crearTablero(entrada: {
+  name: string;
+}): Promise<ResultadoAccion<TableroCreado>> {
+  if (recortarBlancos(entrada.name) === "") {
+    return {
+      ok: false,
+      mensaje: "Escribi un nombre para crear el tablero.",
+      codigo: "NAME_REQUIRED",
+    };
+  }
+
+  return ejecutar(async (ctx) => {
+    const tablero = await taskman.createBoard({ name: entrada.name }, ctx);
+
+    return { id: tablero.id };
   });
 }
 
@@ -317,7 +373,7 @@ export interface ResultadoDeMovimiento {
 /**
  * Mueve una tarea: el arrastre de la 9.1, con la reconciliacion de la 9.2.
  *
- * ES LA UNICA ACCION QUE DEVUELVE ALGO, y ese es el paso entero. Las otras tres
+ * DEVUELVE EL ORDEN, y ese es el paso entero. Las otras acciones sobre tareas
  * solo necesitan decir si salieron bien, porque lo que escribieron se ve cuando
  * la revalidacion repinta. Esta ademas tiene que devolver EL ORDEN FINAL, porque
  * la 9.2 pide que el estado local se SUSTITUYA por el del servidor y no se quede

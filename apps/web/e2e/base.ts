@@ -336,7 +336,69 @@ export async function crearPorLaApi(args: {
   }
 }
 
-/** El id del tablero que la pagina muestra. Lo pide el cuerpo de POST /api/tasks. */
+// --- Tableros ------------------------------------------------------------------
+
+/** Una fila de `board_column`: lo que la 4.3 fija por tablero. */
+export interface FilaDeColumna {
+  readonly key: string;
+  readonly name: string;
+  readonly position: number;
+}
+
+/**
+ * Las columnas REALES de un tablero, en orden de `position`, con su key.
+ *
+ * Es la mitad del CT-01 que la pantalla no puede dar: la pantalla muestra
+ * NOMBRES, y la 4.3 fija ademas la KEY de cada columna —la que usan los agentes
+ * para resolver referencias— y su position. Un tablero con "Backlog" pintado y
+ * key `backlog`, o con las positions 1..4, se veria identico.
+ */
+export async function columnasDelTableroEnLaBase(tablero: string): Promise<FilaDeColumna[]> {
+  return consultar<FilaDeColumna>(
+    `SELECT c.key, c.name, c.position
+       FROM board_column c
+       JOIN board b ON b.id = c.board_id
+      WHERE b.name = $1
+      ORDER BY c.position ASC`,
+    [tablero],
+  );
+}
+
+/** Los nombres de todos los tableros, en el mismo orden que la barra lateral. */
+export async function nombresDeTablerosEnLaBase(): Promise<string[]> {
+  const filas = await consultar<{ name: string }>(
+    `SELECT name FROM board ORDER BY name::text ASC`,
+    [],
+  );
+
+  return filas.map((fila) => fila.name);
+}
+
+/** Quien escribio un evento de auditoria. */
+export interface ActorAuditado {
+  readonly actorType: string;
+  readonly actorName: string;
+}
+
+/**
+ * Los CREATE de `audit_log` sobre el tablero con este nombre, con su actor.
+ *
+ * Existe para afirmar que la creacion desde la pantalla la registra la UI como
+ * USER y no otro borde: la Server Action es el unico productor de ese actor
+ * (`lib/actor.ts`), asi que un USER aca es que el tablero entro por ella.
+ */
+export async function creacionesDeTablero(nombre: string): Promise<ActorAuditado[]> {
+  return consultar<ActorAuditado>(
+    `SELECT a.actor_type::text AS "actorType", a.actor_name AS "actorName"
+       FROM audit_log a
+       JOIN board b ON a.entity_id = b.id::text
+      WHERE a.entity_type = 'board' AND a.action = 'CREATE' AND b.name = $1
+      ORDER BY a.id ASC`,
+    [nombre],
+  );
+}
+
+/** El id de un tablero por su nombre. Lo pide el cuerpo de POST /api/tasks. */
 export async function idDeTablero(nombre: string = TABLERO): Promise<string> {
   const filas = await consultar<{ id: string }>(`SELECT id FROM board WHERE name = $1`, [nombre]);
   const fila = filas[0];

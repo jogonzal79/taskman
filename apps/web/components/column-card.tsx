@@ -124,6 +124,7 @@ export function ColumnCard({
           {tareas.map((tarea) => (
             <TaskCard
               key={tarea.id}
+              boardId={boardId}
               tarea={tarea}
               columnId={columna.id}
               bloqueado={bloqueado}
