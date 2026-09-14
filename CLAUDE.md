@@ -28,11 +28,26 @@ hace falta es el comando que lo averigua, no el dato.
   grep -rnE "^export (const|async function) (GET|POST|PATCH|PUT|DELETE)" apps/web/app --include=route.ts
   ```
 
-  El `conAuth("…")` de cada línea es el scope que ese endpoint exige (7.2).
-  `/api/health` sale sin `conAuth` porque es el único sin autenticación (6.2), y
+  El `conAuth("…")` de cada línea es el scope que ese endpoint exige (7.2). DOS
+  líneas salen sin `conAuth`, y no son el mismo caso:
+
+  `/api/health` es el único endpoint DEL CONTRATO de la 6.2 sin autenticación, y
   eso es TODO lo que lo hace distinto: no tiene 401, 403 ni el 429 de la 7.3, que
   se cobra por clave. El X-Request-Id SÍ lo lleva, como toda respuesta (6.1);
   genera el suyo con la misma `nuevoRequestId()` que usa `conAuth`.
+
+  `/eventos` NO ES DEL CONTRATO: es el flujo de Server-Sent Events con el que el
+  tablero se entera de que algo cambió (CT-06 y CT-07). Aparece en este grep
+  porque también es un `route.ts` bajo `app/`, no porque sea un endpoint público,
+  y por eso está fuera de `/api`: la lista de la 6.2 dice algo simple y cierto
+  —todos autentican menos health— y meter ahí una ruta que no puede autenticar la
+  ensuciaría. NO autentica porque la UI no usa ninguna API key: invoca los
+  servicios en el mismo proceso y no consume su propia API pública (9.1), así que
+  no tiene con qué. LO QUE EXPONE, por cada escritura del sistema: el tipo de
+  actor, la acción, el tipo de entidad y su UUID. Nada de títulos, descripciones,
+  fechas ni contenido; para leer cualquier dato sigue haciendo falta la clave. Es
+  una decisión de sistema personal en un contenedor: el día que esto se publique,
+  va con la misma cabecera que el resto.
 - **Qué endpoints faltan**: la tabla de la 6.2 es el objetivo y el comando de
   arriba es el estado; la resta de los dos es la lista. Cualquier copia escrita
   acá empieza a envejecer el mismo día.
@@ -43,8 +58,8 @@ hace falta es el comando que lo averigua, no el dato.
   Los nombres de fase (F1b, F3, F4…) salen del plan de la 12.
 
 Lo que no caduca está en las secciones de abajo, que son las que valen: la deuda
-conocida, las trampas del entorno, las reglas que no se negocian y los
-invariantes del servidor MCP.
+conocida, los desvíos declarados de la especificación, las trampas del entorno,
+las reglas que no se negocian y los invariantes del servidor MCP.
 
 ## Deuda conocida
 
@@ -165,6 +180,89 @@ contador de pruebas no tiene ese commit.
   su propio riesgo— y (2) recien entonces LISTEN/NOTIFY o un cache compartido,
   porque el problema real es entre procesos. `reiniciarCacheDeClaves()` ya existe
   y es el gancho que usaria cualquiera de las dos.
+
+## Desvíos declarados de la especificación
+
+Cosas que la especificación pide y que este repo NO hace, A PROPÓSITO.
+
+**NO ES DEUDA Y NO HAY QUE SALDARLA.** La sección de arriba lista trabajo
+pendiente: cada entrada de allí se borra en el commit que arregla lo que
+describe. Ésta lista DECISIONES YA TOMADAS, y una entrada de acá solo se borra
+si alguien decide lo contrario, no si alguien "se pone al día". Están juntas y
+separadas por eso: quien lee "deuda" intenta pagarla, y pagar una de éstas es
+deshacer una decisión sin haberla discutido.
+
+Cada una dice de QUÉ sección se desvía y POR QUÉ, no solo qué falta. Si el
+motivo dejó de valer, ahí está el disparador para volver a mirarla.
+
+- **La UI es SOLO ESCRITORIO.** La 9.3 pide responsive —"en pantallas estrechas
+  las columnas se muestran de una en una con navegación por pestañas"— y eso
+  queda descartado: por debajo de 1024 px no se sirve una versión degradada sino
+  un aviso. El motivo es que un tablero Kanban de a una columna deja de ser un
+  tablero: lo que se mira en él es la relación entre columnas, y con pestañas hay
+  que recordar lo que no se ve. Antes que hacerlo mal, no hacerlo y decirlo.
+  Ya está escrito en `globals.css` y `layout.tsx`, está probado
+  (`tablero-lectura.spec.ts`, el caso de 1023 px) y el usuario ve el motivo en
+  pantalla. OJO: la definición de terminado de F3 (fila F3 de la 12) dice
+  "comportamiento responsive verificado", así que este desvío la contradice de
+  frente y cerrar F3 exige nombrarlo.
+
+- **Sin TanStack Query**, que la 9.1 nombra con clave de caché `["board", boardId]`.
+  El argumento largo está en la cabecera de `column-list.tsx`; en corto: es una
+  caché de estado de servidor sobre una capa de fetch, y acá no hay ninguna de las
+  dos —la carga inicial son propiedades de un Server Component y las mutaciones
+  son Server Actions con `revalidatePath`—. Darle un fetcher exigiría o guardar
+  una API key para que la UI hable consigo misma (7.2) o duplicar el render del
+  servidor. Y lo que decide: NO PODRÍA dar el punto 3 de la 9.2. Una caché
+  invalidada solo puede volver a PREGUNTAR después, y entre el commit y esa
+  pregunta cabe otra escritura; el orden autoritativo tiene que venir en la
+  respuesta de la acción, releído dentro de la transacción que lo escribió.
+
+- **Sin "acción de nueva tarea" en BoardHeader**, que la 9.3 le asigna junto al
+  nombre, el selector y los filtros. El QuickAdd al pie de cada columna (que la
+  misma 9.3 pide como componente aparte) ya cubre la intención, y la cubre mejor:
+  crear desde la cabecera obligaría a elegir la columna en un formulario, mientras
+  que escribir al pie de una columna ya la eligió. Dos caminos para lo mismo, uno
+  peor. Las otras dos responsabilidades de BoardHeader NO son desvío: el nombre y
+  los filtros están, y el selector de tablero falta de verdad.
+
+- **Sin buscador libre en la UI.** El capítulo 9 no lo pide, así que esto no se
+  desvía de ningún requisito; se declara igual porque la capacidad SÍ existe
+  debajo —`GET /api/tasks/search` y la herramienta `search_tasks`— y su ausencia
+  arriba se lee como un olvido. El motivo es que hoy se leería como roto: la
+  búsqueda full-text no es incremental (`plainto_tsquery` no agrega `:*`, así que
+  un prefijo no encuentra nada mientras se escribe) y no tolera acentos de forma
+  uniforme (ver las dos entradas de deuda correspondientes). Disparador: entra
+  cuando entre `unaccent` en la configuración de búsqueda.
+
+- **La entidad Proyecto es post-MVP.** La 2 del funcional la nombra como objetivo
+  ("permitir múltiples tableros y proyectos sin introducir complejidad innecesaria
+  en el MVP") y el modelo de datos no la tiene. El motivo es que un proyecto sin
+  permisos ni miembros es solo una carpeta: lo que le da sentido es agrupar
+  tableros de gente distinta, o sea que el disparador real es el MULTIUSUARIO, no
+  el número de tableros. Cuando llegue es ADITIVO y no una migración dolorosa:
+  `board_id` sigue siendo la referencia estable de tareas, columnas, herramientas
+  MCP y auditoría, y un proyecto se cuelga por encima del tablero.
+
+- **Sin UI de gestión de API keys.** La 7.1 define las claves y su ciclo de vida;
+  se emiten por CLI (`pnpm run apikey:create`) y se revocan tipeando SQL. Una
+  pantalla que las emita, las liste y las revoque necesita antes una pantalla de
+  AJUSTES que no existe —hoy la UI es una sola página, el tablero— así que sería
+  inventar una sección entera para un uso que en un sistema personal ocurre dos
+  veces. Disparador: el día que esto se le entregue a alguien más, porque ahí
+  emitir una clave deja de ser una tarea de quien administra la máquina.
+
+- **Sin el aislamiento de pruebas de la 10.3**, que pide "un esquema PostgreSQL
+  propio, creado y destruido en el ciclo de vida de la suite, para permitir
+  paralelismo sin interferencias". El repo usa UNA base compartida, `TRUNCATE` en
+  cada `beforeEach`, `fileParallelism: false` y `maxWorkers: 1`. Es ANTERIOR a F3
+  y nunca se decidió explícitamente: se llegó por el camino simple y funciona. Lo
+  que se paga es tiempo de pared —las suites no pueden correr en paralelo— y lo
+  que se gana es que no hay que crear ni destruir esquemas. Disparador: que la
+  corrida de `verify` moleste de verdad.
+  OJO, la otra mitad de la 10.3 SÍ está: el script de siembra determinista
+  invocable con una semilla fija existe (`apps/web/e2e/semilla.ts`, semillas
+  `principal` y `vacio`), y de él parten las pruebas de extremo a extremo.
 
 ## Entorno
 

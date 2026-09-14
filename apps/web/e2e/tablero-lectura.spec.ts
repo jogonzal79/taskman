@@ -279,8 +279,18 @@ test("por debajo de 1024 px sale el aviso, no una version degradada", async ({ p
  *   CT-01  Crear tablero y ver las cuatro columnas por defecto.
  *          PARCIAL. "Ver las cuatro columnas" esta cubierto arriba y en
  *          `tablero-vacio.spec.ts`, sobre un tablero creado por la siembra con el
- *          mismo `createBoard` que usaria la UI. Falta CREARLO desde la pantalla:
- *          la 9.3 lo pone en el BoardHeader ("selector de tablero") y no existe.
+ *          mismo `createBoard` que usaria la UI. Falta CREARLO desde la pantalla,
+ *          que es lo que pide la 18 del funcional ("se puede crear un tablero y
+ *          sus columnas desde la UI") y que la 12.1 traza justamente a este CT.
+ *          Aparte —y no es lo mismo, aunque se arreglen juntos— falta el
+ *          "selector de tablero" que la 9.3 le asigna a BoardHeader: hoy la
+ *          pagina muestra siempre el primero por nombre (`cargarVista`), asi que
+ *          con mas de un tablero el segundo es inalcanzable. Crear sin poder
+ *          cambiar dejaria el tablero nuevo invisible si no ordena primero.
+ *          Lo que NO falta: crear, borrar o reordenar COLUMNAS desde la UI. El
+ *          capitulo 9 no se lo asigna a ningun componente, la 18 traza sus
+ *          "columnas" a este CT —o sea a que aparezcan las cuatro de la 4.3— y el
+ *          "Columnas: CRUD y orden" de la 3 ya lo satisface la API.
  *   CT-02  QuickAdd, recargar, verificar la posicion.
  *          PARCIAL, en `quick-add.spec.ts`. Crear y que aparezca AL FINAL de la
  *          columna esta; lo que falta es la RECARGA, y no por descuido: esas
