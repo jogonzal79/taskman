@@ -32,6 +32,11 @@ export interface ManejadoresDeCambios {
    * tiene cola para quien no esta escuchando—. Asi que reconectar significa
    * "puedo estar mostrando algo viejo" y obliga a releer una vez. Es el unico
    * momento en que el cliente refresca sin que nadie se lo pida.
+   *
+   * Y NO SOLO LO DISPARA UN CORTE DE RED: cuando el servidor pierde su escucha
+   * con PostgreSQL, cierra el flujo a proposito (`/eventos`), y la reconexion
+   * que sigue es la que pone al tablero al dia con lo escrito mientras estaba
+   * sordo.
    */
   alReconectar: () => void;
 }
@@ -44,6 +49,12 @@ export interface ManejadoresDeCambios {
  * SILENCIO. Un tablero desconectado se ve exactamente igual que uno donde no
  * pasa nada, asi que sin este dato no hay forma de distinguir "no cambio nada"
  * de "dejo de enterarse", ni mirando la pantalla ni desde una prueba.
+ *
+ * CONECTADO QUIERE DECIR ESCUCHANDO LA BASE, no "socket abierto". Se enciende con
+ * el `listo`, que el servidor manda cuando su `LISTEN` ya esta puesto, y se apaga
+ * cuando el flujo se cierra, que el servidor hace en cuanto ese `LISTEN` se cae.
+ * El latido NO cuenta: lo emite el servidor web por su cuenta y siguio llegando
+ * con la escucha muerta, que es como este valor llego a mentir.
  */
 export function useCambios(manejadores: ManejadoresDeCambios): boolean {
   /**

@@ -212,6 +212,48 @@ export async function esperarEscuchando(page: Page): Promise<void> {
   await expect(page.locator(".columnas")).toHaveAttribute("data-cambios", "conectado");
 }
 
+/** Lo que devuelve `retenerReconexiones`. */
+export interface Reconexiones {
+  /** Cuantas peticiones a `/eventos` llegaron desde que se empezo a retener. */
+  retenidas: () => number;
+  /** Deja pasar las retenidas y todas las que vengan despues. */
+  soltar: () => void;
+}
+
+/**
+ * RETIENE LAS PETICIONES a `/eventos` hasta que la prueba las suelte.
+ *
+ * Existe para escribir MIENTRAS el tablero esta sordo, sin carrera. Cortada la
+ * escucha, `EventSource` vuelve a pedir `/eventos` a los pocos segundos y el
+ * servidor abre un `LISTEN` nuevo, asi que una escritura hecha en ese margen
+ * llegaria como aviso o se perderia segun quien ganara. Con la reconexion
+ * retenida, lo que se escribe entre medio no tiene quien lo oiga: es el cambio
+ * que `NOTIFY` pierde de verdad, y el que el refresco al reconectar tiene que
+ * traer.
+ *
+ * `continue` y no `fulfill`: soltada, la peticion va al servidor de verdad y la
+ * respuesta llega como flujo, igual que sin retencion. Lo pedido ANTES de esta
+ * llamada no pasa por aca.
+ *
+ * `retenidas` es la mitad que el atributo no dice: que sea mayor que cero prueba
+ * que el NAVEGADOR se entero de la caida y quiso volver.
+ */
+export async function retenerReconexiones(page: Page): Promise<Reconexiones> {
+  let soltar: () => void = () => {};
+  const suelta = new Promise<void>((resolver) => {
+    soltar = resolver;
+  });
+  let retenidas = 0;
+
+  await page.route("**/eventos", async (ruta) => {
+    retenidas += 1;
+    await suelta;
+    await ruta.continue();
+  });
+
+  return { retenidas: () => retenidas, soltar };
+}
+
 /** Las tarjetas con la marca de "lo cambio otro y todavia no lo viste". */
 export function tarjetasMarcadas(page: Page): Locator {
   return page.locator(".tarjeta--ajena");

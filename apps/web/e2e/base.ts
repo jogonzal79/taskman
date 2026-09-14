@@ -11,6 +11,7 @@ import {
   type McpToolDefinition,
   type Scope,
 } from "@taskman/core";
+import { CANAL_DE_CAMBIOS } from "@taskman/core/cambios";
 import { Client } from "pg";
 
 /**
@@ -408,4 +409,35 @@ export async function idDeTablero(nombre: string = TABLERO): Promise<string> {
   }
 
   return fila.id;
+}
+
+// --- La escucha de cambios ---------------------------------------------------
+
+/**
+ * CORTA DESDE POSTGRESQL LA CONEXION `LISTEN` DEL SERVIDOR, con
+ * `pg_terminate_backend`: lo que le pasa a esa conexion cuando la base se
+ * reinicia o alguien la mata a mano. El servidor web y el flujo SSE siguen
+ * vivos; lo unico que muere es la escucha, que es justo el caso en el que el
+ * latido seguia llegando y el tablero se creia conectado.
+ *
+ * Se la busca por la SENTENCIA y no por un pid que la prueba no conoce: esa
+ * conexion ejecuta `LISTEN` al abrirse y nada mas en toda su vida (ver
+ * `lib/cambios.ts`), asi que `pg_stat_activity.query` la nombra mientras exista.
+ *
+ * Devuelve cuantas corto. Pueden ser mas de una si otro servidor escucha la
+ * misma base —un `next dev` abierto—, y a ese le pasa lo mismo que a este: se
+ * entera, reconecta y refresca. La prueba exige al menos una, para que "no habia
+ * nada que cortar" falle diciendo eso y no otra cosa.
+ */
+export async function cortarLaEscucha(): Promise<number> {
+  const filas = await consultar<{ cortada: boolean }>(
+    `SELECT pg_terminate_backend(pid) AS cortada
+       FROM pg_stat_activity
+      WHERE datname = current_database()
+        AND pid <> pg_backend_pid()
+        AND query = $1`,
+    [`LISTEN ${CANAL_DE_CAMBIOS}`],
+  );
+
+  return filas.filter((fila) => fila.cortada).length;
 }
