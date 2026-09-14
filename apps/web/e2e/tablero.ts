@@ -97,6 +97,350 @@ export function campoNuevaTarea(page: Page, nombreColumna: string): Locator {
   });
 }
 
+// --- Arrastre ----------------------------------------------------------------
+
+/**
+ * EL ASA de una tarjeta, por su nombre accesible. Es el control por el que se
+ * agarra una tarea con el TECLADO, y lo que hace posible que estas pruebas sean
+ * deterministas: ver `arrastrar`.
+ */
+export function asaDe(page: Page, titulo: string): Locator {
+  return page.getByRole("button", { name: `Mover ${titulo}`, exact: true });
+}
+
+/** El aviso de un movimiento que fallo (punto 4 de la 9.2). */
+export function avisoDeMovimiento(page: Page): Locator {
+  return page.locator(".aviso-movimiento");
+}
+
+/**
+ * CUANTAS VECES la reconciliacion del punto 3 de la 9.2 corrigio al navegador.
+ * Lo publica `ColumnList` en `data-correcciones`; ver ahi por que es un dato de
+ * la pantalla y no instrumentacion de prueba.
+ */
+export async function correcciones(page: Page): Promise<number> {
+  const valor = await page.locator(".columnas").getAttribute("data-correcciones");
+
+  return Number(valor);
+}
+
+/**
+ * ANOTA CADA ANIMACION que arranque una tarjeta, para poder comprobar que la
+ * correccion de la 9.2 se VE MOVERSE en vez de saltar.
+ *
+ * POR QUE ASI Y NO MIRANDO `document.getAnimations()`. La correccion dura 220
+ * ms; preguntar despues es una carrera, y preguntar dentro obligaria a una
+ * espera fija, que es como se fabrica una prueba que falla en una maquina
+ * cargada. Interceptando `Element.prototype.animate` ANTES de que cargue nada,
+ * lo que queda anotado es un hecho —esta tarjeta se animo— que se puede leer
+ * cuando ya termino todo.
+ *
+ * Se anota `data-tarea` ademas del titulo porque es lo que distingue una tarjeta
+ * del tablero de cualquier otra cosa que se anime: la copia que viaja con el
+ * puntero tambien lleva un titulo dentro, y tambien se anima al soltarla (es la
+ * animacion de caida de dnd-kit), pero no lleva ese atributo.
+ *
+ * Hay que llamarlo ANTES de navegar: `addInitScript` corre en la navegacion
+ * siguiente.
+ */
+export async function anotarAnimaciones(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const anotadas: { id: string | null; titulo: string }[] = [];
+
+    Object.defineProperty(window, "__animaciones", { value: anotadas });
+
+    const original = Element.prototype.animate;
+
+    Element.prototype.animate = function (
+      this: Element,
+      ...argumentos: Parameters<Element["animate"]>
+    ) {
+      anotadas.push({
+        id: this.getAttribute("data-tarea"),
+        titulo: this.querySelector(".tarjeta__titulo")?.textContent ?? "",
+      });
+
+      return original.apply(this, argumentos);
+    };
+  });
+}
+
+/** Los titulos de las TARJETAS que se animaron, en el orden en que arrancaron. */
+export async function tarjetasAnimadas(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const anotadas = (window as unknown as {
+      __animaciones?: { id: string | null; titulo: string }[];
+    }).__animaciones;
+
+    // Solo las que llevan `data-tarea`: lo demas es la caida del `DragOverlay`.
+    return (anotadas ?? []).filter((entrada) => entrada.id !== null).map((e) => e.titulo);
+  });
+}
+
+/**
+ * ARRASTRA UNA TAREA CON EL TECLADO hasta una columna y un indice CONCRETOS:
+ * foco en el asa, Espacio para agarrar, flechas, Espacio para soltar.
+ *
+ * POR QUE EL TECLADO Y NO EL RATON, que es la pregunta del criterio 7.
+ *
+ * El arrastre con raton es una secuencia de coordenadas, y su resultado depende
+ * de donde caiga cada tarjeta en pixeles: del alto que tomo un titulo de dos
+ * lineas, de si la columna esta desplazada, del ancho de la ventana. Una prueba
+ * asi no es "un poco fragil": afirma sobre una geometria que nadie declaro, asi
+ * que cuando falla no se sabe si fallo el codigo o la cuenta de pixeles. Ademas
+ * `dragTo` de Playwright emite un `pointerdown`, un `pointermove` y un
+ * `pointerup`, y dnd-kit necesita VARIOS `pointermove` para pasar la
+ * restriccion de distancia y para ir resolviendo colisiones: con uno solo el
+ * arrastre ni siquiera empieza.
+ *
+ * El teclado no tiene nada de eso: "agarrar y pulsar la flecha derecha" es una
+ * intencion DISCRETA, y ademas es un camino que la aplicacion tiene que
+ * soportar igual (`KeyboardSensor`). O sea que la ruta determinista no es un
+ * sucedaneo del gesto real: es el mismo `onDragEnd`, el mismo estado optimista,
+ * la misma Server Action y la misma reconciliacion. Lo unico que no ejercita es
+ * el sensor de puntero, que es la pieza de dnd-kit y no nuestra, y para eso hay
+ * una prueba aparte con `arrastrarConRaton`.
+ *
+ * --- POR QUE MIRA EL DOM ENTRE TECLA Y TECLA --------------------------------
+ *
+ * Contar flechas a mano NO es determinista, y costo una tanda de pruebas rojas
+ * descubrirlo. Dos motivos, los dos del algoritmo de dnd-kit
+ * (`sortableKeyboardCoordinates`), que en cada flecha se queda con el destino
+ * mas cercano ENTRE TODOS los del tablero en esa direccion:
+ *
+ *   - Cuantas flechas hacen falta para cruzar a otra columna depende de la
+ *     geometria, no del numero de columnas.
+ *   - Las flechas de mas NO se quedan quietas al llegar al extremo. Una flecha
+ *     abajo de mas, con la tarjeta ya al pie de su columna, se va a la tarjeta
+ *     de OTRA columna que este mas abajo, porque tambien esta "hacia abajo".
+ *     Con eso, "seis flechas para asegurarme" saca la tarea del tablero que se
+ *     estaba probando.
+ *
+ * Asi que en vez de contar, se MIRA: se pulsa la flecha horizontal hasta que la
+ * tarjeta aparece en la columna destino —el cambio de columna SI se ve en el
+ * DOM, porque lo aplica `onDragOver` sobre el estado local— y desde ahi se
+ * pulsan exactamente las verticales que faltan hasta el indice pedido. Cada
+ * flecha vertical dentro de una columna vale una posicion, eso si es discreto.
+ *
+ * El resultado es que la prueba declara la INTENCION ("a Por hacer, arriba del
+ * todo") y no la mecanica, que es lo que se queria del teclado desde el principio.
+ */
+export async function arrastrar(
+  page: Page,
+  titulo: string,
+  destino: {
+    /** Nombre de la columna donde tiene que terminar. La misma vale. */
+    columna: string;
+    /** Indice DENTRO de esa columna: un numero, o los dos extremos. */
+    indice: number | "principio" | "final";
+  },
+): Promise<void> {
+  const asa = asaDe(page, titulo);
+
+  await asa.focus();
+  await page.keyboard.press("Space");
+
+  try {
+    await llevarALaColumna(page, titulo, destino.columna);
+    await llevarAlIndice(page, titulo, destino.columna, destino.indice);
+  } catch (error: unknown) {
+    // Un arrastre a medias deja el tablero en un estado que no es ni el de
+    // antes ni el de despues, y la prueba siguiente heredaria la tecla pulsada.
+    await page.keyboard.press("Escape");
+
+    throw error;
+  }
+
+  await soltandoYEsperandoAlServidor(page, () => page.keyboard.press("Space"));
+}
+
+/**
+ * SUELTA Y ESPERA A QUE EL SERVIDOR CONTESTE.
+ *
+ * NO es una espera de cortesia: sin ella la prueba sigue mientras la Server
+ * Action esta en vuelo, y lo siguiente que haga puede matarla. Costo una
+ * intermitente de 1 de cada 8 para verlo, y siempre en la PRIMERA prueba
+ * despues de arrancar el servidor, que es la unica lo bastante lenta para que
+ * la ventana se note: `page.reload()` del CT-03 aborta la peticion de la accion
+ * a mitad de la transaccion, el movimiento no llega a escribirse, y la prueba
+ * lee un tablero sin mover. Se lee como "el arrastre no persiste" cuando lo que
+ * pasa es que la prueba lo interrumpio.
+ *
+ * Se espera la RESPUESTA POST y no un estado de la pantalla porque es el unico
+ * hito que no tiene carrera: cuando llega, la transaccion ya commiteo —el
+ * cuerpo trae el `MoveResult` y el arbol revalidado— y a partir de ahi recargar,
+ * leer la base o arrastrar otra vez es seguro. Esperar a que se apague el "en
+ * vuelo" de la pantalla, en cambio, obliga a verlo encenderse primero, y eso si
+ * es una carrera.
+ *
+ * CONSECUENCIA: `arrastrar` exige que el gesto produzca un movimiento. Un
+ * arrastre que termina donde empezo no manda nada (ver `alSoltar`) y esto
+ * agotaria su espera. Hoy ninguna prueba hace eso; el dia que haga falta, la
+ * espera se hace opcional.
+ */
+async function soltandoYEsperandoAlServidor(
+  page: Page,
+  soltar: () => Promise<void>,
+): Promise<void> {
+  // La promesa se arma ANTES de soltar: la accion sale en el mismo tic.
+  const respuesta = page.waitForResponse((r) => r.request().method() === "POST");
+
+  await soltar();
+  await respuesta;
+}
+
+/**
+ * dnd-kit mueve la tarjeta en el commit siguiente a cada tecla, y la posicion
+ * resultante es la ENTRADA de la tecla que viene. Sin dejar pasar un fotograma,
+ * dos flechas seguidas se resuelven contra la misma geometria y la segunda no
+ * hace nada.
+ */
+async function fotograma(page: Page): Promise<void> {
+  await page.evaluate(
+    () => new Promise((listo) => requestAnimationFrame(() => requestAnimationFrame(listo))),
+  );
+}
+
+/** Los titulos que se ven en una columna, leidos AHORA (sin reintentar). */
+async function titulosDe(page: Page, nombreColumna: string): Promise<string[]> {
+  return tarjetasDe(page, nombreColumna).locator(".tarjeta__titulo").allTextContents();
+}
+
+/** Los nombres de las columnas, en el orden en que estan en el tablero. */
+async function columnasDelTablero(page: Page): Promise<string[]> {
+  return page.locator(".columna__nombre").allTextContents();
+}
+
+/** En que columna esta AHORA la tarjeta, mirando el DOM. */
+async function columnaActual(page: Page, titulo: string): Promise<string> {
+  for (const nombre of await columnasDelTablero(page)) {
+    if ((await titulosDe(page, nombre)).includes(titulo)) {
+      return nombre;
+    }
+  }
+
+  throw new Error(`"${titulo}" no esta en ninguna columna del tablero.`);
+}
+
+/**
+ * Flechas horizontales hasta que la tarjeta aparece en la columna pedida.
+ *
+ * LA DIRECCION SE DEDUCE, no se pasa: se comparan las posiciones de la columna
+ * actual y la destino en el tablero. Asi la prueba dice "a Completado" y no "tres
+ * a la derecha", que es lo mismo hasta el dia que alguien reordene las columnas
+ * de la 4.3 o el filtro deje una vacia por el camino.
+ *
+ * Se vuelve a mirar en CADA vuelta porque una flecha puede saltar mas de una
+ * columna: el algoritmo de dnd-kit no va de vecina en vecina, se queda con el
+ * destino mas cercano en esa direccion, y con columnas vacias o de alturas muy
+ * distintas eso puede ser la de mas alla.
+ */
+async function llevarALaColumna(page: Page, titulo: string, destino: string): Promise<void> {
+  const columnas = await columnasDelTablero(page);
+  const indiceDestino = columnas.indexOf(destino);
+
+  if (indiceDestino < 0) {
+    throw new Error(`El tablero no tiene ninguna columna "${destino}".`);
+  }
+
+  // Cuatro columnas: ocho pulsaciones dan margen de sobra para cualquier
+  // recorrido, y si se agotan es que las flechas no estan avanzando.
+  for (let intento = 0; intento < 8; intento += 1) {
+    const actual = await columnaActual(page, titulo);
+
+    if (actual === destino) {
+      return;
+    }
+
+    await page.keyboard.press(
+      columnas.indexOf(actual) < indiceDestino ? "ArrowRight" : "ArrowLeft",
+    );
+    await fotograma(page);
+  }
+
+  throw new Error(
+    `No se pudo llevar "${titulo}" a "${destino}": se quedo en "${await columnaActual(page, titulo)}".`,
+  );
+}
+
+/** Flechas verticales hasta el indice pedido dentro de la columna. */
+async function llevarAlIndice(
+  page: Page,
+  titulo: string,
+  nombreColumna: string,
+  indice: number | "principio" | "final",
+): Promise<void> {
+  const lista = await titulosDe(page, nombreColumna);
+  const actual = lista.indexOf(titulo);
+
+  if (actual < 0) {
+    throw new Error(`"${titulo}" no esta en "${nombreColumna}" a mitad del arrastre.`);
+  }
+
+  const objetivo =
+    indice === "principio" ? 0 : indice === "final" ? lista.length - 1 : indice;
+  const tecla = objetivo > actual ? "ArrowDown" : "ArrowUp";
+
+  for (let paso = 0; paso < Math.abs(objetivo - actual); paso += 1) {
+    await page.keyboard.press(tecla);
+    await fotograma(page);
+  }
+}
+
+/**
+ * AGARRA, MUEVE Y CANCELA con Escape. No suelta, asi que no manda nada al
+ * servidor y no espera ninguna respuesta.
+ *
+ * Existe porque `onDragOver` cambia el estado local mientras se arrastra —la
+ * tarjeta entra en la columna destino antes de soltarla— y eso hay que poder
+ * deshacerlo: una cancelacion que dejara la tarjeta en la columna nueva seria
+ * una pantalla afirmando un movimiento que nunca se escribio.
+ */
+export async function arrastrarYCancelar(
+  page: Page,
+  titulo: string,
+  columnaDestino: string,
+): Promise<void> {
+  await asaDe(page, titulo).focus();
+  await page.keyboard.press("Space");
+  await llevarALaColumna(page, titulo, columnaDestino);
+  await page.keyboard.press("Escape");
+}
+
+/**
+ * El gesto REAL, con el puntero. Se usa en una sola prueba —la que comprueba
+ * que agarrar una tarjeta con el raton la mueve y no abre el panel— y no en las
+ * demas, por lo que explica `arrastrar`.
+ *
+ * Los `pointermove` son VARIOS y explicitos: uno para pasar la restriccion de
+ * distancia de 6 px, los intermedios para que dnd-kit vaya resolviendo sobre
+ * que columna esta, y uno final quieto sobre el destino para que la ultima
+ * colision sea la que se soltara.
+ */
+export async function arrastrarConRaton(
+  page: Page,
+  titulo: string,
+  destino: Locator,
+): Promise<void> {
+  const origen = await tarjeta(page, titulo).boundingBox();
+  const caja = await destino.boundingBox();
+
+  if (origen === null || caja === null) {
+    throw new Error(`No se pudo medir el arrastre de "${titulo}".`);
+  }
+
+  const hasta = { x: caja.x + caja.width / 2, y: caja.y + caja.height / 2 };
+
+  await page.mouse.move(origen.x + origen.width / 2, origen.y + origen.height / 2);
+  await page.mouse.down();
+  // El primer tramo solo sirve para superar la restriccion de distancia.
+  await page.mouse.move(origen.x + origen.width / 2 + 12, origen.y + origen.height / 2);
+  await page.mouse.move(hasta.x, hasta.y, { steps: 12 });
+  await page.mouse.move(hasta.x, hasta.y);
+
+  await soltandoYEsperandoAlServidor(page, () => page.mouse.up());
+}
+
 // --- Filtros -----------------------------------------------------------------
 
 /**

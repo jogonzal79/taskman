@@ -3,26 +3,32 @@ import { BoardSidebar } from "../components/board-sidebar";
 import { ColumnList } from "../components/column-list";
 import { TaskDetailPanel } from "../components/task-detail-panel";
 import { enlaceTablero, leerFiltros, leerTareaAbierta } from "../lib/filtros";
-import { cargarVista, ubicarEnVista } from "../lib/tablero";
+import { cargarVista, paraLaPantalla, ubicarEnVista } from "../lib/tablero";
 
 /**
  * El tablero (9.1, 9.3). Lectura, mas la unica escritura que ya existe: el
  * QuickAdd al pie de cada columna.
  *
- * ES UN SERVER COMPONENT, y se puede comprobar sin creerlo: la funcion es `async`
- * y espera al nucleo, cosa que un Componente de Cliente no puede ser; el modulo
- * llega por `lib/tablero.ts` hasta `@taskman/core` y de ahi a `pg`, que en el
- * bundle del navegador no compila; y no hay un "use client" en todo `apps/web`.
- * Del lado empirico: el HTML que devuelve el servidor ya trae las columnas y las
- * tarjetas, sin que el navegador ejecute nada.
+ * ESTA PAGINA ES UN SERVER COMPONENT, y se puede comprobar sin creerlo: la
+ * funcion es `async` y espera al nucleo, cosa que un Componente de Cliente no
+ * puede ser; el modulo llega por `lib/tablero.ts` hasta `@taskman/core` y de ahi
+ * a `pg`, que en el bundle del navegador no compila. Del lado empirico: el HTML
+ * que devuelve el servidor ya trae las columnas y las tarjetas.
  *
- * EL UNICO "use client" DEL PROYECTO es `QuickAdd`, y el limite cae ahi abajo y
- * no aca: esta pagina, `ColumnList` y `ColumnCard` siguen siendo de servidor, y
- * lo que cruza son dos ids y un nombre. El aviso de pantalla angosta, que en la
- * 9.3 habria sido el otro candidato a cliente, se resolvio con una media query y
- * sigue sin necesitar JavaScript. Lo que va a mover el limite hacia arriba son
- * dnd-kit y TanStack Query: el contexto de arrastre vive en `ColumnList`, y por
- * eso `ColumnList` ya es una pieza aparte.
+ * EL LIMITE CLIENTE/SERVIDOR CAE EN `ColumnList`, que es de cliente desde que
+ * entro dnd-kit, y con el se llevo `ColumnCard` y `TaskCard`. Estaba anunciado
+ * desde el modo lectura —"el contexto de arrastre vive en ColumnList, y por eso
+ * ColumnList ya es una pieza aparte"— y es la razon de que mover el limite haya
+ * sido cambiar un import y no rehacer la pagina.
+ *
+ * LO QUE CRUZA es el tablero SIN las descripciones (`paraLaPantalla`). React
+ * serializa en la carga RSC todo lo que se le pasa a un componente de cliente,
+ * lo lea o no, asi que sin esa proyeccion la descripcion entera de cada tarea
+ * viajaria al navegador para no pintarse en ningun sitio. Lo unico que sigue
+ * cruzando con descripcion es la tarea ABIERTA en el panel.
+ *
+ * El aviso de pantalla angosta, que en la 9.3 habria sido el otro candidato a
+ * cliente, se resolvio con una media query y sigue sin necesitar JavaScript.
  *
  * UN SOLO INSTANTE PARA TODA LA PAGINA: `hoy` se calcula una vez y baja como
  * propiedad. Si cada tarjeta leyera su propio `new Date()`, una carga que cruzara
@@ -99,7 +105,7 @@ export default async function PaginaTablero({
         />
         <ColumnList
           boardId={actual.id}
-          columnas={actual.columns}
+          columnas={paraLaPantalla(actual.columns)}
           hoy={hoy}
           // El id del parametro y no el de `ubicada`: si apunta a nada, no hay
           // tarjeta que marcar y las dos formas coinciden. Con `ubicada` habria

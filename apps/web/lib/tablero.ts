@@ -49,6 +49,19 @@ export interface TareaEnTablero {
    * la mitad que se pierde cuando alguien la rehace mirando solo la tarjeta.
    */
   vencida: boolean;
+  /**
+   * La `position` REAL en su columna: el entero denso 0..n-1 del ADR-004, tal
+   * como esta en la base.
+   *
+   * NO ES EL INDICE EN `tasks`, y la diferencia es el motivo de que este campo
+   * exista: con un filtro puesto, `tasks` es un SUBCONJUNTO de la columna, asi
+   * que la tercera tarjeta de la pantalla puede ser la position 7. El arrastre
+   * necesita la real para traducir donde se solto una tarjeta a lo que entiende
+   * `TaskService.move` (ver `lib/orden.ts`), y sin este campo esa traduccion no
+   * tiene con que hacerse: el cliente no puede ver las tareas que el filtro
+   * escondio, pero si puede saber en que hueco caen las que si ve.
+   */
+  position: number;
 }
 
 export interface ColumnaEnTablero {
@@ -193,11 +206,51 @@ async function cargarColumna(
       priority: tarea.priority,
       dueDate: tarea.dueDate,
       vencida: esVencida(tarea, columna, hoy),
+      position: tarea.position,
     })),
     // Ver `ColumnaEnTablero.omitidas`: la resta solo significa algo sin filtro.
     omitidas: filtrando ? 0 : Math.max(0, columna.taskCount - pagina.items.length),
     recorte: pagina.nextCursor !== null,
   };
+}
+
+// --- Lo que cruza al cliente -------------------------------------------------
+
+/**
+ * Una tarjeta tal como la ve el NAVEGADOR. Es `TareaEnTablero` MENOS
+ * `description`, y esa resta es todo el motivo de que este tipo exista.
+ *
+ * Hasta este paso las tarjetas las dibujaba un componente de SERVIDOR, asi que
+ * `description` se usaba para renderizar y no viajaba: lo unico que cruzaba era
+ * la tarea ABIERTA en el panel, por `TaskEditor`. El arrastre mueve el limite
+ * —`ColumnList` y todo lo que cuelga de el pasan a cliente— y con el se lleva
+ * las PROPIEDADES: React serializa en la carga RSC todo lo que se le pasa a un
+ * componente de cliente, lo lea o no.
+ *
+ * O sea que sin esta proyeccion, abrir el tablero mandaria al navegador la
+ * descripcion completa de cada tarea del tablero para no pintar ninguna. Con
+ * ella se sigue cumpliendo lo que decia el panel: abrir una tarea manda ESA
+ * tarea al cliente, no el tablero entero.
+ */
+export type TarjetaEnPantalla = Omit<TareaEnTablero, "description">;
+
+/** Una columna con sus tarjetas ya proyectadas. */
+export interface ColumnaEnPantalla extends Omit<ColumnaEnTablero, "tasks"> {
+  tasks: TarjetaEnPantalla[];
+}
+
+/**
+ * Proyecta las columnas para pasarselas al `ColumnList` de cliente.
+ *
+ * Es una vuelta mas sobre el tablero entero en cada render y vale lo que cuesta:
+ * el tablero ya se recorrio dos veces para armarlo, y lo que se ahorra es ancho
+ * de banda en cada carga y en cada revalidacion.
+ */
+export function paraLaPantalla(columnas: readonly ColumnaEnTablero[]): ColumnaEnPantalla[] {
+  return columnas.map((columna) => ({
+    ...columna,
+    tasks: columna.tasks.map(({ description: _description, ...tarjeta }) => tarjeta),
+  }));
 }
 
 /** Una tarea localizada dentro de la vista, con la columna donde vive. */

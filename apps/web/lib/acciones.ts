@@ -51,8 +51,20 @@ import { aFechaUtc } from "./tareas";
  * Devolviendolo, el mensaje del `DomainError` —que ya esta escrito para leerse,
  * con su limite y su hint— llega intacto al campo que lo produjo.
  */
-export type ResultadoAccion =
-  | { readonly ok: true }
+export type ResultadoAccion<T = void> =
+  | {
+      readonly ok: true;
+      /**
+       * Lo que la operacion devolvio. `void` en las tres primeras acciones, que
+       * no tienen nada que contar mas alla de haber salido bien; el orden final
+       * y autoritativo en `moverTarea`, que es lo que la 9.2 exige devolver.
+       *
+       * Es un parametro de tipo y no un `unknown` porque el llamador tiene que
+       * poder leerlo sin comprobar: `resultado.valor.columnas` compila en el
+       * unico sitio donde hay columnas que leer y en ninguno mas.
+       */
+      readonly valor: T;
+    }
   | {
       readonly ok: false;
       /** Para mostrar. Es el mensaje del dominio, o uno generico si no lo era. */
@@ -89,11 +101,14 @@ const taskman = crearCorePort();
  * puede saber si hubo escritura sin volver a implementar "cambio efectivo", que
  * es justamente la definicion que vive en el nucleo y no debe tener copias.
  */
-async function ejecutar(operacion: (ctx: ActorContext) => Promise<void>): Promise<ResultadoAccion> {
+async function ejecutar<T>(
+  operacion: (ctx: ActorContext) => Promise<T>,
+): Promise<ResultadoAccion<T>> {
   const ctx = contextoDeUi();
+  let valor: T;
 
   try {
-    await operacion(ctx);
+    valor = await operacion(ctx);
   } catch (error: unknown) {
     // Un error de negocio ya trae un mensaje escrito para una persona (5.3), y
     // es el que corresponde mostrar: "El campo title tiene 217 caracteres y el
@@ -135,7 +150,7 @@ async function ejecutar(operacion: (ctx: ActorContext) => Promise<void>): Promis
    */
   revalidatePath("/");
 
-  return { ok: true };
+  return { ok: true, valor };
 }
 
 /**
@@ -261,6 +276,74 @@ export async function editarTarea(
 
   return ejecutar(async (ctx) => {
     await taskman.updateTask(taskId, patch, ctx);
+  });
+}
+
+/**
+ * El ORDEN FINAL Y AUTORITATIVO de una columna, tal como quedo en la base.
+ *
+ * Es `ColumnOrder` del nucleo con los mismos dos campos, y esta redeclarado y no
+ * importado por lo mismo que `packages/contracts` reescribe sus limites: lo que
+ * cruza a un componente de CLIENTE es el contrato de ESTE borde, y escribirlo
+ * aca es lo que deja ver de un vistazo que son dos cadenas y nada mas —nada de
+ * `Date`, nada de clases— o sea que atraviesa la frontera de la Server Action sin
+ * depender de como serialice Next un tipo del dominio.
+ */
+export interface OrdenDeColumna {
+  readonly columnId: string;
+  /** TODOS los ids de la columna, en orden 0..n-1. Tambien los que el filtro esconde. */
+  readonly taskOrder: readonly string[];
+}
+
+/** Lo que `moverTarea` devuelve al soltar: el punto 2 de la 9.2. */
+export interface ResultadoDeMovimiento {
+  /** Origen y destino, o una sola entrada si el movimiento fue intracolumna. */
+  readonly columnas: readonly OrdenDeColumna[];
+}
+
+/**
+ * Mueve una tarea: el arrastre de la 9.1, con la reconciliacion de la 9.2.
+ *
+ * ES LA UNICA ACCION QUE DEVUELVE ALGO, y ese es el paso entero. Las otras tres
+ * solo necesitan decir si salieron bien, porque lo que escribieron se ve cuando
+ * la revalidacion repinta. Esta ademas tiene que devolver EL ORDEN FINAL, porque
+ * la 9.2 pide que el estado local se SUSTITUYA por el del servidor y no se quede
+ * con el que calculo el navegador: es lo unico que corrige una divergencia
+ * causada por una operacion concurrente de un agente.
+ *
+ * `MoveResult.affectedColumns` ya es exactamente eso y no hay que construirlo:
+ * `TaskService.move` lo RELEE de la base despues de reescribir las positions y
+ * DENTRO de la transaccion (`tx.readColumnOrder`), asi que no es el calculo en
+ * memoria del servicio sino lo que quedo escrito. De ahi que valga como
+ * autoridad; si fuera el calculo, seria otra copia del mismo numero.
+ *
+ * SE PROYECTA A DOS CAMPOS y se descarta `MoveResult.task` y las dos columnas
+ * sueltas: el cliente ya tiene la tarea pintada y lo unico que le falta es donde
+ * va. Mandar la tarea entera cruzaria `Date` y `description` sin que nadie los
+ * lea.
+ *
+ * `position` LLEGA YA TRADUCIDA del indice visible al indice real; la cuenta vive
+ * en `lib/orden.ts` y se explica ahi. Esta accion no la rehace: si la rehiciera
+ * habria dos definiciones de la misma traduccion, y la de aca no puede ver los
+ * filtros que tiene puestos la pantalla.
+ */
+export async function moverTarea(
+  taskId: string,
+  destino: { columnId: string; position: number | "end" },
+): Promise<ResultadoAccion<ResultadoDeMovimiento>> {
+  return ejecutar(async (ctx) => {
+    const resultado = await taskman.moveTask(
+      taskId,
+      { columnId: destino.columnId, position: destino.position },
+      ctx,
+    );
+
+    return {
+      columnas: resultado.affectedColumns.map((columna) => ({
+        columnId: columna.columnId,
+        taskOrder: columna.taskOrder,
+      })),
+    };
   });
 }
 

@@ -268,33 +268,47 @@ test("por debajo de 1024 px sale el aviso, no una version degradada", async ({ p
 });
 
 /**
- * COBERTURA RESPECTO DE LA 10.2. De los diez escenarios CT-01..CT-10, este nivel
- * cubre HOY una parte de uno solo, y no por decision de alcance: nueve necesitan
- * interactividad que la UI todavia no tiene.
+ * COBERTURA RESPECTO DE LA 10.2, para los SEIS archivos de este directorio y no
+ * solo para este.
+ *
+ * Vive al pie de esta suite porque es la primera que existio y porque CLAUDE.md
+ * apunta aca; se actualiza en el mismo commit que mueve la cobertura, que es la
+ * unica forma de que no mienta. (Estuvo tres commits mintiendo: decia que
+ * faltaban el QuickAdd, el panel y los filtros cuando ya estaban.)
  *
  *   CT-01  Crear tablero y ver las cuatro columnas por defecto.
- *          PARCIAL. La mitad de "ver las cuatro columnas" esta cubierta arriba y
- *          en `tablero-vacio.spec.ts`, sobre un tablero creado por la siembra con
- *          el mismo `createBoard` que usaria la UI. Lo que falta es CREARLO desde
- *          la pantalla, que no existe.
- *   CT-02  QuickAdd, recargar, verificar la posicion.        Falta: no hay QuickAdd.
- *   CT-03  Arrastrar entre columnas y recargar.              Falta: no hay dnd-kit.
- *   CT-04  Editar en el panel de detalle.                    Falta: no hay panel.
- *   CT-05  Eliminar una tarea intermedia.                    Falta: no hay borrado en la UI.
- *   CT-06  Crear por API con la UI abierta y revalidar.      Falta: no hay revalidacion
- *                                                            (la pagina es force-dynamic y
- *                                                            solo se refresca al recargar).
- *   CT-07  Mover por MCP y ver el reflejo en la UI.          Falta: lo mismo que CT-06.
- *   CT-08  Clave sin scope delete contra la UI de borrado.   Falta: no hay UI de borrado.
- *   CT-09  Filtrar por prioridad y por vencidas.             Falta: no hay filtros (la
- *                                                            cabecera de la 9.3 los pide y
- *                                                            hoy solo tiene el nombre).
- *   CT-10  Operacion destructiva y su registro en audit_log. Falta: sin operaciones desde
- *                                                            la UI no hay nada que auditar
- *                                                            por este camino.
- *
- * O sea que la 10.2 entra casi entera con el CRUD visual. Lo que este paso cierra
- * no es esa lista sino algo previo: que exista el nivel, que tenga datos propios
- * y deterministas (10.3), y que lo que hoy se comprobaba leyendo HTML a mano se
- * compruebe sobre el render.
+ *          PARCIAL. "Ver las cuatro columnas" esta cubierto arriba y en
+ *          `tablero-vacio.spec.ts`, sobre un tablero creado por la siembra con el
+ *          mismo `createBoard` que usaria la UI. Falta CREARLO desde la pantalla:
+ *          la 9.3 lo pone en el BoardHeader ("selector de tablero") y no existe.
+ *   CT-02  QuickAdd, recargar, verificar la posicion.
+ *          PARCIAL, en `quick-add.spec.ts`. Crear y que aparezca AL FINAL de la
+ *          columna esta; lo que falta es la RECARGA, y no por descuido: esas
+ *          pruebas comprueban a proposito que NO hubo carga de documento (ver su
+ *          cabecera). La position en la base tampoco se afirma ahi; hoy ya se
+ *          podria con `e2e/base.ts`, que no existia cuando se escribieron.
+ *   CT-03  Arrastrar entre columnas y recargar.
+ *          CUBIERTO, en `arrastre.spec.ts`, con la recarga y con el orden denso
+ *          comprobado por SQL en las dos columnas.
+ *   CT-04  Editar titulo, prioridad y fecha en el panel de detalle.
+ *          PARCIAL, en `task-detail.spec.ts`: titulo, descripcion y prioridad, con
+ *          su reflejo en la tarjeta. La FECHA se lee pero no se edita.
+ *   CT-05  Eliminar una tarea intermedia y verificar que el orden queda denso.
+ *          PARCIAL, en `task-detail.spec.ts`: borra la tercera de cuatro y
+ *          comprueba las que quedan y en que orden, pero EN PANTALLA. La densidad
+ *          0..n-1 no se ve ahi y hace falta SQL (`e2e/base.ts`).
+ *   CT-06  Crear por API con la UI abierta y revalidar.       Falta: la pagina no
+ *          consulta sola, asi que hoy solo se refresca al recargar o despues de
+ *          una accion propia. Es el paso de senalizacion de cambios de agentes.
+ *   CT-07  Mover por MCP y ver el reflejo en la UI.           Falta: lo mismo que CT-06.
+ *   CT-08  Clave sin scope delete contra la UI de borrado.    Falta: la UI no usa
+ *          la API ni claves (9.1), asi que este escenario no tiene superficie aca;
+ *          el scope si esta cubierto en la suite de contrato de `apps/web/test`.
+ *   CT-09  Filtrar por prioridad y por vencidas.              CUBIERTO, en
+ *          `filtros.spec.ts`, incluido que el conjunto filtrado por vencidas y el
+ *          que la UI marca como vencido sean el mismo.
+ *   CT-10  Operacion destructiva y su registro en audit_log.  Falta: el borrado
+ *          desde la UI ya existe (CT-05), lo que no se comprueba desde aca es el
+ *          `before_data` completo. Es una lectura de `audit_log`, que `e2e/base.ts`
+ *          ya podria hacer.
  */

@@ -466,6 +466,12 @@ body {
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
   line-clamp: 2;
+  /*
+   * Sitio para el asa de arrastre, que va posicionada sobre esta esquina. Sin
+   * esto, un titulo largo pasa POR DEBAJO del glifo y se lee mal justo en la
+   * primera linea, que es la que se escanea.
+   */
+  padding-right: 18px;
   font-size: 14px;
   font-weight: 400;
   line-height: 1.4;
@@ -739,4 +745,117 @@ textarea.panel__control {
   padding: 32px;
   color: var(--texto-tenue);
   text-align: center;
+}
+
+/* --- Arrastre (9.1 y 9.2): dnd-kit sobre las tarjetas --------------------- */
+
+/*
+ * El `<li>` que envuelve la tarjeta. Es el nodo que dnd-kit mueve —le escribe
+ * `transform` desde JavaScript— y ademas el ancla del asa, que va posicionada
+ * sobre la esquina.
+ *
+ * `position: relative` y nada mas: ni fondo, ni borde, ni relleno. Todo lo que
+ * se ve sigue siendo `.tarjeta`, que es lo que hace que la copia que viaja con
+ * el puntero se vea identica a la tarjeta quieta.
+ */
+.tarjeta-caja {
+  position: relative;
+  cursor: grab;
+}
+
+.tarjeta-caja:active {
+  cursor: grabbing;
+}
+
+/*
+ * EL ASA, que existe por el TECLADO. Con raton se agarra la tarjeta entera, asi
+ * que esto no es donde se arrastra sino donde se ENFOCA para arrastrar sin
+ * raton.
+ *
+ * Discreta pero NUNCA invisible: con `opacity: 0` desapareceria tambien del
+ * radar de quien la necesita, y una funcionalidad que solo aparece al pasar el
+ * puntero por encima no existe para quien no usa puntero. Al enfocar y al pasar
+ * por encima de la tarjeta sube a tinta plena.
+ */
+.tarjeta__asa {
+  position: absolute;
+  z-index: 1;
+  top: 2px;
+  right: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  opacity: 0.35;
+  background: transparent;
+  color: var(--texto-tenue);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1;
+  cursor: grab;
+}
+
+.tarjeta-caja:hover .tarjeta__asa,
+.tarjeta__asa:focus-visible {
+  opacity: 1;
+}
+
+.tarjeta__asa:focus-visible {
+  outline: 2px solid var(--texto-tenue);
+  outline-offset: 1px;
+}
+
+/*
+ * Mientras hay un movimiento en vuelo no se puede empezar otro (ver
+ * `ColumnList`): el asa lo dice con el cursor, no solo con `aria-disabled`.
+ */
+.tarjeta__asa[aria-disabled="true"] {
+  opacity: 0.2;
+  cursor: default;
+}
+
+/*
+ * EL HUECO que deja la tarjeta mientras su copia viaja con el puntero. Se
+ * atenua en vez de desaparecer: el hueco con su forma es lo que muestra de
+ * donde salio y cuanto sitio va a ocupar donde caiga.
+ */
+.tarjeta--fantasma {
+  opacity: 0.35;
+}
+
+/*
+ * LA COPIA QUE VIAJA. La inclinacion no es un adorno: es lo unico que la
+ * distingue de una tarjeta quieta cuando pasa por encima de las otras, y lo que
+ * hace que se lea como "en la mano" y no como "ya soltada ahi".
+ */
+.tarjeta-volando {
+  cursor: grabbing;
+  transform: rotate(1.5deg);
+  filter: drop-shadow(0 6px 12px rgb(28 32 36 / 18%));
+}
+
+/* La columna sobre la que se soltaria ahora mismo. */
+.columna__tareas--destino {
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 2px var(--borde);
+}
+
+/*
+ * EL AVISO DE UN MOVIMIENTO QUE FALLO (punto 4 de la 9.2). Va sobre el tablero
+ * y no sobre la tarjeta porque para cuando aparece, la tarjeta ya volvio a su
+ * sitio: colgarselo a ella diria que el problema es de esa tarjeta y no del
+ * movimiento que no se pudo hacer.
+ */
+.aviso-movimiento {
+  flex: none;
+  margin: 0;
+  padding: 10px 24px;
+  border-bottom: 1px solid var(--borde);
+  background: var(--alta-fondo);
+  color: var(--alta);
+  font-size: 13px;
 }
