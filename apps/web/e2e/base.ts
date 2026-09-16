@@ -6,6 +6,7 @@ import {
   generarClave,
   hashearClave,
   prefijoDe,
+  SCOPES,
   type ActorContext,
   type CorePort,
   type McpToolDefinition,
@@ -263,7 +264,7 @@ export async function moverPorMcp(args: {
 let herramientas: McpToolDefinition[] | undefined;
 
 function herramienta(nombre: string): McpToolDefinition {
-  herramientas ??= crearHerramientas(corePort());
+  herramientas ??= crearHerramientas(corePort(), { scopes: SCOPES });
 
   const definicion = herramientas.find((candidata) => candidata.name === nombre);
 

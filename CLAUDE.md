@@ -893,6 +893,14 @@ motivo dejó de valer, ahí está el disparador para volver a mirarla.
   titulo.
 - Una coincidencia ambigua NUNCA se resuelve eligiendo la primera. Devuelve
   AMBIGUOUS_MATCH con todos los candidatos y un `hint` que dice que hacer.
+- Un `McpServer` atiende a UNA sola clave. Los scopes entran al montar
+  (`OpcionesRegistro.scopes`, obligatorio) y `crearHerramientas` devuelve solo
+  las herramientas que alcanzan, asi que el filtrado de la 8.1 vive en la
+  instancia: reusar un servidor entre clientes le ofrece a cada uno el catalogo
+  del primero. Scopes y MCP_DESTRUCTIVE_POLICY son filtros INDEPENDIENTES y no
+  comparten mecanismo: el de scopes OMITE —el SDK responde "not found"— y el de
+  la politica MARCA `anunciada: false` —el SDK responde "disabled"—. Llevar los
+  scopes a `anunciada` es la forma de que uno deshaga al otro.
 - `apps/mcp-stdio` corre en modo `core` (MCP_PORT_MODE de la 8.1): habla con la
   base por los servicios, en el mismo proceso, sin pasar por HTTP. La politica de
   operaciones destructivas de la 8.3.2 se controla con MCP_DESTRUCTIVE_POLICY, y

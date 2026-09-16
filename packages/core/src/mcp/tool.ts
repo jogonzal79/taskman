@@ -47,10 +47,10 @@ export interface McpToolDefinition {
    * `ClaveAutenticada.scopes`, asi que compararlos no necesita traduccion; la de
    * minuscula a mayuscula es del borde (`apps/web/lib/auth.ts`).
    *
-   * No es un campo del protocolo y ningun transporte lo envia: es lo que necesita
-   * un transporte que conozca la clave de quien llama para decidir que
-   * herramientas ofrecerle (8.1). Tampoco depende de MCP_DESTRUCTIVE_POLICY: el
-   * scope dice que necesita la clave, la politica dice que permite el servidor.
+   * No es un campo del protocolo y ningun transporte lo envia: con el,
+   * `crearHerramientas` deja fuera las que la clave de quien llama no puede usar
+   * (8.1). Tampoco depende de MCP_DESTRUCTIVE_POLICY: el scope dice que necesita
+   * la clave, la politica dice que permite el servidor.
    */
   scope: Scope;
   annotations: {
@@ -65,9 +65,11 @@ export interface McpToolDefinition {
    * No es un campo del protocolo: es como el nucleo le dice al transporte que
    * una herramienta existe pero no se ofrece. Lo pide la 8.1 —"el filtrado
    * ocurre en el listado de herramientas, no solo en la ejecucion, para que el
-   * agente no planifique acciones que no puede completar"— y hoy lo usa
-   * MCP_DESTRUCTIVE_POLICY=deny; cuando lleguen los scopes de la 7.2 al
-   * transporte HTTP, un cliente sin scope `delete` va a apagarla igual.
+   * agente no planifique acciones que no puede completar"— y lo usa
+   * MCP_DESTRUCTIVE_POLICY=deny. Los scopes de la 7.2 NO lo usan: una herramienta
+   * fuera de los scopes de la clave directamente no se devuelve, y que los dos
+   * filtros no compartan este campo es lo que impide que uno deshaga al otro
+   * (ver `crearHerramientas`).
    *
    * La definicion no se omite del registro: sigue existiendo, con su handler,
    * que responde por que no se puede. Omitirla dejaria al llamador con un

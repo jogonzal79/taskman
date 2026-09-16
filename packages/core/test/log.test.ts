@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   crearHerramientas,
   resolverReferencia,
+  SCOPES,
   type ActorContext,
   type AmbitoResolucion,
   type BoardDetail,
@@ -162,7 +163,7 @@ const ACTOR: ActorContext = {
 
 /** Las herramientas montadas contra el espia, con un contexto conocido. */
 function herramientas(espia: Espia, port: TaskManagerPort): McpToolDefinition[] {
-  return crearHerramientas(port, { logger: espia.logger, contexto: () => ACTOR });
+  return crearHerramientas(port, { scopes: SCOPES, logger: espia.logger, contexto: () => ACTOR });
 }
 
 function herramienta(espia: Espia, port: TaskManagerPort, nombre: string): McpToolDefinition {
@@ -268,7 +269,7 @@ describe("linea mcp.tool", () => {
     // Con el contexto real, uno por llamada: si fuera uno por proceso no
     // correlacionaria nada. Por eso este test no pasa `contexto`.
     const espia = loggerEspia();
-    const lista = crearHerramientas(puertoFalso(), { logger: espia.logger }).find(
+    const lista = crearHerramientas(puertoFalso(), { scopes: SCOPES, logger: espia.logger }).find(
       (h) => h.name === "list_boards",
     ) as McpToolDefinition;
 

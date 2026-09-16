@@ -15,11 +15,15 @@ import {
  * `packages/core/mcp` y es lo mismo para cualquier transporte. Si algun dia
  * aparece el Streamable HTTP de la 8.1, va a montar la misma lista con este
  * mismo bucle.
+ *
+ * UN SERVIDOR ATIENDE A UNA SOLA CLAVE. Los scopes entran al montar y lo que no
+ * alcanzan no se registra, asi que el filtrado vive en la instancia: dos claves
+ * con scopes distintos no pueden compartir un `McpServer`, y reusarlo entre
+ * clientes le ofreceria a cada uno el catalogo del primero. Armar otro es
+ * barato: 0,3 ms por servidor con las once (medido con el SDK 1.30.0), menos que
+ * cualquier consulta que despues haga una llamada.
  */
-export function crearServidorMcp(
-  port: TaskManagerPort,
-  opciones: OpcionesRegistro = {},
-): McpServer {
+export function crearServidorMcp(port: TaskManagerPort, opciones: OpcionesRegistro): McpServer {
   const server = new McpServer(
     { name: "taskman", version: "0.1.0" },
     {
@@ -38,6 +42,10 @@ export function crearServidorMcp(
   const contexto = (): ReturnType<typeof contextoDeAgente> =>
     contextoDeAgente(server.server.getClientVersion()?.name);
 
+  // Llegan solo las de los scopes de la clave: las demas nunca se registran, y
+  // para el SDK no existen en ningun lado, ni en el listado ni al invocarlas,
+  // donde responde "Tool create_task not found". No es el "disabled" de la
+  // politica de abajo, y la diferencia es a proposito (ver `crearHerramientas`).
   for (const herramienta of crearHerramientas(port, { ...opciones, contexto })) {
     const registrada = server.registerTool(
       herramienta.name,

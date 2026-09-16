@@ -1,5 +1,5 @@
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { crearCorePort } from "@taskman/core";
+import { crearCorePort, SCOPES } from "@taskman/core";
 
 import { validarEntorno } from "./config";
 import { crearLogger } from "./log";
@@ -41,7 +41,11 @@ const { MCP_PORT_MODE: modo, LOG_LEVEL: nivelLog, MCP_DESTRUCTIVE_POLICY: politi
 // log en stdout no es un log mal ubicado, es un mensaje corrupto del protocolo.
 const logger = crearLogger(nivelLog);
 
-const servidor = crearServidorMcp(crearCorePort(), { politicaDestructiva, logger });
+// Los TRES scopes, y no por comodidad: en modo core no hay API key de la que
+// leerlos. Quien arranca este proceso tiene DATABASE_URL, que autoriza mas que
+// cualquier scope de la 7.2, asi que recortarle herramientas no protegeria nada.
+// El transporte que si autentica (/mcp, 8.1) pasa los de la clave.
+const servidor = crearServidorMcp(crearCorePort(), { scopes: SCOPES, politicaDestructiva, logger });
 await servidor.connect(new StdioServerTransport());
 
 logger.info(

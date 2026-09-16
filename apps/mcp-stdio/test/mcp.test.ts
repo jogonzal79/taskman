@@ -5,6 +5,7 @@ import {
   BoardService,
   crearCorePort,
   crearHerramientas,
+  SCOPES,
   TransactionRunner,
   type BoardDetail,
   type CamposDeLog,
@@ -40,9 +41,10 @@ let tableros: BoardService;
  * Un cliente conectado a un servidor propio. La configuracion se pasa por
  * parametro porque MCP_DESTRUCTIVE_POLICY cambia el CATALOGO, no solo el
  * comportamiento de una llamada: probarla exige levantar otro servidor, no
- * reconfigurar el que ya esta.
+ * reconfigurar el que ya esta. Los scopes de la clave (8.1) lo cambian igual, y
+ * por eso van siempre explicitos.
  */
-async function conectar(opciones: OpcionesRegistro = {}): Promise<McpClient> {
+async function conectar(opciones: OpcionesRegistro): Promise<McpClient> {
   const servidor = crearServidorMcp(crearCorePort(), opciones);
   const [transporteCliente, transporteServidor] = InMemoryTransport.createLinkedPair();
   const conectado = new McpClient({ name: "prueba", version: "0.0.0" });
@@ -53,7 +55,8 @@ async function conectar(opciones: OpcionesRegistro = {}): Promise<McpClient> {
 beforeAll(async () => {
   db = await connectDb();
   tableros = new BoardService(new BoardRepository(new TransactionRunner(prisma)));
-  cliente = await conectar();
+  // Los tres scopes: el catalogo entero. El filtrado tiene su propio bloque.
+  cliente = await conectar({ scopes: SCOPES });
 });
 
 afterAll(async () => {
@@ -134,8 +137,10 @@ describe("catalogo", () => {
   it("anuncia las once herramientas de la 8.2", async () => {
     const { tools } = await cliente.listTools();
 
-    // El catalogo completo. delete_task esta porque la politica por defecto es
-    // `confirm`: con `deny` no se anunciaria (ver el bloque de politica).
+    // El catalogo completo: `cliente` se monta con los tres scopes, y delete_task
+    // esta porque la politica por defecto es `confirm`. Con `deny` no se
+    // anunciaria, y sin scope delete tampoco (ver los bloques de politica y de
+    // scopes).
     expect(tools.map((tool) => tool.name).sort()).toEqual([
       "create_board",
       "create_column",
@@ -750,7 +755,7 @@ describe("handler del nucleo", () => {
     // El SDK ya valida, pero la definicion es autocontenida a proposito: un
     // llamador directo (una prueba, un HttpPort) tiene que obtener el mismo
     // VALIDATION_ERROR con la lista de campos de la 6.4, no una excepcion.
-    const listTasks = crearHerramientas(crearCorePort()).find(
+    const listTasks = crearHerramientas(crearCorePort(), { scopes: SCOPES }).find(
       (herramienta) => herramienta.name === "list_tasks",
     );
     const salida = await listTasks?.handler({ board: "QA", limit: 500 });
@@ -1194,7 +1199,7 @@ describe("MCP_DESTRUCTIVE_POLICY", () => {
     if (existente !== undefined) {
       return existente;
     }
-    const nuevo = await conectar({ politicaDestructiva });
+    const nuevo = await conectar({ scopes: SCOPES, politicaDestructiva });
     clientes.set(politicaDestructiva, nuevo);
     return nuevo;
   }
@@ -1271,9 +1276,10 @@ describe("MCP_DESTRUCTIVE_POLICY", () => {
     const creada = await crear("QA", "TODO", "Revisar HU-25");
     const id = (creada.json["task"] as Record<string, unknown>)["id"] as string;
 
-    const deleteTask = crearHerramientas(crearCorePort(), { politicaDestructiva: "deny" }).find(
-      (herramienta) => herramienta.name === "delete_task",
-    );
+    const deleteTask = crearHerramientas(crearCorePort(), {
+      scopes: SCOPES,
+      politicaDestructiva: "deny",
+    }).find((herramienta) => herramienta.name === "delete_task");
 
     // Sigue estando en el registro: omitirla daria "herramienta desconocida",
     // que no distingue una politica de un error.
@@ -1318,6 +1324,133 @@ describe("MCP_DESTRUCTIVE_POLICY", () => {
     expect(salida.code).toBe(1);
     expect(salida.stderr).toContain("MCP_DESTRUCTIVE_POLICY");
     expect(salida.stderr).toContain("confirm, allow, deny");
+  });
+});
+
+// --- Scopes de la clave (8.1 y 7.2) ------------------------------------------
+
+/**
+ * El catalogo que ve un cliente segun los scopes de su clave, por el protocolo.
+ *
+ * Que `crearHerramientas` devuelva la lista correcta para cada combinacion lo
+ * prueba `packages/core/test/mcp-scope.test.ts` contra la tabla transcripta de la
+ * 8.2. Lo que se prueba aca es lo que la 8.1 pide de verdad: que el agente no la
+ * VEA al listar, y que invocarla igual no ejecute nada.
+ */
+describe("scopes de la clave", () => {
+  const ONCE = [
+    "create_board",
+    "create_column",
+    "create_task",
+    "delete_task",
+    "get_board",
+    "get_task",
+    "list_boards",
+    "list_tasks",
+    "move_task",
+    "search_tasks",
+    "update_task",
+  ];
+  const DIEZ_SIN_DELETE = ONCE.filter((nombre) => nombre !== "delete_task");
+  const SIN_DELETE = ["READ", "WRITE"] as const;
+
+  const abiertos: McpClient[] = [];
+
+  /** Un servidor por combinacion: los scopes entran al montar, como la politica. */
+  async function con(opciones: OpcionesRegistro): Promise<McpClient> {
+    const nuevo = await conectar(opciones);
+    abiertos.push(nuevo);
+    return nuevo;
+  }
+
+  afterAll(async () => {
+    await Promise.all(abiertos.map(async (abierto) => abierto.close()));
+  });
+
+  async function listadas(destino: McpClient): Promise<string[]> {
+    const { tools } = await destino.listTools();
+    return tools.map((tool) => tool.name).sort();
+  }
+
+  /** El texto con el que el SDK rechaza invocar delete_task. No trae el JSON de la 8.5. */
+  async function rechazoDeDelete(destino: McpClient, task: string): Promise<string> {
+    const salida = await destino.callTool({ name: "delete_task", arguments: { task, confirm: true } });
+    expect(salida.isError).toBe(true);
+    return (salida.content as Array<{ text?: string }>)[0]?.text ?? "";
+  }
+
+  it("con los tres scopes se listan las once", async () => {
+    expect(await listadas(await con({ scopes: SCOPES }))).toEqual(ONCE);
+  });
+
+  it("sin scope delete, delete_task no se lista y el resto si", async () => {
+    // El DEBE de la 8.1: un cliente sin scope delete no ve disponible
+    // delete_task, porque un agente que la ve la incluye en su plan.
+    expect(await listadas(await con({ scopes: SIN_DELETE }))).toEqual(DIEZ_SIN_DELETE);
+  });
+
+  it("con solo read se listan las cinco de lectura de la 8.2 y ninguna que escriba", async () => {
+    const { tools } = await (await con({ scopes: ["READ"] })).listTools();
+
+    // Las cinco filas de la 8.2 con Scope read.
+    expect(tools.map((tool) => tool.name).sort()).toEqual([
+      "get_board",
+      "get_task",
+      "list_boards",
+      "list_tasks",
+      "search_tasks",
+    ]);
+    // Y lo mismo desde el lado del agente, que no lee la 8.2 sino las anotaciones.
+    expect(tools.every((tool) => tool.annotations?.readOnlyHint === true)).toBe(true);
+  });
+
+  it("tres scopes y deny: quedan diez, y delete_task esta apagada por la politica", async () => {
+    const denegado = await con({ scopes: SCOPES, politicaDestructiva: "deny" });
+
+    expect(await listadas(denegado)).toEqual(DIEZ_SIN_DELETE);
+    // El motivo se ve al invocarla: la politica la registra y la apaga, asi que
+    // el SDK dice "disabled". Tener el scope no la vuelve a prender.
+    expect(await rechazoDeDelete(denegado, "Revisar HU-25")).toContain("disabled");
+  });
+
+  it("sin delete y con confirm: quedan diez, pero porque delete_task no existe", async () => {
+    await sembrarTablero("QA");
+    const creada = await crear("QA", "TODO", "Revisar HU-25");
+    const id = (creada.json["task"] as Record<string, unknown>)["id"] as string;
+
+    const sinDelete = await con({ scopes: SIN_DELETE, politicaDestructiva: "confirm" });
+    expect(await listadas(sinDelete)).toEqual(DIEZ_SIN_DELETE);
+
+    // Invocarla igual es posible —el protocolo no obliga a listar antes— y el SDK
+    // la rechaza antes de cualquier handler como desconocida, porque no se
+    // registro. El texto es del SDK: nombra la herramienta pero no el scope que
+    // falta, y es el mismo que recibiria un nombre mal escrito.
+    const texto = await rechazoDeDelete(sinDelete, id);
+    expect(texto).toContain("delete_task");
+    expect(texto).toContain("not found");
+
+    // Lo que importa: no borro nada.
+    const despues = await llamar("get_task", { task: id });
+    expect(despues.isError, despues.texto).toBe(false);
+  });
+
+  it("sin delete y con deny: la politica no la vuelve a montar", async () => {
+    const ambos = await con({ scopes: SIN_DELETE, politicaDestructiva: "deny" });
+
+    expect(await listadas(ambos)).toEqual(DIEZ_SIN_DELETE);
+    // "not found" y no "disabled": lo que no se registro no se puede apagar, asi
+    // que con los dos filtros a la vez se ve el de scopes.
+    expect(await rechazoDeDelete(ambos, "Revisar HU-25")).toContain("not found");
+  });
+
+  it("solo delete y deny: el listado queda vacio, pero el servidor se monta", async () => {
+    // El borde de los dos filtros juntos. La clave tiene el scope, asi que
+    // delete_task se registra; la politica la apaga, y no queda nada que listar.
+    // El SDK lo sirve como lista vacia. Lo que NO se monta es un servidor al que
+    // los scopes no le dejan ninguna herramienta (ver `crearHerramientas`).
+    const soloDelete = await con({ scopes: ["DELETE"], politicaDestructiva: "deny" });
+
+    expect(await listadas(soloDelete)).toEqual([]);
   });
 });
 
@@ -1476,7 +1609,7 @@ describe("trazabilidad", () => {
 
   it("el requestId de la linea mcp.tool es el request_id de audit_log", async () => {
     const espia = loggerEspia();
-    const conLog = await conectar({ logger: espia.logger });
+    const conLog = await conectar({ scopes: SCOPES, logger: espia.logger });
 
     try {
       const creado = await llamarCon(conLog, "create_board", { name: "Trazado" });
@@ -1503,7 +1636,7 @@ describe("trazabilidad", () => {
 
   it("una resolucion por nombre queda correlacionada con la escritura que la uso", async () => {
     const espia = loggerEspia();
-    const conLog = await conectar({ logger: espia.logger });
+    const conLog = await conectar({ scopes: SCOPES, logger: espia.logger });
 
     try {
       expect((await llamarCon(conLog, "create_board", { name: "Trazado" })).isError).toBe(false);
