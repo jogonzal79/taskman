@@ -78,6 +78,13 @@ export const ESTADO_POR_CODIGO = {
   UNAUTHENTICATED: 401,
   FORBIDDEN_SCOPE: 403,
 
+  // Una peticion a /mcp con un Origin que no esta permitido. No lo pide la
+  // especificacion del proyecto sino el protocolo: Streamable HTTP exige validar
+  // Origin contra DNS rebinding y responder 403 cuando es invalido. Es del BORDE
+  // MCP, como PAYLOAD_TOO_LARGE lo es del HTTP, y REST no lo produce: /api no lo
+  // valida porque la 7.3 resuelve el caso del navegador con CORS apagado.
+  FORBIDDEN_ORIGIN: 403,
+
   // MCP_DESTRUCTIVE_POLICY=deny: el servidor no borra, se pida como se pida. No
   // lo puede producir REST hoy —es del borde MCP— pero el `Record` del adaptador
   // obliga a decidirlo igual, que es justamente la gracia. 403 y no 405: el

@@ -908,6 +908,22 @@ motivo dejó de valer, ahí está el disparador para volver a mirarla.
   en CADA mensaje. Por eso `actor_name` es la ETIQUETA de la clave y no el
   `clientInfo.name` del initialize, que ese servidor nunca vio; `client_id` es el
   prefijo y `request_id` el del X-Request-Id de la peticion (`contextoDeMcp`).
+- El LIMITE DE PETICIONES de /mcp cobra POR MENSAJE, en el cupo de la
+  HERRAMIENTA (D5, `cuposDeMensajes`): un `tools/call` a una de `write` o `delete`
+  cobra escritura, todo lo demas lectura, con la misma `CUBO_POR_SCOPE` de REST.
+  Por eso el cuerpo se lee ANTES de cobrar, al reves que `conAuth`. Un lote
+  JSON-RPC cobra un lugar por mensaje, y una herramienta que la clave no tiene
+  igual cobra su cupo. Consecuencia de producto medida: el ejemplo 5 del Anexo A
+  entra JUSTO con 30 move_task por minuto; el 31 recibe 429.
+- ORIGIN: /mcp rechaza con 403 FORBIDDEN_ORIGIN toda peticion que TRAIGA `Origin`,
+  antes de autenticar, y deja pasar la que no lo trae, que es la de cualquier
+  cliente que no sea un navegador. No hay lista permitida ni variable: no existe
+  cliente de navegador, y el dia que exista entra junto con la lista de CORS de
+  la 7.3. No se usa el `allowedOrigins` del SDK, que esta `@deprecated`.
+- Un fallo no controlado de una herramienta NO expone la causa en NINGUN
+  transporte: la respuesta lleva INTERNAL_ERROR y el `request_id`, y la traza va
+  a la linea `mcp.tool` (campo `err`). Todo error MCP lleva `request_id`, porque
+  `respuestaError` lo exige como argumento.
 - La resolucion por nombre de la 8.3.1 esta en `packages/core/src/mcp/resolve.ts`
   y es UNA sola para tablero, columna y tarea. Si hace falta una regla distinta
   para alguna entidad, va como dato en el ambito, no como un `if` en el modulo.

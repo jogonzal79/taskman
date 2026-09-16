@@ -1,13 +1,22 @@
 import { Client as McpClient } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
-import { prefijoDe, type CamposDeLog, type Logger } from "@taskman/core";
+import { CorePort, prefijoDe, type CamposDeLog, type Logger } from "@taskman/core";
 import type { Client } from "pg";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DELETE, GET, POST } from "../app/mcp/route";
+import { LIMITE_CUERPO_BYTES } from "../lib/http";
 import { fijarLogger } from "../lib/log";
-import { connectDb, emitirClave, truncateAll } from "./helpers";
+import { LIMITE_POR_CUBO, reiniciarLimiteDePeticiones } from "../lib/rate-limit";
+import {
+  connectDb,
+  emitirClave,
+  port,
+  sembrarTablero,
+  sembrarTareas,
+  truncateAll,
+} from "./helpers";
 
 /**
  * /mcp (8.1): el transporte Streamable HTTP, autenticado por API key y con los
@@ -149,6 +158,8 @@ describe("/mcp sin clave valida", () => {
     const cuerpo = (await respuesta.json()) as { error: { code: string; request_id: string } };
     expect(cuerpo.error.code).toBe("UNAUTHENTICATED");
     expect(cuerpo.error.request_id).toBe(requestId);
+    // RFC 7235: el desafio, el mismo que /api.
+    expect(respuesta.headers.get("www-authenticate")).toBe('Bearer realm="taskman"');
 
     expect(lineasDePeticion()).toEqual([
       expect.objectContaining({
@@ -303,5 +314,269 @@ describe("/mcp: actor y correlacion (7.4, 6.1, 11.1)", () => {
       actorName: "claude remoto",
       outcome: "ok",
     });
+  });
+});
+
+// --- Endurecimiento del borde (7.3, 6.4, Streamable HTTP) --------------------
+
+/** Un POST crudo a /mcp con cualquier cuerpo JSON y cabeceras extra. */
+function post(
+  clave: string | undefined,
+  cuerpo: unknown,
+  cabeceras: Readonly<Record<string, string>> = {},
+): Promise<Response> {
+  const headers = new Headers({
+    accept: "application/json, text/event-stream",
+    "content-type": "application/json",
+    ...cabeceras,
+  });
+  if (clave !== undefined) {
+    headers.set("authorization", `Bearer ${clave}`);
+  }
+  return POST(new Request(URL_MCP, { method: "POST", headers, body: JSON.stringify(cuerpo) }));
+}
+
+function llamada(id: number, name: string, args: Record<string, unknown>): Record<string, unknown> {
+  return { jsonrpc: "2.0", id, method: "tools/call", params: { name, arguments: args } };
+}
+
+const LISTAR = { jsonrpc: "2.0", id: 1, method: "tools/list", params: {} };
+
+const KB = 1024;
+
+/**
+ * Un cuerpo de `totalKb` KB que anota cuanto le pidieron y si lo cancelaron. Es
+ * la misma medicion que `cuerpo.test.ts` hace para /api: el stream no produce
+ * nada hasta que alguien lee, asi que `entregados()` es lo que CRUZO.
+ */
+function cuerpoQueCuenta(totalKb: number, trozoKb = 64) {
+  const trozo = new Uint8Array(trozoKb * KB).fill(0x20);
+  let entregados = 0;
+  let restantes = Math.ceil(totalKb / trozoKb);
+  let cancelado = false;
+
+  const stream = new ReadableStream<Uint8Array>({
+    pull(controlador) {
+      if (restantes === 0) {
+        controlador.close();
+        return;
+      }
+      restantes -= 1;
+      entregados += trozo.byteLength;
+      controlador.enqueue(trozo);
+    },
+    cancel() {
+      cancelado = true;
+    },
+  });
+
+  return { stream, entregados: () => entregados, cancelado: () => cancelado };
+}
+
+describe("/mcp: tope de 256 KB por cuerpo (7.3)", () => {
+  it("MIDE que no se lee entero: de 50 MB cruzan del orden del tope, se cancela y es 413", async () => {
+    const clave = await emitirClave(db, ["READ", "WRITE"]);
+    const medido = cuerpoQueCuenta(50 * KB);
+
+    const respuesta = await POST(
+      new Request(URL_MCP, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${clave}`,
+          accept: "application/json, text/event-stream",
+          "content-type": "application/json",
+        },
+        body: medido.stream,
+        // Node lo exige para un cuerpo de stream.
+        duplex: "half",
+      } as RequestInit & { duplex: "half" }),
+    );
+
+    expect(respuesta.status).toBe(413);
+    expect(((await respuesta.json()) as { error: { code: string } }).error.code).toBe(
+      "PAYLOAD_TOO_LARGE",
+    );
+    expect(respuesta.headers.get("x-request-id")).toMatch(/^req_/);
+
+    // Lo corto `leerCuerpo`: el transporte del SDK no llego a leer nada.
+    expect(medido.cancelado()).toBe(true);
+    expect(medido.entregados()).toBeLessThanOrEqual(LIMITE_CUERPO_BYTES * 2);
+    expect(medido.entregados()).toBeLessThan(50 * KB * KB * 0.02);
+  });
+
+  it("un cuerpo chico le llega al transporte ya leido: tools/list responde", async () => {
+    const clave = await emitirClave(db, ["READ"]);
+
+    const respuesta = await post(clave, LISTAR);
+
+    expect(respuesta.status).toBe(200);
+    expect(((await respuesta.json()) as { result: { tools: unknown[] } }).result.tools).toHaveLength(5);
+  });
+});
+
+describe("/mcp: limite de peticiones (7.3) y que cupo cobra cada mensaje (D5)", () => {
+  beforeEach(() => {
+    reiniciarLimiteDePeticiones();
+    process.env["RATE_LIMIT_ENABLED"] = "true";
+  });
+
+  afterEach(() => {
+    process.env["RATE_LIMIT_ENABLED"] = "false";
+    reiniciarLimiteDePeticiones();
+  });
+
+  it("tools/list cobra LECTURA: pasan 120 y la 121 recibe 429 con Retry-After", async () => {
+    const clave = await emitirClave(db, ["READ"]);
+
+    for (let i = 0; i < LIMITE_POR_CUBO.lectura; i += 1) {
+      expect((await post(clave, LISTAR)).status, `peticion ${i + 1}`).toBe(200);
+    }
+
+    const rechazada = await post(clave, LISTAR);
+    expect(rechazada.status).toBe(429);
+    expect(rechazada.headers.get("retry-after")).toMatch(/^[1-9][0-9]*$/);
+    expect(((await rechazada.json()) as { error: { details: unknown } }).error.details).toMatchObject({
+      bucket: "read",
+      limit: 120,
+    });
+  });
+
+  it("un tools/call de escritura cobra ESCRITURA: pasan 30, la 31 es 429 y no escribe; las lecturas siguen", async () => {
+    const clave = await emitirClave(db, ["READ", "WRITE"]);
+
+    for (let i = 0; i < LIMITE_POR_CUBO.escritura; i += 1) {
+      const respuesta = await post(clave, llamada(i, "create_board", { name: `T${i}` }));
+      expect(respuesta.status, `escritura ${i + 1}`).toBe(200);
+    }
+
+    const rechazada = await post(clave, llamada(99, "create_board", { name: "La 31" }));
+    expect(rechazada.status).toBe(429);
+    expect(((await rechazada.json()) as { error: { details: unknown } }).error.details).toMatchObject({
+      bucket: "write",
+      limit: 30,
+    });
+    expect((await db.query("SELECT 1 FROM board")).rowCount).toBe(30);
+
+    // list_boards es de lectura: cobra el OTRO cupo, que sigue libre.
+    expect((await post(clave, llamada(100, "list_boards", {}))).status).toBe(200);
+  });
+
+  it("una herramienta que la clave NO tiene igual cobra su cupo, como el 429 antes del 403 de REST", async () => {
+    const clave = await emitirClave(db, ["READ"]);
+
+    for (let i = 0; i < LIMITE_POR_CUBO.escritura; i += 1) {
+      expect((await post(clave, llamada(i, "delete_task", { task: "x", confirm: true }))).status).toBe(200);
+    }
+
+    expect((await post(clave, llamada(99, "delete_task", { task: "x", confirm: true }))).status).toBe(429);
+  });
+
+  it("un lote cobra un lugar POR MENSAJE: 31 create_board en un solo POST no pasan", async () => {
+    const clave = await emitirClave(db, ["READ", "WRITE"]);
+    const lote = Array.from({ length: 31 }, (_, i) => llamada(i, "create_board", { name: `L${i}` }));
+
+    expect((await post(clave, lote)).status).toBe(429);
+    expect((await db.query("SELECT 1 FROM board")).rowCount).toBe(0);
+  });
+
+  it("ejemplo 5 del Anexo A: list_tasks y 30 move_task entran justo; el move 31 recibe 429", async () => {
+    const clave = await emitirClave(db, ["READ", "WRITE"], { label: "agente epx" });
+    const taskman = port();
+    const tablero = await sembrarTablero(taskman, { name: "EPX-25" });
+    await sembrarTareas(taskman, { boardId: tablero.id, columnKey: "BACKLOG", prefijo: "HU", cantidad: 31 });
+
+    const cliente = await conectar(clave);
+
+    const listado = await cliente.callTool({
+      name: "list_tasks",
+      arguments: { board: "EPX-25", column: "BACKLOG" },
+    });
+    expect(listado.isError).toBeFalsy();
+
+    for (let i = 0; i < 30; i += 1) {
+      const movida = await cliente.callTool({
+        name: "move_task",
+        arguments: { task: `HU-${i}`, board: "EPX-25", to_column: "TODO" },
+      });
+      expect(movida.isError, `move_task ${i + 1}`).toBeFalsy();
+    }
+
+    // El cliente de la SDK lo recibe como error HTTP, no como resultado de herramienta.
+    await expect(
+      cliente.callTool({
+        name: "move_task",
+        arguments: { task: "HU-30", board: "EPX-25", to_column: "TODO" },
+      }),
+    ).rejects.toMatchObject({ code: 429 });
+
+    const enTodo = await db.query<{ n: number }>(
+      "SELECT count(*)::int AS n FROM task t JOIN board_column c ON c.id = t.column_id WHERE c.key = $1",
+      ["TODO"],
+    );
+    expect(enTodo.rows[0]).toEqual({ n: 30 });
+
+    await cliente.close();
+  });
+});
+
+describe("/mcp: Origin (Streamable HTTP, contra DNS rebinding)", () => {
+  it("con un Origin presente, 403 FORBIDDEN_ORIGIN aunque la clave sea valida, antes de autenticar", async () => {
+    const clave = await emitirClave(db, ["READ", "WRITE", "DELETE"]);
+    const origenes = ["https://evil.example", "http://localhost:3000", "null"];
+
+    for (const origen of origenes) {
+      const respuesta = await post(clave, LISTAR, { origin: origen });
+
+      expect(respuesta.status, origen).toBe(403);
+      const cuerpo = (await respuesta.json()) as {
+        error: { code: string; details: unknown; request_id: string };
+      };
+      expect(cuerpo.error.code).toBe("FORBIDDEN_ORIGIN");
+      expect(cuerpo.error.details).toEqual({ origin: origen });
+      expect(cuerpo.error.request_id).toBe(respuesta.headers.get("x-request-id"));
+    }
+
+    // Antes de la clave: ninguna linea tiene client_id.
+    expect(lineasDePeticion().map((linea) => [linea["status"], linea["client_id"]])).toEqual(
+      origenes.map(() => [403, null]),
+    );
+  });
+
+  it("SIN Origin —lo que manda un cliente que no es navegador— pasa", async () => {
+    const respuesta = await post(await emitirClave(db, ["READ"]), LISTAR);
+
+    expect(respuesta.status).toBe(200);
+  });
+});
+
+describe("/mcp: el INTERNAL_ERROR de la 6.4", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("no expone la causa, trae el request_id de la respuesta, y la traza queda en el log", async () => {
+    const clave = await emitirClave(db, ["READ"]);
+    vi.spyOn(CorePort.prototype, "listBoards").mockRejectedValueOnce(
+      new Error('duplicate key value violates unique constraint "board_secreto_idx"'),
+    );
+
+    const respuesta = await post(clave, llamada(1, "list_boards", {}));
+
+    expect(respuesta.status).toBe(200);
+    const requestId = respuesta.headers.get("x-request-id");
+    const cuerpo = (await respuesta.json()) as {
+      result: { isError: boolean; content: Array<{ text: string }> };
+    };
+    const texto = cuerpo.result.content[0]?.text ?? "";
+
+    expect(cuerpo.result.isError).toBe(true);
+    expect(texto).toContain("INTERNAL_ERROR");
+    expect(texto).not.toContain("board_secreto_idx");
+    expect(texto).not.toContain("reason");
+    expect(texto).toContain(`"request_id": "${requestId}"`);
+
+    const herramienta = lineas.find((linea) => linea.campos["evt"] === "mcp.tool")?.campos;
+    expect(herramienta).toMatchObject({ requestId, outcome: "error" });
+    expect((herramienta?.["err"] as { message: string }).message).toContain("board_secreto_idx");
   });
 });

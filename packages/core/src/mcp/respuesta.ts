@@ -39,15 +39,11 @@ export function fechaIso(fecha: Date | null): string | null {
 // --- Errores -----------------------------------------------------------------
 
 /**
- * La envoltura de error de la 6.4, sin `request_id`.
+ * La envoltura de error de la 6.4, antes de ponerle el `request_id`.
  *
- * Desde la 11.1 el requestId existe en TODAS las invocaciones —lo arma el
- * ejecutor, no cada herramienta— asi que la razon vieja para no ponerlo aca
- * (que las lecturas no tenian contexto) ya no vale. Sigue afuera por otra: el
- * `request_id` en la respuesta es del modelo de errores REST de la 6.4, que
- * pide "la respuesta solo expone el codigo y el request_id" para NO exponer la
- * causa. Aca la causa se expone a proposito (ver `deErrorInesperado`), y
- * agregar el id sin ese recorte seria media 6.4. Entra con el borde HTTP.
+ * El id NO es un campo de esto sino un argumento OBLIGATORIO de `respuestaError`,
+ * que lo agrega al armar la respuesta: asi ningun error sale sin el, tambien el
+ * que una herramienta DEVUELVE en vez de lanzar (CONFIRMATION_REQUIRED).
  */
 export interface ErrorSerializado {
   code: string;
@@ -100,9 +96,15 @@ export function codigoDeError(resultado: McpToolResult): string | undefined {
  * donde el detalle de la tarea que se borraria tiene que estar en el TEXTO y no
  * solo en `details`: el texto es lo que el agente le muestra al usuario, y una
  * confirmacion que solo se puede leer parseando JSON no es una confirmacion.
+ *
+ * `requestId` va al bloque JSON como `request_id`, que es donde la 6.4 lo pone:
+ * es el mismo valor que la linea `mcp.tool`, la auditoria y, por /mcp, la
+ * cabecera X-Request-Id. No va en el texto: un AMBIGUOUS_MATCH es una pregunta
+ * al agente, y un identificador en medio de la prosa no le sirve para contestarla.
  */
 export function respuestaError(
   error: ErrorSerializado,
+  requestId: string,
   lineasExtra: readonly string[] = [],
 ): McpToolResult {
   const lineas = [`Error ${error.code}: ${error.message}`, ...lineasExtra];
@@ -111,7 +113,7 @@ export function respuestaError(
   }
 
   const resultado: ResultadoConCodigo = {
-    content: [{ type: "text", text: texto(lineas, { error }) }],
+    content: [{ type: "text", text: texto(lineas, { error: { ...error, request_id: requestId } }) }],
     isError: true,
     [CODIGO_DE_ERROR]: error.code,
   };
@@ -134,22 +136,39 @@ function deZodError(error: z.ZodError): ErrorSerializado {
 }
 
 /**
- * Fallo no controlado (6.4).
+ * Fallo no controlado (6.4 y 11.1): la respuesta expone el codigo y el
+ * request_id, y NADA de la causa. La traza completa va a la linea `mcp.tool`.
  *
- * La 6.4 pide que el mensaje no exponga detalles internos, pensando en una API
- * publica. Aca el transporte es stdio contra la maquina del propio usuario, asi
- * que la causa va en `details.reason`: sin ella un fallo inesperado seria
- * completamente opaco para el agente, que es quien tiene que decidir si
- * reintenta. Cuando exista el transporte HTTP, ese borde tendra que recortarla
- * y dejar solo el codigo y el request_id.
+ * Antes la causa iba en `details.reason`, con un argumento que valia para stdio:
+ * el agente corre en la maquina del propio usuario y sin la causa un fallo era
+ * opaco. Dejo de valer por dos lados. /mcp la expondria a un cliente remoto —un
+ * mensaje de Prisma o de PostgreSQL nombra tablas, restricciones y a veces
+ * valores—, y el recorte es UNO para los dos transportes porque el ejecutor es
+ * uno (ADR-003): un campo que depende del transporte es un contrato que depende
+ * del transporte. Y la opacidad ya no es tal: el request_id de la respuesta es el
+ * de la linea que tiene la traza, en stderr por stdio y en stdout por /mcp.
  */
-function deErrorInesperado(error: unknown, herramienta: string): ErrorSerializado {
+function deErrorInesperado(herramienta: string): ErrorSerializado {
   return {
     code: "INTERNAL_ERROR",
     message: `La herramienta ${herramienta} fallo de forma inesperada.`,
-    details: { reason: error instanceof Error ? error.message : String(error) },
-    hint: "No es un error de tus argumentos: reintentar tal cual probablemente vuelva a fallar.",
+    hint:
+      "No es un error de tus argumentos: reintentar tal cual probablemente vuelva a fallar. " +
+      "El request_id de este error es el que permite encontrar la causa en el log del servidor.",
   };
+}
+
+/**
+ * La traza de un fallo no controlado, para la linea de log. Se arma a mano y no
+ * con el serializador de la libreria de log, que el nucleo no conoce: asi el
+ * `stack` esta en la linea con cualquier logger que se inyecte.
+ */
+function trazaDe(error: unknown): Readonly<Record<string, unknown>> {
+  if (error instanceof Error) {
+    return { type: error.name, message: error.message, stack: error.stack ?? null };
+  }
+
+  return { type: typeof error, message: String(error), stack: null };
 }
 
 /** Como termino una invocacion, en el vocabulario de la linea `mcp.tool`. */
@@ -188,10 +207,13 @@ export function definirHandler<Shape extends EsquemaEntrada>(
     let salida: McpToolResult;
     let desenlace: Desenlace;
     let code: string | undefined;
+    // Solo cuando el fallo NO es de dominio: es lo que la respuesta ya no lleva.
+    let traza: Readonly<Record<string, unknown>> | undefined;
+    const requestId = llamada.ctx.requestId;
 
     const validado = esquema.safeParse(args ?? {});
     if (!validado.success) {
-      salida = respuestaError(deZodError(validado.error));
+      salida = respuestaError(deZodError(validado.error), requestId);
       desenlace = "domain_error";
       code = "VALIDATION_ERROR";
     } else {
@@ -205,9 +227,11 @@ export function definirHandler<Shape extends EsquemaEntrada>(
       } catch (error: unknown) {
         const dominio = isDomainError(error);
         salida = respuestaError(
-          dominio ? serializarDominio(error) : deErrorInesperado(error, herramienta),
+          dominio ? serializarDominio(error) : deErrorInesperado(herramienta),
+          requestId,
         );
         desenlace = dominio ? "domain_error" : "error";
+        traza = dominio ? undefined : trazaDe(error);
         // Sin `code` cuando el fallo es inesperado: el INTERNAL_ERROR de la
         // respuesta es una etiqueta del borde, no un codigo de dominio, y
         // ponerlo aca lo haria indistinguible de uno que si lo es al filtrar.
@@ -218,12 +242,16 @@ export function definirHandler<Shape extends EsquemaEntrada>(
     const campos = {
       evt: "mcp.tool",
       tool: herramienta,
-      requestId: llamada.ctx.requestId,
+      requestId,
       actorType: llamada.ctx.actorType,
       actorName: llamada.ctx.actorName,
       durationMs: Math.round(performance.now() - comienzo),
       outcome: desenlace,
       ...(code === undefined ? {} : { code }),
+      // 11.1: "Los errores 500 registran la traza completa". La respuesta no la
+      // lleva (`deErrorInesperado`), asi que si no quedara aca no quedaria en
+      // ningun lado.
+      ...(traza === undefined ? {} : { err: traza }),
     };
     const mensaje = `${herramienta}: ${desenlace}`;
 

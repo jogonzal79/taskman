@@ -102,6 +102,9 @@
             "headers": {
               "X-Request-Id": {
                 "$ref": "#/components/headers/XRequestId"
+              },
+              "WWW-Authenticate": {
+                "$ref": "#/components/headers/WWWAuthenticate"
               }
             },
             "content": {
@@ -224,6 +227,9 @@
             "headers": {
               "X-Request-Id": {
                 "$ref": "#/components/headers/XRequestId"
+              },
+              "WWW-Authenticate": {
+                "$ref": "#/components/headers/WWWAuthenticate"
               }
             },
             "content": {
@@ -372,6 +378,9 @@
             "headers": {
               "X-Request-Id": {
                 "$ref": "#/components/headers/XRequestId"
+              },
+              "WWW-Authenticate": {
+                "$ref": "#/components/headers/WWWAuthenticate"
               }
             },
             "content": {
@@ -513,6 +522,9 @@
             "headers": {
               "X-Request-Id": {
                 "$ref": "#/components/headers/XRequestId"
+              },
+              "WWW-Authenticate": {
+                "$ref": "#/components/headers/WWWAuthenticate"
               }
             },
             "content": {
@@ -652,6 +664,9 @@
             "headers": {
               "X-Request-Id": {
                 "$ref": "#/components/headers/XRequestId"
+              },
+              "WWW-Authenticate": {
+                "$ref": "#/components/headers/WWWAuthenticate"
               }
             },
             "content": {
@@ -801,6 +816,9 @@
             "headers": {
               "X-Request-Id": {
                 "$ref": "#/components/headers/XRequestId"
+              },
+              "WWW-Authenticate": {
+                "$ref": "#/components/headers/WWWAuthenticate"
               }
             },
             "content": {
@@ -989,6 +1007,9 @@
             "headers": {
               "X-Request-Id": {
                 "$ref": "#/components/headers/XRequestId"
+              },
+              "WWW-Authenticate": {
+                "$ref": "#/components/headers/WWWAuthenticate"
               }
             },
             "content": {
@@ -1138,6 +1159,9 @@
             "headers": {
               "X-Request-Id": {
                 "$ref": "#/components/headers/XRequestId"
+              },
+              "WWW-Authenticate": {
+                "$ref": "#/components/headers/WWWAuthenticate"
               }
             },
             "content": {
@@ -1389,6 +1413,9 @@
             "headers": {
               "X-Request-Id": {
                 "$ref": "#/components/headers/XRequestId"
+              },
+              "WWW-Authenticate": {
+                "$ref": "#/components/headers/WWWAuthenticate"
               }
             },
             "content": {
@@ -1526,6 +1553,9 @@
             "headers": {
               "X-Request-Id": {
                 "$ref": "#/components/headers/XRequestId"
+              },
+              "WWW-Authenticate": {
+                "$ref": "#/components/headers/WWWAuthenticate"
               }
             },
             "content": {
@@ -1743,6 +1773,9 @@
             "headers": {
               "X-Request-Id": {
                 "$ref": "#/components/headers/XRequestId"
+              },
+              "WWW-Authenticate": {
+                "$ref": "#/components/headers/WWWAuthenticate"
               }
             },
             "content": {
@@ -1861,6 +1894,9 @@
             "headers": {
               "X-Request-Id": {
                 "$ref": "#/components/headers/XRequestId"
+              },
+              "WWW-Authenticate": {
+                "$ref": "#/components/headers/WWWAuthenticate"
               }
             },
             "content": {
@@ -2002,6 +2038,9 @@
             "headers": {
               "X-Request-Id": {
                 "$ref": "#/components/headers/XRequestId"
+              },
+              "WWW-Authenticate": {
+                "$ref": "#/components/headers/WWWAuthenticate"
               }
             },
             "content": {
@@ -2141,6 +2180,9 @@
             "headers": {
               "X-Request-Id": {
                 "$ref": "#/components/headers/XRequestId"
+              },
+              "WWW-Authenticate": {
+                "$ref": "#/components/headers/WWWAuthenticate"
               }
             },
             "content": {
@@ -2284,6 +2326,9 @@
             "headers": {
               "X-Request-Id": {
                 "$ref": "#/components/headers/XRequestId"
+              },
+              "WWW-Authenticate": {
+                "$ref": "#/components/headers/WWWAuthenticate"
               }
             },
             "content": {
@@ -2499,6 +2544,9 @@
             "headers": {
               "X-Request-Id": {
                 "$ref": "#/components/headers/XRequestId"
+              },
+              "WWW-Authenticate": {
+                "$ref": "#/components/headers/WWWAuthenticate"
               }
             },
             "content": {
@@ -2647,6 +2695,13 @@
         "schema": {
           "type": "integer",
           "minimum": 1
+        },
+        "required": true
+      },
+      "WWWAuthenticate": {
+        "description": "El desafio que el RFC 7235 exige en todo 401: `Bearer realm=\"taskman\"`, el esquema de la 7.1. Sin `error` ni `resource_metadata`: la 6.4 no distingue una clave ausente de una invalida, y no hay servidor de autorizacion OAuth que anunciar.",
+        "schema": {
+          "type": "string"
         },
         "required": true
       }

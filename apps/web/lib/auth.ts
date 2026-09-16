@@ -42,7 +42,8 @@ function aScopeDeDominio(scope: ScopeHttp): Scope {
   return SCOPES_HTTP[scope];
 }
 
-function aScopeHttp(scope: Scope): ScopeHttp {
+/** Del dominio al borde. Lo usa tambien /mcp, para elegir el cupo por el scope de la herramienta. */
+export function aScopeHttp(scope: Scope): ScopeHttp {
   // El reverso se calcula y no se escribe a mano: una tabla duplicada es una
   // tabla que se desincroniza.
   const entrada = Object.entries(SCOPES_HTTP).find(([, dominio]) => dominio === scope);
@@ -105,13 +106,32 @@ function leerBearer(request: Request): string | undefined {
   return valor;
 }
 
+/**
+ * El 401, igual para /api y para /mcp.
+ *
+ * `WWW-Authenticate` porque el RFC 7235 lo EXIGE en todo 401: es lo que le dice al
+ * cliente con que esquema autenticarse. El desafio es el minimo del RFC 6750
+ * —`Bearer realm="taskman"`— y a proposito no lleva nada mas:
+ *
+ * - Ni `error="invalid_token"`: la 6.4 no distingue una clave ausente de una
+ *   invalida o revocada, y la cabecera no puede decir lo que el cuerpo calla.
+ * - Ni `resource_metadata`, que es lo que la autorizacion OAuth de MCP espera
+ *   para ir a descubrir un servidor de autorizacion. No hay ninguno: la 7.1 es
+ *   una clave emitida por CLI. Con la SDK 1.30.0 un cliente con `authProvider`
+ *   intenta el descubrimiento ante CUALQUIER 401, con cabecera o sin ella
+ *   (leido de `client/streamableHttp.js`), asi que agregarla no le cambia el
+ *   camino; uno sin `authProvider` no la mira.
+ */
 function noAutenticado(ctx: ContextoPeticion): Response {
   return respuestaDeError(
     "UNAUTHENTICATED",
     "Falta la cabecera Authorization o la clave no es valida.",
     401,
     ctx,
-    { hint: "Envia la clave como 'Authorization: Bearer tmk_live_...'." },
+    {
+      hint: "Envia la clave como 'Authorization: Bearer tmk_live_...'.",
+      cabeceras: { "WWW-Authenticate": 'Bearer realm="taskman"' },
+    },
   );
 }
 
@@ -122,8 +142,10 @@ function noAutenticado(ctx: ContextoPeticion): Response {
  *
  * `details` lleva cual de los dos cupos se agoto y cuanto vale, para que quien
  * lo reciba pueda ajustar su ritmo sin ir a leer la especificacion.
+ *
+ * Lo usan `conAuth` y `atenderMcp`: el 429 es el mismo en /api y en /mcp.
  */
-function limiteSuperado(veredicto: LimiteSuperado, ctx: ContextoPeticion): Response {
+export function limiteSuperado(veredicto: LimiteSuperado, ctx: ContextoPeticion): Response {
   return respuestaDeError(
     "RATE_LIMITED",
     `Se supero el limite de ${veredicto.limite} peticiones por minuto de ${veredicto.nombreHttp} de esta clave.`,
@@ -248,10 +270,11 @@ export function conAuth<Args extends unknown[]>(scope: ScopeHttp, handler: Handl
  * a esta capa un scope cualquiera rechazaria con 403 a una clave de solo `delete`
  * que tiene una herramienta legitima que usar.
  *
- * SIN el limite de peticiones de la 7.3, que `conAuth` si cobra: que cupo
- * consume un mensaje de /mcp —un tools/list es lectura, un tools/call puede ser
- * cualquiera de las tres— es una decision propia y no un reuso de
- * `CUBO_POR_SCOPE`.
+ * El limite de peticiones de la 7.3 NO se cobra aca, a diferencia de `conAuth`:
+ * que cupo consume un mensaje depende de que mensaje es, y eso solo se sabe
+ * leyendo el cuerpo (ver `atenderMcp`).
+ *
+ * ANTES QUE LA CLAVE se valida Origin (`validarOrigen`), que es del transporte.
  *
  * El actor de la linea de log es AGENT por construccion (7.4): todo lo que entra
  * por aca entro por MCP.
@@ -404,6 +427,11 @@ async function atenderConClave<Args extends unknown[]>(
   let clientId: string | null = null;
 
   try {
+    const origenRechazado = validarOrigen(request, ctx);
+    if (origenRechazado !== undefined) {
+      return { respuesta: origenRechazado, clientId };
+    }
+
     const servicio = crearServicio();
 
     const clave = leerBearer(request);
@@ -425,4 +453,46 @@ async function atenderConClave<Args extends unknown[]>(
   } catch (error: unknown) {
     return { respuesta: respuestaDeFallo(error, ctx), clientId };
   }
+}
+
+/**
+ * La validacion de Origin que Streamable HTTP exige contra DNS rebinding: si la
+ * peticion trae `Origin` y no esta permitido, 403.
+ *
+ * NINGUN ORIGEN ESTA PERMITIDO, y no hay variable para permitir alguno.
+ *
+ * - Lo que manda `Origin` es un NAVEGADOR, y /mcp no tiene cliente de navegador:
+ *   la UI invoca el nucleo en el servidor (9.1) y los clientes MCP —Claude Code,
+ *   el de la SDK— son procesos que no lo mandan. Una peticion SIN `Origin` pasa,
+ *   que es exactamente la de esos clientes.
+ * - Es la misma postura que la 7.3 toma para /api: "CORS deshabilitado por
+ *   defecto". Un origen que la 7.3 no dejaria leer una respuesta tampoco tiene
+ *   por que poder mandarle mensajes a /mcp.
+ * - Una variable hoy seria configuracion para un cliente que no existe. El dia
+ *   que exista, entra con la lista explicita que la 7.3 pide para CORS, y las dos
+ *   se deciden juntas.
+ *
+ * Aca y no con el `allowedOrigins` del transporte del SDK: esa opcion esta
+ * marcada `@deprecated` en la 1.30.0 ("Use external middleware for origin
+ * validation instead"), y ademas corre DESPUES de autenticar, cuando el SDK ya
+ * recibio la peticion. `Origin: null` —un iframe con sandbox, un `file://`— es
+ * un Origin presente y se rechaza igual.
+ */
+function validarOrigen(request: Request, ctx: ContextoPeticion): Response | undefined {
+  const origen = request.headers.get("origin");
+
+  if (origen === null) {
+    return undefined;
+  }
+
+  return respuestaDeError(
+    "FORBIDDEN_ORIGIN",
+    "Este servidor MCP no acepta peticiones con cabecera Origin.",
+    403,
+    ctx,
+    {
+      details: { origin: origen },
+      hint: "/mcp es para clientes MCP que no son un navegador; esos no mandan Origin.",
+    },
+  );
 }

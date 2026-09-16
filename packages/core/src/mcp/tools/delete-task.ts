@@ -148,6 +148,7 @@ export function definirDeleteTask(
             // resolver un nombre que mientras tanto puede empatar con otra.
             hint: `Mostrale al usuario la tarea de arriba. Si la confirma, volve a llamar a delete_task con task=${JSON.stringify(tarea.id)} y confirm: true. Si no la confirma, no vuelvas a llamar.`,
           },
+          llamada.ctx.requestId,
           detalleDeTarea(tarea, real, columna),
         );
       }

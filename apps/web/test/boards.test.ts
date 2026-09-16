@@ -118,6 +118,8 @@ describe("GET /api/boards", () => {
     expect(cuerpo.error.code).toBe("UNAUTHENTICATED");
     // 6.1: el request_id del cuerpo es el que correlaciona con la cabecera.
     expect(cuerpo.error.request_id).toBe(respuesta.headers.get("X-Request-Id"));
+    // RFC 7235: todo 401 lleva el desafio, con el esquema de la 7.1.
+    expect(respuesta.headers.get("WWW-Authenticate")).toBe('Bearer realm="taskman"');
   });
 
   it("401 con una clave que no existe", async () => {

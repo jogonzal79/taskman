@@ -247,6 +247,28 @@ describe("linea mcp.tool", () => {
     expect((lineas[0] as Linea).campos["code"]).toBeUndefined();
   });
 
+  it("un fallo inesperado NO expone la causa y SI el request_id; la traza queda en el log (6.4, 11.1)", async () => {
+    const espia = loggerEspia();
+    const port = puertoFalso({
+      listBoards: () => {
+        throw new Error("relation \"board\" does not exist");
+      },
+    });
+
+    const salida = await herramienta(espia, port, "list_boards").handler({});
+    const texto = salida.content[0]?.text ?? "";
+    const linea = (de(espia, "mcp.tool")[0] as Linea).campos;
+
+    // La causa no sale: ni en el texto ni en el JSON.
+    expect(texto).not.toContain("does not exist");
+    expect(texto).toContain("INTERNAL_ERROR");
+    // El request_id si, y es el de la linea.
+    expect(texto).toContain(`"request_id": "${String(linea["requestId"])}"`);
+    // Y la causa entera esta en la linea, con su stack.
+    expect(linea["err"]).toMatchObject({ type: "Error", message: 'relation "board" does not exist' });
+    expect(String((linea["err"] as { stack: unknown }).stack)).toContain("Error:");
+  });
+
   it("un error DEVUELTO y no lanzado tampoco pasa por ok: delete_task sin confirm", async () => {
     // Es el unico caso del catalogo en el que la herramienta responde con un
     // error por `return`. Sin mirar el resultado, el ejecutor lo registraria

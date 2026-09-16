@@ -127,6 +127,11 @@ const CABECERA_REPLAYED = {
 /** Solo el 429 de la 7.3 la lleva, asi que se agrega por estado y no por ruta. */
 const CABECERA_RETRY_AFTER = { "Retry-After": { $ref: "#/components/headers/RetryAfter" } };
 
+/** Todo 401 la lleva (RFC 7235), asi que tambien va por estado. */
+const CABECERA_WWW_AUTHENTICATE = {
+  "WWW-Authenticate": { $ref: "#/components/headers/WWWAuthenticate" },
+};
+
 /**
  * Las respuestas de una operacion: las que declara la tabla, mas una por cada
  * estado HTTP al que mapea algun codigo de error del endpoint.
@@ -171,6 +176,7 @@ function respuestasDe(ruta: Ruta): ObjetoJson {
       description: `${frase(estado)} Codigos: ${codigos.join(", ")}.`,
       headers: {
         ...CABECERA_REQUEST_ID,
+        ...(estado === 401 ? CABECERA_WWW_AUTHENTICATE : {}),
         ...(estado === 429 ? CABECERA_RETRY_AFTER : {}),
       },
       content: { "application/json": { schema: ref("ErrorDeApi") } },
@@ -353,6 +359,12 @@ export function documentoOpenApi(opciones: OpcionesDelDocumento): ObjetoJson {
           description:
             "Segundos enteros que faltan para que se libere un lugar del cupo de la clave (7.3). Nunca cero. La forma de fecha que tambien permite HTTP no se usa: obligaria al cliente a confiar en su propio reloj.",
           schema: { type: "integer", minimum: 1 },
+          required: true,
+        },
+        WWWAuthenticate: {
+          description:
+            'El desafio que el RFC 7235 exige en todo 401: `Bearer realm="taskman"`, el esquema de la 7.1. Sin `error` ni `resource_metadata`: la 6.4 no distingue una clave ausente de una invalida, y no hay servidor de autorizacion OAuth que anunciar.',
+          schema: { type: "string" },
           required: true,
         },
       },
