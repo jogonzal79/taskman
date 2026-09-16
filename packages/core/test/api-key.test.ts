@@ -228,6 +228,38 @@ describe("ApiKeyService.autenticar", () => {
   });
 });
 
+describe("ApiKeyService.identificar", () => {
+  it("sin pedir scope devuelve la clave con TODOS los suyos", async () => {
+    // Es lo que usa /mcp: la clave decide que herramientas se montan, asi que
+    // lo que hace falta son sus scopes, no un si o un no.
+    const clave = generarClave();
+    const id = await sembrarClave({ clave, scopes: ["READ", "WRITE"], label: "agente" });
+
+    const resultado = await servicio().identificar(clave);
+
+    expect(resultado.ok).toBe(true);
+    if (!resultado.ok) return;
+    expect(resultado.clave).toEqual({
+      id,
+      prefix: prefijoDe(clave),
+      label: "agente",
+      scopes: ["READ", "WRITE"],
+    });
+  });
+
+  it("revocada, inexistente o con el resto cambiado: NO_AUTENTICADA, igual que autenticar", async () => {
+    const revocada = generarClave();
+    await sembrarClave({ clave: revocada, scopes: ["READ"], revocada: true });
+    const valida = generarClave();
+    await sembrarClave({ clave: valida, scopes: ["READ"] });
+    const impostora = prefijoDe(valida) + "0".repeat(valida.length - prefijoDe(valida).length);
+
+    for (const clave of [revocada, generarClave(), impostora]) {
+      expect(await servicio().identificar(clave)).toEqual({ ok: false, motivo: "NO_AUTENTICADA" });
+    }
+  });
+});
+
 describe("ApiKeyService constructor", () => {
   it("un pepper vacio falla al construir, no en la primera peticion", () => {
     // Un pepper vacio hashea sin protestar: el fallo seria silencioso.

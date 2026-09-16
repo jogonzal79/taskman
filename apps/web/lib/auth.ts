@@ -1,6 +1,7 @@
 import {
   ApiKeyService,
   type ActorContext,
+  type ActorType,
   type ClaveAutenticada,
   type Scope,
 } from "@taskman/core";
@@ -223,20 +224,59 @@ type Handler<Args extends unknown[]> = (
  * que la forma de dejar una ruta abierta por descuido —olvidarse de llamar a un
  * helper— no existe. Falla cerrado.
  *
- * Tambien es el unico try/catch del borde: cualquier fallo que escape del
+ * Tambien es el try/catch del borde REST (el de /mcp esta en `conAuthMcp`, con
+ * la misma salida): cualquier fallo que escape del
  * handler sale por `respuestaDeFallo`, o sea con la envoltura de la 6.4 y con
  * el mismo request_id que ya viajo en la cabecera. Ponerlo aca y no en cada
  * handler es lo que evita que un endpoint nuevo se olvide de traducir sus
  * errores de dominio.
  */
 export function conAuth<Args extends unknown[]>(scope: ScopeHttp, handler: Handler<Args>) {
+  return conLineaDeLog<Args>("API", (request, ctx, args) =>
+    atender(scope, handler, request, ctx, args),
+  );
+}
+
+/**
+ * La autenticacion de /mcp (8.1): LA MISMA clave, el mismo `ApiKeyService` y el
+ * mismo 401 que `conAuth`, pero SIN un scope por endpoint.
+ *
+ * `conAuth` exige un scope fijo porque en REST cada endpoint es una operacion. En
+ * /mcp un solo POST puede ser un tools/list, un get_task o un delete_task, asi que
+ * el scope no es de la peticion: es de cada herramienta, y lo aplica
+ * `crearHerramientas` con los scopes de la clave que esto deja en `auth`. Pedirle
+ * a esta capa un scope cualquiera rechazaria con 403 a una clave de solo `delete`
+ * que tiene una herramienta legitima que usar.
+ *
+ * SIN el limite de peticiones de la 7.3, que `conAuth` si cobra: que cupo
+ * consume un mensaje de /mcp —un tools/list es lectura, un tools/call puede ser
+ * cualquiera de las tres— es una decision propia y no un reuso de
+ * `CUBO_POR_SCOPE`.
+ *
+ * El actor de la linea de log es AGENT por construccion (7.4): todo lo que entra
+ * por aca entro por MCP.
+ */
+export function conAuthMcp<Args extends unknown[]>(handler: Handler<Args>) {
+  return conLineaDeLog<Args>("AGENT", (request, ctx, args) =>
+    atenderConClave(handler, request, ctx, args),
+  );
+}
+
+/**
+ * Lo comun a los dos bordes autenticados: el request_id de la 6.1, la linea por
+ * peticion de la 11.1 y la garantia de que las dos existen para TODA respuesta.
+ */
+function conLineaDeLog<Args extends unknown[]>(
+  actorType: ActorType,
+  atenderPeticion: (request: Request, ctx: ContextoPeticion, args: Args) => Promise<Atencion>,
+) {
   return async function (request: Request, ...args: Args): Promise<Response> {
     // Se genera antes que nada: hasta un fallo de configuracion tiene que salir
     // con su X-Request-Id para poder correlacionarlo con el log.
     const ctx: ContextoPeticion = { requestId: nuevoRequestId() };
     const inicio = Date.now();
 
-    const atencion = await atender(scope, handler, request, ctx, args);
+    const atencion = await atenderPeticion(request, ctx, args);
 
     /**
      * UNA linea por peticion (11.1), y aca porque es el unico punto por el que
@@ -250,6 +290,7 @@ export function conAuth<Args extends unknown[]>(scope: ScopeHttp, handler: Handl
      * respuesta en vez de dejarlo en una variable mutable.
      */
     registrarPeticion({
+      actorType,
       requestId: ctx.requestId,
       metodo: request.method,
       ruta: new URL(request.url).pathname,
@@ -341,6 +382,46 @@ async function atender<Args extends unknown[]>(
     }
 
     return { respuesta: noAutenticado(ctx), clientId };
+  } catch (error: unknown) {
+    return { respuesta: respuestaDeFallo(error, ctx), clientId };
+  }
+}
+
+/**
+ * El cuerpo de `conAuthMcp`. Como `atender`, NUNCA lanza.
+ *
+ * Mismos tres caminos al 401 que REST —sin cabecera, clave inexistente o con el
+ * hash equivocado, clave revocada— porque la verificacion es la misma
+ * (`ApiKeyService.identificar`, que `autenticar` tambien usa) y la respuesta es
+ * la misma (`noAutenticado`).
+ */
+async function atenderConClave<Args extends unknown[]>(
+  handler: Handler<Args>,
+  request: Request,
+  ctx: ContextoPeticion,
+  args: Args,
+): Promise<Atencion> {
+  let clientId: string | null = null;
+
+  try {
+    const servicio = crearServicio();
+
+    const clave = leerBearer(request);
+    if (clave === undefined) {
+      return { respuesta: noAutenticado(ctx), clientId };
+    }
+
+    const resultado = await servicio.identificar(clave);
+    if (!resultado.ok) {
+      return { respuesta: noAutenticado(ctx), clientId };
+    }
+
+    clientId = resultado.clave.prefix;
+
+    return {
+      respuesta: await handler(request, { ...ctx, clave: resultado.clave }, ...args),
+      clientId,
+    };
   } catch (error: unknown) {
     return { respuesta: respuestaDeFallo(error, ctx), clientId };
   }

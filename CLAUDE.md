@@ -28,8 +28,11 @@ hace falta es el comando que lo averigua, no el dato.
   grep -rnE "^export (const|async function) (GET|POST|PATCH|PUT|DELETE)" apps/web/app --include=route.ts
   ```
 
-  El `conAuth("…")` de cada línea es el scope que ese endpoint exige (7.2). DOS
-  líneas salen sin `conAuth`, y no son el mismo caso:
+  El `conAuth("…")` de cada línea es el scope que ese endpoint exige (7.2). Las
+  tres de `/mcp` salen con `conAuthMcp`: autentican con la misma clave y el mismo
+  401, pero sin un scope por endpoint, porque en MCP el scope es de cada
+  herramienta y lo aplica `crearHerramientas` con los de la clave (8.1). DOS
+  líneas salen sin autenticar, y no son el mismo caso:
 
   `/api/health` es el único endpoint DEL CONTRATO de la 6.2 sin autenticación, y
   eso es TODO lo que lo hace distinto: no tiene 401, 403 ni el 429 de la 7.3, que
@@ -273,8 +276,8 @@ contador de pruebas no tiene ese commit.
   tocar `esVencida` sola: las dos puntas tienen que moverse juntas a la zona de
   quien mira, que el sistema hoy no conoce.
 - La LINEA DE LOG POR PETICION de la 11.1 —request_id, metodo, ruta, estado,
-  duracion, prefijo de clave y actor— solo la escriben `conAuth` y `/api/health`
-  (`registrarPeticion`). Las Server Actions no escriben ninguna: dejan rastro en
+  duracion, prefijo de clave y actor— solo la escriben `conAuth`, `conAuthMcp` y
+  `/api/health` (`registrarPeticion`). Las Server Actions no escriben ninguna: dejan rastro en
   el log solo cuando fallan sin controlar (`registrarFallo`, con su request_id),
   asi que una accion que sale bien, o que devuelve un error de dominio, no
   aparece. Tampoco escriben linea el render de `GET /` ni `/eventos`. El
@@ -887,11 +890,24 @@ motivo dejó de valer, ahí está el disparador para volver a mirarla.
 
 ## Servidor MCP
 
-- El registro de herramientas y `TaskManagerPort` viven en `packages/core/mcp`,
-  pero el nucleo NO importa el SDK de MCP: las herramientas se declaran como
-  dato (`McpToolDefinition`) y cada app las monta sobre su `McpServer`. Es lo
-  que hace compatibles la regla de dependencias de arriba con el "registro
-  unico" de la 8.1.
+- El registro de herramientas, `TaskManagerPort` y el MONTAJE viven en
+  `packages/core/mcp`, pero el nucleo NO importa el SDK de MCP: las herramientas
+  se declaran como dato (`McpToolDefinition`) y `montarHerramientas`
+  (`montaje.ts`) las registra sobre un servidor descrito por su FORMA
+  (`ServidorDeHerramientas`), en el que el `McpServer` del SDK encaja por tipado
+  estructural. Cada app solo construye su `McpServer` y su transporte. Es lo que
+  hace compatibles la regla de dependencias de arriba con el "registro unico" de
+  la 8.1 y la ADR-003: el bucle vivia en `apps/mcp-stdio`, `apps/web` no puede
+  importarlo, y duplicarlo en /mcp era tener dos traducciones de la definicion al
+  protocolo. Ese encaje depende de que `McpToolResult` y `McpTextContent` sean
+  `type` y no `interface`: el resultado del SDK tiene firma de indice, y una
+  interface no se le asigna sin cast.
+- /mcp NO TIENE SESION (D4): cada POST arma su `McpServer` y su transporte
+  (`WebStandardStreamableHTTPServerTransport`, con `enableJsonResponse`) y los
+  cierra al responder; GET y DELETE dan 405. Asi los scopes se leen de la clave
+  en CADA mensaje. Por eso `actor_name` es la ETIQUETA de la clave y no el
+  `clientInfo.name` del initialize, que ese servidor nunca vio; `client_id` es el
+  prefijo y `request_id` el del X-Request-Id de la peticion (`contextoDeMcp`).
 - La resolucion por nombre de la 8.3.1 esta en `packages/core/src/mcp/resolve.ts`
   y es UNA sola para tablero, columna y tarea. Si hace falta una regla distinta
   para alguna entidad, va como dato en el ambito, no como un `if` en el modulo.

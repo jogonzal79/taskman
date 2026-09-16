@@ -34,6 +34,15 @@ export type ResultadoAutenticacion =
       readonly scopeRequerido: Scope;
     };
 
+/**
+ * Lo que devuelve `identificar`: la misma union sin el caso de scope, porque ahi
+ * no se pide ninguno.
+ */
+export type ResultadoIdentificacion = Exclude<
+  ResultadoAutenticacion,
+  { readonly motivo: "SCOPE_INSUFICIENTE" }
+>;
+
 export type BuscadorDeClaves = (prefix: string) => Promise<ApiKeyRow | null>;
 
 export interface OpcionesApiKeyService {
@@ -92,6 +101,33 @@ export class ApiKeyService {
    * claves cual de sus intentos existe.
    */
   async autenticar(claveEnClaro: string, scopeRequerido: Scope): Promise<ResultadoAutenticacion> {
+    const identificada = await this.identificar(claveEnClaro);
+
+    if (!identificada.ok) {
+      return identificada;
+    }
+
+    if (!identificada.clave.scopes.includes(scopeRequerido)) {
+      return { ok: false, motivo: "SCOPE_INSUFICIENTE", clave: identificada.clave, scopeRequerido };
+    }
+
+    return identificada;
+  }
+
+  /**
+   * Autentica una clave en claro SIN exigir un scope, y devuelve los que tiene.
+   *
+   * Es para el borde donde el scope no es uno por endpoint sino uno por
+   * herramienta: /mcp (8.1). Ahi la clave decide QUE herramientas se montan
+   * (`crearHerramientas` recibe sus scopes), y no hay un scope que exigirle a la
+   * peticion entera. Pedirle a `autenticar` uno cualquiera y leer la clave del
+   * SCOPE_INSUFICIENTE funcionaria, pero diria "le falta un scope" de una clave a
+   * la que no se le pidio ninguno.
+   *
+   * `autenticar` pasa por aca: la verificacion de la clave —hash en tiempo
+   * constante, revocacion, cache de la 7.1— es UNA, y los dos bordes la comparten.
+   */
+  async identificar(claveEnClaro: string): Promise<ResultadoIdentificacion> {
     const fila = await this.#buscar(prefijoDe(claveEnClaro));
 
     if (fila === null) {
@@ -108,17 +144,9 @@ export class ApiKeyService {
       return { ok: false, motivo: "NO_AUTENTICADA" };
     }
 
-    const clave: ClaveAutenticada = {
-      id: fila.id,
-      prefix: fila.prefix,
-      label: fila.label,
-      scopes: fila.scopes,
+    return {
+      ok: true,
+      clave: { id: fila.id, prefix: fila.prefix, label: fila.label, scopes: fila.scopes },
     };
-
-    if (!fila.scopes.includes(scopeRequerido)) {
-      return { ok: false, motivo: "SCOPE_INSUFICIENTE", clave, scopeRequerido };
-    }
-
-    return { ok: true, clave };
   }
 }

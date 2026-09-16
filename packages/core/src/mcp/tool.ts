@@ -8,23 +8,30 @@ import type { Scope } from "../domain/api-key";
  * No importa el SDK de MCP a proposito: CLAUDE.md prohibe que `packages/core`
  * lo haga, y la 8.1 pide que el registro de herramientas sea uno solo,
  * compartido por los dos transportes. Las dos cosas se cumplen si el nucleo
- * declara herramientas y cada app las monta sobre su `McpServer`; el adaptador
- * queda reducido a un bucle de `registerTool` y no contiene ninguna regla.
+ * declara herramientas como dato y las monta sobre un servidor que describe por
+ * su FORMA (`montaje.ts`); cada app solo construye su `McpServer` y su
+ * transporte.
  *
  * Los tipos de contenido replican la forma que espera el SDK (`{type:"text"}`),
  * que es parte del protocolo, no de la libreria.
+ *
+ * SON `type` Y NO `interface`, y no es estilo. El resultado que el SDK espera
+ * declara una firma de indice (`[x: string]: unknown`), y en TypeScript solo un
+ * alias de tipo se le asigna sin tenerla escrita: una interface no. Con
+ * interface, el `McpServer` del SDK no encaja en `ServidorDeHerramientas` y el
+ * montaje compartido necesitaria un cast (comprobado con tsc).
  */
 
-export interface McpTextContent {
+export type McpTextContent = {
   type: "text";
   text: string;
-}
+};
 
-export interface McpToolResult {
+export type McpToolResult = {
   content: McpTextContent[];
   /** true cuando la llamada fallo. El agente lo ve como resultado, no como excepcion. */
   isError?: boolean;
-}
+};
 
 /** Esquema de entrada: el "raw shape" de Zod que consume `registerTool`. */
 export type EsquemaEntrada = Record<string, ZodType>;

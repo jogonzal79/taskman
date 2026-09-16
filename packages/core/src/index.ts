@@ -150,6 +150,7 @@ export type {
   ClaveAutenticada,
   OpcionesApiKeyService,
   ResultadoAutenticacion,
+  ResultadoIdentificacion,
 } from "./services/api-key-service";
 
 // --- MCP: registro unico de herramientas y puerto (8.1) ----------------------
@@ -173,6 +174,12 @@ export type { FabricaDeContexto } from "./mcp/contexto";
 export type { EntornoMcp, Llamada } from "./mcp/llamada";
 export type { TaskManagerPort } from "./mcp/port";
 export { CorePort, crearCorePort } from "./mcp/core-port";
+export {
+  IDENTIDAD_SERVIDOR_MCP,
+  INSTRUCCIONES_MCP,
+  montarHerramientas,
+} from "./mcp/montaje";
+export type { ServidorDeHerramientas } from "./mcp/montaje";
 export type {
   EsquemaEntrada,
   McpTextContent,
