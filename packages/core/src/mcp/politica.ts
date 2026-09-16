@@ -13,6 +13,12 @@ import { z } from "zod";
  *
  * Lo que NO vive aca es leer `process.env`: eso es de cada app. El nucleo
  * recibe el valor crudo y dice si sirve.
+ *
+ * NO IMPORTA NADA DEL NUCLEO, y tiene que seguir asi: `apps/web` lo pide por el
+ * subcamino `@taskman/core/politica` desde `lib/config.ts`, que cuelga de
+ * `instrumentation.ts` y por eso se compila tambien para el runtime edge (ver la
+ * cabecera de `lib/config.ts`). Su unico import es `zod`, que `lib/config.ts` ya
+ * importa por su cuenta y que resuelve a la misma copia fisica.
  */
 
 export const POLITICAS_DESTRUCTIVAS = ["confirm", "allow", "deny"] as const;
