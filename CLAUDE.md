@@ -610,6 +610,13 @@ motivo dejó de valer, ahí está el disparador para volver a mirarla.
   Pendiente conocido: `@prisma/adapter-pg` SIGUE inerte y se empaqueta. Hoy no
   rompe nada —el bug era específico del runtime de `@prisma/client`— y el arreglo
   sería idéntico.
+  El caso CONTRARIO, que el realpath no ve: `@modelcontextprotocol/sdk` resuelve
+  desde `apps/web` y NO está en la lista, a propósito. Declararlo no sería inerte:
+  duplicaría zod en tiempo de ejecución —UNA copia física, DOS instancias, porque
+  Node carga el SDK con su zod nativa y el núcleo usa la empaquetada—. La medición
+  está en el comentario de `serverExternalPackages` en `next.config.ts`. Para
+  diagnosticar dos zod, `instanceof` NO sirve —en zod 4 compara traits y da true
+  igual—: solo `===` sobre la clase.
 - `instrumentation.ts` se compila TAMBIÉN para el runtime EDGE, donde no existe
   `fs` y donde `serverExternalPackages` NO aplica. O sea que nada de lo que ese
   archivo importe, ni directa ni transitivamente, puede terminar en `pg` o en
