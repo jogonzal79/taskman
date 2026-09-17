@@ -247,6 +247,11 @@ test("abrir y cerrar el panel de detalle no pierde el filtro", async ({ page, se
   const altas = dePrioridad(activo, "HIGH");
 
   await filtro(page, "Alta").click();
+  // Se espera el filtro puesto antes de abrir la tarjeta, por lo mismo que en
+  // la prueba anterior: el enlace de la tarjeta se calcula con los filtros que
+  // habia al dibujarla, y pulsarla antes de que llegue el arbol filtrado abre el
+  // panel SIN el filtro. Salto 1 vez en 56 con la maquina cargada.
+  await expect(filtroPuesto(page, "Alta")).toBeVisible();
   await tarjeta(page, TITULO_ALTA).click();
 
   // Los dos estados a la vez.
