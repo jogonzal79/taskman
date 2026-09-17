@@ -77,15 +77,29 @@ export const RUTAS = [
   {
     metodo: "post",
     ruta: "/api/boards",
-    resumen: "Crear tablero (con columnas por defecto)",
+    // La 6.2 lo resume como "Crear tablero (con columnas por defecto)". Se
+    // amplia porque el cuerpo acepta `columns` desde el paso 10a de F4, y un
+    // resumen que dijera solo "por defecto" contradiria al esquema de al lado.
+    resumen: "Crear tablero (con columnas propias o las cuatro por defecto)",
     scope: "write",
     rf: ["RF-01"],
     cuerpo: "CrearTablero",
     idempotente: true,
-    // Devuelve el tablero CON sus columnas, no el tablero solo: las cuatro
-    // columnas de la 4.3 son lo que este endpoint crea ademas del tablero.
+    // Devuelve el tablero CON sus columnas, no el tablero solo: las columnas son
+    // lo que este endpoint crea ademas del tablero.
     respuestas: [{ estado: 201, componente: "TableroDetallado" }],
-    errores: ["NAME_REQUIRED", "NAME_TOO_LONG", "DESCRIPTION_TOO_LONG"],
+    // Los TRES ultimos solo son alcanzables con `columns` propias: las cuatro de
+    // la 4.3 tienen nombre y key validos y distintos entre si. Los dos de
+    // `name` ya estaban por el nombre del tablero, y ahora cubren tambien el de
+    // cada columna, con la posicion del array en `details`.
+    errores: [
+      "NAME_REQUIRED",
+      "NAME_TOO_LONG",
+      "DESCRIPTION_TOO_LONG",
+      "COLUMN_KEY_REQUIRED",
+      "COLUMN_KEY_TOO_LONG",
+      "DUPLICATE_KEY",
+    ],
   },
   {
     metodo: "get",

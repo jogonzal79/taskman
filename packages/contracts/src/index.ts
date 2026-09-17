@@ -58,6 +58,7 @@ export {
   columnaDetallada,
   consultaDeBorradoDeColumna,
   crearColumna,
+  definicionDeColumna,
   parametrosDeColumna,
   LIMITE_NOMBRE_COLUMNA,
 } from "./column";
@@ -68,6 +69,7 @@ export type {
   ColumnaDetallada,
   ConsultaDeBorradoDeColumna,
   CrearColumna,
+  DefinicionDeColumna,
   ParametrosDeColumna,
 } from "./column";
 

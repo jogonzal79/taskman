@@ -39,7 +39,8 @@ import { registrarContratoRoto } from "../../../lib/log";
 
 /**
  * GET /api/boards (6.2): lista tableros, paginado por cursor.
- * POST /api/boards (6.2, RF-01): crea un tablero con sus columnas por defecto.
+ * POST /api/boards (6.2, RF-01): crea un tablero con sus columnas, las que
+ * indique el cuerpo o las cuatro por defecto de la 4.3.
  *
  * Requieren una API key con scope read y write respectivamente (7.2). La
  * verificacion la aporta `conAuth`, que recibe el scope como argumento
@@ -173,11 +174,16 @@ function proyectarSalida(board: BoardDetail, ctx: ContextoPeticion): TableroDeta
  *
  * Devuelve 201 y no 200, como fija la 6.3.1 para los POST que crean, y el
  * tablero CON sus columnas. Lo segundo es una decision: la 6.2 no dice que
- * devuelve un POST, pero las cuatro columnas de la 4.3 son justamente lo que
- * este endpoint crea ademas del tablero, y son las que hacen falta para la
- * llamada siguiente, que casi siempre es crear una tarea. Omitirlas obligaria a
- * un GET /api/boards/{id} inmediato para leer ids y keys que el nucleo ya
- * devolvio: el mismo argumento con el que la 6.3.1 justifica `column_key`.
+ * devuelve un POST, pero las columnas son justamente lo que este endpoint crea
+ * ademas del tablero, y son las que hacen falta para la llamada siguiente, que
+ * casi siempre es crear una tarea. Omitirlas obligaria a un GET
+ * /api/boards/{id} inmediato para leer ids y keys que el nucleo ya devolvio: el
+ * mismo argumento con el que la 6.3.1 justifica `column_key`.
+ *
+ * CUALES columnas lo decide el cuerpo: las del campo `columns` en el orden en
+ * que vengan, o las cuatro de la 4.3 si se omite. Ver `crearTablero`, que
+ * explica por que el campo esta y por que un array vacio no vale por "las de
+ * por defecto".
  *
  * Las columnas NO se crean aca. Las crea `BoardService.create` en la misma
  * transaccion que el tablero (4.3), que es donde tienen que estar: un tablero
@@ -219,12 +225,22 @@ export const POST = conAuth("write", async (request, auth): Promise<Response> =>
     });
   }
 
-  // `description` va condicional y no como `description: undefined` por
-  // exactOptionalPropertyTypes: la propiedad presente en undefined no es lo
-  // mismo que ausente.
+  /**
+   * Los dos opcionales van condicionales y no como `campo: undefined` por
+   * exactOptionalPropertyTypes: la propiedad presente en undefined no es lo
+   * mismo que ausente.
+   *
+   * En `columns` esa diferencia ADEMAS cambia el resultado y no solo el tipo:
+   * `BoardService.create` elige las cuatro de la 4.3 con `input.columns ??
+   * COLUMNAS_POR_DEFECTO`, asi que la clave presente en undefined caeria en el
+   * `??` igual que la ausente —ahi daria lo mismo— pero dejar de distinguirlas
+   * en el borde seria apoyarse en eso. El array vacio, que no cae en el `??`,
+   * ya lo rechazo el esquema.
+   */
   const input: CreateBoardInput = {
     name: entrada.data.name,
     ...(entrada.data.description === undefined ? {} : { description: entrada.data.description }),
+    ...(entrada.data.columns === undefined ? {} : { columns: entrada.data.columns }),
   };
 
   /**
