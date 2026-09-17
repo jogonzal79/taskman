@@ -438,30 +438,41 @@ describe("GET /api/tasks/search", () => {
       }
     });
 
-    it("column_key se IGNORA, no acota ni falla: la busqueda no lo acepta", async () => {
+    it("400 con column_key, que la busqueda no acepta: no acota, asi que no pasa", async () => {
       /**
        * `column_key` NO esta en la busqueda: el `SearchScope` del nucleo solo
        * acepta `columnId`, y resolver la key en el adaptador seria poner una
-       * resolucion de referencia en la capa equivocada.
+       * resolucion de referencia en la capa equivocada. Pero existe en
+       * GET /api/tasks, asi que se escribe de memoria contra este endpoint.
        *
-       * Y un parametro de consulta que el contrato no declara NO da 400: el
-       * handler arma el objeto a validar leyendo SOLO los parametros que conoce,
-       * asi que el `strictObject` nunca ve el de mas. Es el mismo comportamiento
-       * de GET /api/boards y GET /api/tasks. El test afirma lo que hoy pasa —y que
-       * el parametro queda INERTE, no silenciosamente honrado— porque lo peligroso
-       * no es el 200 sino creer que acoto cuando no acoto.
+       * ESTE TEST AFIRMABA LO CONTRARIO —que el parametro se ignoraba y la
+       * busqueda devolvia las coincidencias de TODAS las columnas— y estaba
+       * escrito para dejar constancia del agujero: el handler armaba el objeto a
+       * validar leyendo SOLO los parametros que conoce, asi que el `strictObject`
+       * del contrato nunca veia el de mas. Lo peligroso no era el 200 sino creer
+       * que se acoto cuando no se acoto; ahora el `strictObject` lo ve y lo
+       * rechaza. El mecanismo, para los cinco endpoints que leen query, esta en
+       * `consulta.test.ts`.
        */
       const tablero = await sembrarTablero(taskman, { name: "Tablero" });
       await sembrarTarea({ boardId: tablero.id, columnKey: "TODO", title: "contrato en TODO" });
       await sembrarTarea({ boardId: tablero.id, columnKey: "DONE", title: "contrato en DONE" });
 
-      const cuerpo = await resultado(`board_id=${tablero.id}&q=contrato&column_key=TODO`);
+      const respuesta = await buscar(
+        peticion({
+          ruta: `/api/tasks/search?board_id=${tablero.id}&q=contrato&column_key=TODO`,
+          clave: claveRead,
+        }),
+      );
 
-      // Las dos: el parametro no filtro nada.
-      expect(cuerpo.items.map((item) => item.title).sort()).toEqual([
-        "contrato en DONE",
-        "contrato en TODO",
-      ]);
+      expect(respuesta.status).toBe(400);
+
+      const cuerpo = await leerError(respuesta);
+
+      expect(cuerpo.error.code).toBe("VALIDATION_ERROR");
+      expect(cuerpo.error.message).toContain("'column_key'");
+      // Y sobre todo: NO el tablero entero disfrazado de resultado acotado.
+      expect(JSON.stringify(cuerpo)).not.toContain("contrato en DONE");
     });
 
     it("401 sin la cabecera Authorization", async () => {

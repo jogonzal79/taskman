@@ -2,7 +2,8 @@ import { consultaDeBusqueda, listadoDeCoincidencias } from "@taskman/contracts";
 import { crearCorePort, type SearchScope } from "@taskman/core";
 
 import { conAuth } from "../../../../lib/auth";
-import { respuestaDeError, respuestaDeFallo, responder } from "../../../../lib/http";
+import { leerConsulta } from "../../../../lib/consulta";
+import { respuestaDeFallo, responder } from "../../../../lib/http";
 import { registrarContratoRoto } from "../../../../lib/log";
 import { aTareaSalida } from "../../../../lib/tareas";
 
@@ -28,40 +29,31 @@ export const dynamic = "force-dynamic";
 const taskman = crearCorePort();
 
 export const GET = conAuth("read", async (request, auth): Promise<Response> => {
-  const parametros = new URL(request.url).searchParams;
-
-  const consulta = consultaDeBusqueda.safeParse({
-    limit: parametros.get("limit") ?? undefined,
-    cursor: parametros.get("cursor") ?? undefined,
-    q: parametros.get("q") ?? undefined,
-    board_id: parametros.get("board_id") ?? undefined,
-    column_id: parametros.get("column_id") ?? undefined,
+  /**
+   * NO hay repetibles aca. `column_key`, que el listado si acepta, es el caso
+   * que mas se escribe de memoria contra este endpoint: como el contrato no lo
+   * declara, sale con un 400 que lo nombra en vez de quedar inerte y devolver el
+   * tablero entero.
+   */
+  const consulta = leerConsulta(request, consultaDeBusqueda, auth, {
+    hint: "Indica el texto en 'q' y el ambito con 'board_id' o 'column_id'.",
   });
 
-  if (!consulta.success) {
-    return respuestaDeError(
-      "VALIDATION_ERROR",
-      "Los parametros de la consulta no superan el esquema.",
-      400,
-      auth,
-      {
-        details: { issues: consulta.error.issues },
-        hint: "Indica el texto en 'q' y el ambito con 'board_id' o 'column_id'.",
-      },
-    );
+  if (!consulta.ok) {
+    return consulta.respuesta;
   }
 
   const scope: SearchScope = {
-    limit: consulta.data.limit,
-    ...(consulta.data.cursor === undefined ? {} : { cursor: consulta.data.cursor }),
-    ...(consulta.data.board_id === undefined ? {} : { boardId: consulta.data.board_id }),
-    ...(consulta.data.column_id === undefined ? {} : { columnId: consulta.data.column_id }),
+    limit: consulta.datos.limit,
+    ...(consulta.datos.cursor === undefined ? {} : { cursor: consulta.datos.cursor }),
+    ...(consulta.datos.board_id === undefined ? {} : { boardId: consulta.datos.board_id }),
+    ...(consulta.datos.column_id === undefined ? {} : { columnId: consulta.datos.column_id }),
   };
 
   // El texto va RECORTADO pero sin tocar por lo demas: normalizarlo —bajarlo a
   // minusculas, quitarle acentos— seria adelantarse al diccionario de PostgreSQL,
   // que es el que decide que es un lexema y ya hace su propia normalizacion.
-  const pagina = await taskman.searchTasks(consulta.data.q, scope);
+  const pagina = await taskman.searchTasks(consulta.datos.q, scope);
 
   /**
    * La coincidencia es PLANA: los campos de la tarea mas `rank`. Ver

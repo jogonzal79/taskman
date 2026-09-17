@@ -20,6 +20,7 @@ import {
 } from "@taskman/core";
 
 import { conAuth, contextoDeApi } from "../../../lib/auth";
+import { leerConsulta } from "../../../lib/consulta";
 import {
   leerCuerpo,
   responder,
@@ -73,31 +74,22 @@ function aSalida(board: Board): Tablero {
 
 
 export const GET = conAuth("read", async (request, auth): Promise<Response> => {
-  const parametros = new URL(request.url).searchParams;
-
   // `?limit=abc` no puede caer en el default: seria devolver 50 tableros a
-  // alguien que pidio otra cosa y no enterarse nunca.
-  const consulta = consultaDeListado.safeParse({
-    limit: parametros.get("limit") ?? undefined,
-    cursor: parametros.get("cursor") ?? undefined,
-  });
+  // alguien que pidio otra cosa y no enterarse nunca. Y un parametro que el
+  // contrato no declara tampoco puede quedar inerte: `leerConsulta` le pasa al
+  // `strictObject` TODO lo que llego, asi que sale con su 400.
+  const consulta = leerConsulta(request, consultaDeListado, auth);
 
-  if (!consulta.success) {
-    return respuestaDeError(
-      "VALIDATION_ERROR",
-      "Los parametros de la consulta no superan el esquema.",
-      400,
-      auth,
-      { details: { issues: consulta.error.issues } },
-    );
+  if (!consulta.ok) {
+    return consulta.respuesta;
   }
 
   // `cursor` va condicional y no como `cursor: undefined` por
   // exactOptionalPropertyTypes: la propiedad presente en undefined no es lo
   // mismo que ausente.
   const query: ListBoardsQuery = {
-    limit: consulta.data.limit,
-    ...(consulta.data.cursor === undefined ? {} : { cursor: consulta.data.cursor }),
+    limit: consulta.datos.limit,
+    ...(consulta.datos.cursor === undefined ? {} : { cursor: consulta.datos.cursor }),
   };
 
   const pagina = await taskman.listBoards(query);

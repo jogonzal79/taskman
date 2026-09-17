@@ -70,8 +70,10 @@ function comoLista(valor: string | string[] | undefined): string[] {
  * UN VALOR QUE NO ES UNA PRIORIDAD SE DESCARTA, y hay que ser consciente de lo
  * que eso significa: `?prioridad=ALTISIMA` no filtra por nada y muestra el
  * tablero entero, que es lo mismo que no haber pedido nada. En un endpoint REST
- * eso seria la deuda que CLAUDE.md anota —un parametro que quedo INERTE sin que
- * el llamador se entere— pero aca no lo es, y la diferencia es concreta: la
+ * eso es un 400 —el esquema rechaza el valor que no esta en el enum, y desde
+ * `leerConsulta` tambien el parametro que el contrato no declara, justamente
+ * para que nada quede INERTE sin que el llamador se entere— pero aca no hace
+ * falta, y la diferencia es concreta: la
  * pantalla DIBUJA los filtros que aplico. Los chips que se ven encendidos son
  * exactamente `filtros.prioridades`, asi que la UI nunca puede afirmar un filtro
  * que no esta aplicando. Un JSON no tiene como decir eso.
