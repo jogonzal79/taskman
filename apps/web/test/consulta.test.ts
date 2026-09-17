@@ -153,8 +153,8 @@ describe("GET /api/tasks/search", () => {
    * que el hint propio del endpoint no tape al del parametro de mas.
    */
   it("el hint del endpoint NO tapa al del parametro de mas", async () => {
-    // El hint propio de la busqueda manda a revisar `q` y el ambito: contestarlo
-    // ante un `?foo=1` mandaria a corregir el parametro equivocado.
+    // El hint propio de la busqueda manda a revisar `q`: contestarlo ante un
+    // `?foo=1` mandaria a corregir el parametro equivocado.
     const tablero = await sembrarTablero(taskman, { name: "Tablero" });
 
     const respuesta = await buscarTareas(
@@ -170,8 +170,16 @@ describe("GET /api/tasks/search", () => {
   });
 
   it("sin el parametro de mas, el hint del endpoint sigue saliendo", async () => {
+    /**
+     * LA SONDA CAMBIO EN EL PASO 10b DE F4, y el caso no: este test necesita un
+     * 400 del ESQUEMA —uno sin parametros desconocidos— para ver el hint propio
+     * del endpoint. La sonda era `?q=algo` sin ambito, que entonces fallaba por
+     * el `.refine` de `consultaDeBusqueda`; ahora esa peticion es una busqueda
+     * global valida y devuelve 200. La sonda pasa a ser la falta de `q`, que es
+     * la unica regla propia que le queda al esquema de la busqueda.
+     */
     const respuesta = await buscarTareas(
-      peticion({ ruta: "/api/tasks/search?q=algo", clave: claveRead }),
+      peticion({ ruta: "/api/tasks/search", clave: claveRead }),
     );
 
     expect(respuesta.status).toBe(400);

@@ -36,7 +36,7 @@ export const GET = conAuth("read", async (request, auth): Promise<Response> => {
    * tablero entero.
    */
   const consulta = leerConsulta(request, consultaDeBusqueda, auth, {
-    hint: "Indica el texto en 'q' y el ambito con 'board_id' o 'column_id'.",
+    hint: "Indica el texto en 'q'; acotar con 'board_id' o 'column_id' es opcional.",
   });
 
   if (!consulta.ok) {

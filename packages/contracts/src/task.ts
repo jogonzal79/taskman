@@ -373,11 +373,25 @@ export type Coincidencia = z.infer<typeof coincidencia>;
  * PostgreSQL y el borde no lo tiene. La regla del borde es "dijiste algo", no
  * "lo que dijiste es buscable".
  *
- * El AMBITO sigue el precedente de GET /api/tasks: `board_id` obligatorio salvo
- * que se indique `column_id`. El nucleo acepta un scope vacio y buscaria en
- * TODOS los tableros; para un Kanban personal eso no es un agujero de permisos
- * pero si una respuesta que nadie pidio, y ademas la 6.2 nombra la busqueda junto
- * al resto de los endpoints de tarea, todos acotados.
+ * El AMBITO es OPCIONAL: `board_id` y `column_id` acotan cuando vienen, y sin
+ * ninguno de los dos la busqueda es GLOBAL, sobre todas las tareas del sistema.
+ * El nucleo ya lo aceptaba —un `SearchScope` sin `boardId` ni `columnId` es
+ * valido— y lo que lo impedia era un `.refine` de ESTE borde, puesto en F2 por
+ * precedente con `consultaDeTareas` y no por un requisito: el RF-09 pide "buscar
+ * tareas por titulo/descripcion" sin nombrar ambito, y la 6.3 no detalla la
+ * busqueda.
+ *
+ * POR QUE SE AMPLIO ESTE Y NO EL LISTADO, que conserva su regla: `q` es
+ * OBLIGATORIO aca y es el piso que el listado no tiene. Un GET /api/tasks sin
+ * filtros devolveria el sistema entero sin que nadie haya dicho que busca; una
+ * busqueda sin ambito exige igual haber dicho QUE palabra, asi que lo que
+ * devuelve siempre responde a algo que se pidio. Por eso ampliar uno no obliga a
+ * ampliar el otro, y el precedente dejo de ser el argumento.
+ *
+ * El ORDEN no se resiente al cruzar tableros: `ts_rank` puntua cada fila contra
+ * la consulta, sin nada por tablero de por medio, asi que los rank de dos
+ * tableros distintos son comparables entre si. La paginacion tampoco: el keyset
+ * es `(rank, id)` y el ambito solo agrega condiciones al WHERE.
  *
  * NO hay `column_key`, a diferencia del listado, y no es un olvido: el
  * `SearchScope` del nucleo solo acepta `columnId`, porque `search` no pasa por el
@@ -389,20 +403,15 @@ export type Coincidencia = z.infer<typeof coincidencia>;
  * (`ts_rank` DESC), que es lo unico que tiene sentido para un resultado de
  * busqueda. El listado esta para ordenar por los otros criterios.
  */
-export const consultaDeBusqueda = z
-  .strictObject({
-    ...consultaDeListado.shape,
-    q: z
-      .string()
-      .trim()
-      .min(1, { error: "Indica el texto a buscar en el parametro q." }),
-    board_id: z.uuid().optional(),
-    column_id: z.uuid().optional(),
-  })
-  .refine((consulta) => consulta.board_id !== undefined || consulta.column_id !== undefined, {
-    error: "Indica board_id, o column_id para buscar dentro de una columna concreta.",
-    path: ["board_id"],
-  });
+export const consultaDeBusqueda = z.strictObject({
+  ...consultaDeListado.shape,
+  q: z
+    .string()
+    .trim()
+    .min(1, { error: "Indica el texto a buscar en el parametro q." }),
+  board_id: z.uuid().optional(),
+  column_id: z.uuid().optional(),
+});
 
 export type ConsultaDeBusqueda = z.infer<typeof consultaDeBusqueda>;
 
