@@ -1,9 +1,13 @@
+import { prefijoDe } from "@taskman/core";
+
 import {
   crearPorLaApi,
   densa,
   emitirClaveParaLaApi,
   idDeTablero,
-  moverPorMcp,
+  moverPorElRegistroMcp,
+  moverPorMcpRemoto,
+  movimientosDeTarea,
   positionsDe,
   columnaEnLaBase,
 } from "./base";
@@ -129,15 +133,33 @@ test("CT-06: una tarea creada por la API aparece sin recargar a mano", async ({
 
 // --- 2. CT-07: mover por MCP con la pantalla abierta ------------------------
 
-test("CT-07: una tarea movida por MCP se refleja en el tablero sin recargar", async ({
+/**
+ * POR /mcp, CON EL CLIENTE DE LA SDK. Hasta el paso 8 de F4 este caso llamaba al
+ * handler del registro sin transporte: cumplia la letra de la 10.2 —"via MCP"—
+ * pero no pasaba por nada de lo que un cliente remoto atraviesa. Ahora recorre la
+ * ruta real del servidor que levanto Playwright: red, initialize, clave Bearer,
+ * scopes, cupo y montaje.
+ *
+ * Las pruebas 4 y 5 de este archivo siguen moviendo por el registro directo
+ * (`moverPorElRegistroMcp`), y es a proposito: miden la pantalla, no el
+ * transporte, y si /mcp se rompe tiene que caer ESTA y no todas.
+ */
+test("CT-07: una tarea movida por /mcp con el cliente de la SDK se refleja en el tablero sin recargar", async ({
   page,
 }) => {
   await expect(titulos(page, EN_PROGRESO)).toHaveText(["Montar Playwright"]);
   await marcarDocumento(page);
 
-  // Por el registro unico de herramientas de la 8.1, que es el mismo codigo que
-  // ejecuta `apps/mcp-stdio`: resolucion por nombre (8.3.1) y actor AGENT (7.4).
-  await moverPorMcp({ tarea: "Montar Playwright", aColumna: "BACKLOG", position: 0 });
+  // La clave de un agente, con los scopes que la 7.2 recomienda darle: sin delete.
+  const clave = await emitirClaveParaLaApi(["READ", "WRITE"]);
+
+  await moverPorMcpRemoto({
+    base: test.info().project.use.baseURL ?? "",
+    clave,
+    tarea: "Montar Playwright",
+    aColumna: "BACKLOG",
+    position: 0,
+  });
 
   await expect(titulos(page, BACKLOG)).toHaveText([
     "Montar Playwright",
@@ -149,10 +171,19 @@ test("CT-07: una tarea movida por MCP se refleja en el tablero sin recargar", as
   await expect(titulos(page, EN_PROGRESO)).toHaveText([]);
   expect(await sigueElMismoDocumento(page)).toBe(true);
 
+  // Llega como cambio AJENO: el actor que /mcp registra es AGENT.
+  await expect(titulosMarcados(page)).toHaveText(["Montar Playwright"]);
+
   // Y en la base quedo denso, que es lo que no se ve en pantalla.
   const backlog = await columnaEnLaBase(BACKLOG);
 
   expect(positionsDe(backlog)).toEqual(densa(5));
+
+  // LA HUELLA DE QUE PASO POR /mcp: AGENT con la etiqueta de la clave y su
+  // prefijo como client_id. Por el registro directo el client_id seria NULL.
+  expect(await movimientosDeTarea("Montar Playwright")).toEqual([
+    { actorType: "AGENT", actorName: "clave de extremo a extremo", clientId: prefijoDe(clave) },
+  ]);
 });
 
 // --- 3. Lo ajeno se ve distinto de lo propio --------------------------------
@@ -240,7 +271,7 @@ test("lo que cambia un agente se marca; lo que hace el usuario en la misma panta
  * caso para el que existe.
  */
 test("la marca aguanta hasta que el usuario da señales de estar delante", async ({ page }) => {
-  await moverPorMcp({ tarea: TITULO_VENCE_HOY, aColumna: "IN_PROGRESS", position: 0 });
+  await moverPorElRegistroMcp({ tarea: TITULO_VENCE_HOY, aColumna: "IN_PROGRESS", position: 0 });
 
   await expect(titulosMarcados(page)).toHaveText([TITULO_VENCE_HOY]);
 
@@ -260,7 +291,7 @@ test("la marca aguanta hasta que el usuario da señales de estar delante", async
   await expect(titulos(page, EN_PROGRESO)).toHaveText([TITULO_VENCE_HOY, "Montar Playwright"]);
 
   // Y un cambio ajeno posterior vuelve a marcar: el apagado no es definitivo.
-  await moverPorMcp({ tarea: TITULO_CORTO, aColumna: "BACKLOG", position: 0 });
+  await moverPorElRegistroMcp({ tarea: TITULO_CORTO, aColumna: "BACKLOG", position: 0 });
   await expect(titulosMarcados(page)).toHaveText([TITULO_CORTO]);
 });
 
@@ -302,7 +333,7 @@ test("un cambio ajeno durante un arrastre no rompe la reconciliacion y no se pie
   await agarrar(page, TITULO_MEDIA);
 
   // Con la tarjeta agarrada, un agente mueve otra de otra columna.
-  await moverPorMcp({ tarea: TITULO_LARGO, aColumna: "IN_PROGRESS", position: 0 });
+  await moverPorElRegistroMcp({ tarea: TITULO_LARGO, aColumna: "IN_PROGRESS", position: 0 });
 
   // El aviso llego y NO se aplico: la tarjeta que movio el agente sigue donde
   // estaba, porque refrescar ahora romperia el gesto en curso.

@@ -59,6 +59,106 @@ Todas resuelven tableros, columnas y tareas por nombre además de por id, así q
 es ambiguo, la herramienta devuelve `AMBIGUOUS_MATCH` con los candidatos y no
 elige: hay que desambiguar.
 
+### Usarlo como cliente remoto, por HTTP (`/mcp`)
+
+La app web sirve el mismo catálogo por Streamable HTTP en `/mcp` (sección 8.1),
+autenticado con una API key igual que `/api`: la clave va como
+`Authorization: Bearer` y sus scopes (7.2) deciden qué herramientas se ofrecen.
+Probado con Claude Code 2.1.273.
+
+> **Cada `pnpm run verify` BORRA las claves.** La suite trunca `api_key`, así
+> que después de un `verify` la clave configurada deja de existir y Claude Code
+> falla con 401. Hay que emitir otra y volver a registrar el servidor (paso 3,
+> con `claude mcp remove taskman-remoto` antes). Es lo primero que confunde.
+
+**1. Levantar la app** en esta máquina y comprobar que responde:
+
+```powershell
+pnpm run db:up
+pnpm --filter @taskman/web run build
+pnpm --filter @taskman/web run start          # http://localhost:3000
+curl.exe http://localhost:3000/api/health     # tiene que dar 200
+```
+
+**2. Emitir la clave**, con `read` y `write`: es lo que la 7.2 recomienda para
+un agente. Se muestra una sola vez.
+
+```powershell
+pnpm run apikey:create -- "claude code remoto" read write
+```
+
+**3. Registrar el servidor en Claude Code**, desde la raíz del repo:
+
+```powershell
+claude mcp add --transport http --scope local taskman-remoto http://localhost:3000/mcp --header "Authorization: Bearer tmk_live_PEGA_LA_CLAVE"
+```
+
+- `--scope local` guarda la configuración en `~/.claude.json`, solo para este
+  proyecto: la clave no llega nunca a un archivo del repo.
+- Se llama `taskman-remoto` para convivir con el `taskman` por stdio del
+  `.mcp.json`. Las herramientas se distinguen por el prefijo:
+  `mcp__taskman-remoto__move_task` contra `mcp__taskman__move_task`.
+
+La misma entrada en JSON, por si se prefiere un archivo de configuración:
+
+```json
+"taskman-remoto": {
+  "type": "http",
+  "url": "http://localhost:3000/mcp",
+  "headers": { "Authorization": "Bearer tmk_live_PEGA_LA_CLAVE" }
+}
+```
+
+**4. Comprobar que conectó:**
+
+- `claude mcp get taskman-remoto` lo muestra conectado.
+- Dentro de una sesión, `/mcp` muestra `taskman-remoto` con **diez**
+  herramientas: `delete_task` no aparece porque la clave no tiene `delete`.
+- "Listá los tableros con taskman-remoto" tiene que llamar a `list_boards`.
+- En la salida de `pnpm --filter @taskman/web run start` aparece una línea por
+  petición con `"route":"/mcp"`, `"client_id":"tmk_live_…"` y
+  `"actor_type":"AGENT"`. Al conectar, Claude Code manda primero un POST de
+  sondeo que recibe **400**: no es un error, el `initialize` que sigue da 200.
+
+#### Si no conecta
+
+| Lo que muestra Claude Code | Qué pasó | Qué hacer |
+| --- | --- | --- |
+| `failed`, con "Server rejected the configured Authorization header (HTTP 401)" | La clave no existe, está revocada o la borró un `verify`. Con la cabecera configurada, Claude Code no intenta OAuth. | Emitir otra, `claude mcp remove taskman-remoto` y volver al paso 3. |
+| `failed`, con "Dynamic Client Registration rejected (HTTP 404)" seguido de HTML | **La configuración no tiene la cabecera.** Sin `Authorization`, Claude Code intenta OAuth, el registro dinámico de cliente no existe y Next responde con su página 404. El mensaje **no** dice que falta la clave. | Volver a registrar con `--header "Authorization: Bearer …"`. |
+| Una llamada que falla con 429 `RATE_LIMITED` | El cupo de la 7.3 por clave: 120 lecturas y 30 escrituras por minuto, compartido con `/api`. Cada `tools/call` cobra el cupo de su herramienta. | Esperar lo que dice `Retry-After`. Mover más de 30 tareas en un minuto exige pausar. |
+
+#### Las once herramientas: solo en una prueba supervisada
+
+Con `read write` se ven diez. `delete_task` exige una clave con `delete`, y la
+7.2 recomienda no dársela a un agente autónomo. Para comprobar las once, emitir
+una clave aparte, registrarla, probar y sacarla:
+
+```powershell
+pnpm run apikey:create -- "prueba delete supervisada" read write delete
+claude mcp remove taskman-remoto
+claude mcp add --transport http --scope local taskman-remoto http://localhost:3000/mcp --header "Authorization: Bearer tmk_live_LA_CLAVE_CON_DELETE"
+# ... la prueba ...
+claude mcp remove taskman-remoto
+# Revocar se hace por SQL (7.1); usuario y base son los POSTGRES_* del .env.
+docker compose exec postgres psql -U taskman -d taskman -c "UPDATE api_key SET revoked_at = now() WHERE label = 'prueba delete supervisada'"
+```
+
+Después volver a registrar la clave de `read write`. La revocada sigue
+autenticando hasta 60 s por el cache de claves de la 7.1; reiniciar la app la
+corta en el acto. El borrado sigue la `MCP_DESTRUCTIVE_POLICY` del `.env`, que
+por defecto es `confirm`.
+
+#### Desde otra máquina de la red: no
+
+Conectarse a `/mcp` desde otra máquina es justo el disparador del desvío "La UI
+no tiene autenticación" de `CLAUDE.md`. Si el puerto es alcanzable desde la
+red, también lo es la UI, que lee y escribe todo **sin clave**, y la clave de
+`/mcp` viaja en **texto plano**, porque no hay TLS. Y hoy nada lo impide del
+lado de la app: `next start` escucha en todas las interfaces (medido: anuncia
+una dirección de red además de `localhost`), así que el único resguardo es el
+firewall del sistema. Usarlo en la misma máquina, con `localhost`.
+
 ### Borrado de tareas
 
 `delete_task` es la única herramienta destructiva del catálogo (sección 8.2) y
@@ -158,4 +258,4 @@ Sin el archivo de entrada, el servidor se queda esperando mensajes por stdin y
 El registro de herramientas vive en `packages/core/mcp` y está declarado como
 dato: el núcleo no importa el SDK de MCP (ver `CLAUDE.md`). Cada transporte lo
 monta sobre su propio servidor, de modo que el catálogo no puede divergir entre
-stdio y el futuro Streamable HTTP.
+stdio y el Streamable HTTP de `/mcp`.

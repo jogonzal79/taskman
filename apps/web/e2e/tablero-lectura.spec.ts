@@ -322,10 +322,18 @@ test("por debajo de 1024 px sale el aviso, no una version degradada", async ({ p
  *          API key (asi el actor es API y no uno inventado). Comprueba ademas que
  *          NO hubo recarga de documento.
  *   CT-07  Mover por MCP y ver el reflejo en la UI.
- *          CUBIERTO, en `cambios-ajenos.spec.ts`, por el registro unico de
- *          herramientas de la 8.1 —el mismo codigo que ejecuta `apps/mcp-stdio`—
- *          con resolucion por nombre y actor AGENT. Lo unico que no recorre es el
- *          transporte stdio.
+ *          CUBIERTO, en `cambios-ajenos.spec.ts`, POR /mcp: el cliente de la SDK
+ *          por red contra la ruta real del servidor que levanta Playwright, con una
+ *          clave read+write. Recorre lo que recorre un cliente remoto —initialize,
+ *          Bearer, scopes, cupo, montaje— y afirma, ademas del reflejo sin recargar
+ *          y del orden denso, la marca de cambio ajeno y la huella de /mcp en
+ *          `audit_log`: AGENT con la etiqueta de la clave y su prefijo como
+ *          `client_id`. Hasta el paso 8 de F4 iba por el registro sin transporte.
+ *          Lo que NO recorre: el transporte stdio (`apps/mcp-stdio` tiene su suite
+ *          de contrato por el protocolo) ni el modo http con HttpPort, que no
+ *          existe todavia. Las demas pruebas del archivo que necesitan un cambio de
+ *          agente siguen por el registro directo, a proposito: miden la pantalla, y
+ *          asi un /mcp roto hace caer SOLO este caso (contraprueba hecha).
  *   CT-08  Clave sin scope delete contra la UI de borrado.    Falta: la UI no usa
  *          la API ni claves (9.1), asi que este escenario no tiene superficie aca
  *          —es el desvio "la UI no tiene autenticacion" de CLAUDE.md—; el scope
