@@ -4,6 +4,10 @@
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
+  "exports": {
+    ".": "./dist/index.js",
+    "./http-port": "./src/http-port.ts"
+  },
   "scripts": {
     "build": "node build.mjs",
     "test": "dotenv -e ../../.env -- vitest run",
@@ -13,6 +17,7 @@
     "@modelcontextprotocol/sdk": "1.30.0",
     "@prisma/adapter-pg": "7.10.0",
     "@prisma/client": "7.10.0",
+    "@taskman/contracts": "workspace:*",
     "@taskman/core": "workspace:*",
     "pg": "8.23.0",
     "pino": "10.3.1",

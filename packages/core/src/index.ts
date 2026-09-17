@@ -1,4 +1,4 @@
-export { DomainError, isDomainError } from "./domain/errors";
+export { DomainError, esCodigoDeDominio, isDomainError } from "./domain/errors";
 export type { DomainErrorCode, DomainErrorOptions } from "./domain/errors";
 
 export type {

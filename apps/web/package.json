@@ -30,6 +30,7 @@
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",
+    "@taskman/mcp-stdio": "workspace:*",
     "@types/node": "24.13.3",
     "@types/pg": "8.23.1",
     "@types/react": "19.2.18",
