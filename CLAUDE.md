@@ -16,8 +16,9 @@ hace falta es el comando que lo averigua, no el dato.
 
 - **Cuántas pruebas hay y si pasan**: `pnpm run verify`. Levanta la base, migra y
   corre las suites contra PostgreSQL real; cada paquete imprime su total, después
-  levanta `next dev` y le pide tres rutas (`pnpm run humo:dev`) y al final compila
-  y sirve la app para pasarle Playwright (`pnpm run e2e`).
+  levanta `next dev` y le pide las rutas que lista `apps/web/scripts/humo-dev.mjs`
+  (`pnpm run humo:dev`, que imprime cada una con su 200) y al final compila y
+  sirve la app para pasarle Playwright (`pnpm run e2e`).
 - **Qué cubre el nivel de extremo a extremo** de la 10, y sobre todo qué NO: los
   `apps/web/e2e/*.spec.ts`, y al pie de `tablero-lectura.spec.ts` está el mapeo
   contra los diez escenarios CT de la 10.2 con el motivo de cada hueco. Los datos
