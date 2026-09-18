@@ -18,6 +18,7 @@ import {
   contarFilas,
   emitirClave,
   leerError,
+  leerJson,
   peticion,
   truncateAll,
 } from "./helpers";
@@ -135,6 +136,31 @@ describe("canonicalizacion del cuerpo (6.5)", () => {
 
   it("es un SHA-256 en hexadecimal minusculo, que es lo que la base acepta", () => {
     expect(hashDePeticion("POST", RUTA, { name: "Alfa" })).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("el hash de un cuerpo SIN columns no cambio al agregarse el campo al contrato", () => {
+    /**
+     * El paso 10a de F4 sumo `columns` al esquema de POST /api/boards. Esto
+     * comprueba que eso NO movio el hash de los cuerpos que ya existian, y el
+     * motivo estructural es que `hashDePeticion` recibe el cuerpo CRUDO: el
+     * handler resuelve la idempotencia ANTES de validar, asi que el esquema no
+     * toca lo que se hashea. Una clave emitida contra un cuerpo viejo sigue
+     * reproduciendo despues de desplegar el campo nuevo.
+     *
+     * El valor va escrito a mano y no calculado al lado: calcularlo con la misma
+     * funcion que se quiere fijar no probaria nada. Si alguien mueve el hash
+     * detras de la validacion —donde un opcional ausente puede aparecer o
+     * desaparecer del objeto— este es el que se pone rojo.
+     */
+    expect(hashDePeticion("POST", RUTA, { name: "Alfa" })).toBe(
+      sha256('["POST","/api/boards",{"name":"Alfa"}]'),
+    );
+
+    // Y el campo nuevo, cuando viene, SI entra: dos peticiones que piden
+    // columnas distintas no son la misma peticion.
+    expect(hashDePeticion("POST", RUTA, { name: "Alfa" })).not.toBe(
+      hashDePeticion("POST", RUTA, { name: "Alfa", columns: [{ key: "X", name: "X" }] }),
+    );
   });
 
   it("canonicalizar ordena las claves y respeta los arrays", () => {
@@ -260,13 +286,18 @@ describe("POST /api/boards con Idempotency-Key", () => {
   /**
    * El caso del ARRAY en otro orden, de punta a punta.
    *
-   * La fila se SIEMBRA por SQL, y es la unica de esta suite que lo hace, porque
-   * hoy ningun cuerpo valido de POST /api/boards contiene un array: `crearTablero`
-   * es un `strictObject` de `name` y `description`, asi que una peticion con
-   * `columns` se va en un 400 antes de guardar nada. La fila sembrada es
-   * exactamente la que dejaria esa peticion si el contrato aceptara el campo —el
+   * La fila se SIEMBRA por SQL, y es la unica de esta suite que lo hace. El
+   * motivo era que ningun cuerpo valido de POST /api/boards contenia un array;
+   * desde el paso 10a de F4 eso ya no es cierto —`columns` es uno— pero la
+   * siembra sigue haciendo falta IGUAL por este cuerpo concreto: `["TODO",
+   * "DONE"]` es un array de TEXTO, y `columns` pide objetos `{name, key}`, asi
+   * que esta peticion se sigue yendo en un 400 antes de guardar nada. La fila
+   * sembrada es exactamente la que dejaria si el contrato aceptara esa forma —el
    * mismo hash que calcula `hashDePeticion`— y lo que se ejercita es lo que
    * importa: la COMPARACION del adaptador.
+   *
+   * El array de un cuerpo VALIDO, de punta a punta y sin sembrar nada, esta mas
+   * abajo: "con columns, repetir la misma clave y el mismo cuerpo reproduce".
    */
   describe("con un array en el cuerpo (fila sembrada)", () => {
     const GUARDADO = { name: "Alfa", columns: ["TODO", "DONE"] };
@@ -315,6 +346,59 @@ describe("POST /api/boards con Idempotency-Key", () => {
       expect((await leerError(respuesta)).error.code).toBe("IDEMPOTENCY_MISMATCH");
       expect(await contarFilas(client, "board")).toBe(0);
     });
+  });
+
+  it("con columns, repetir la misma clave y el mismo cuerpo reproduce y no crea un segundo tablero", async () => {
+    const clave = await emitirClave(client, ["WRITE"]);
+    const cuerpo = JSON.stringify({
+      name: "Flujo propio",
+      columns: [{ key: "IDEAS", name: "Ideas" }],
+    });
+
+    const primera = await crear(postear({ cuerpo, clave, idempotencia: "k-columns" }));
+    const segunda = await crear(postear({ cuerpo, clave, idempotencia: "k-columns" }));
+
+    expect(primera.status).toBe(201);
+    expect(segunda.status).toBe(201);
+    expect(segunda.headers.get(CABECERA_REPLAY)).toBe("true");
+
+    // El cuerpo reproducido es el mismo, con las columnas propias adentro.
+    const cuerpoPrimera = await leerJson<TableroDetallado>(primera);
+    const cuerpoSegunda = await leerJson<TableroDetallado>(segunda);
+
+    expect(cuerpoSegunda).toEqual(cuerpoPrimera);
+    expect(cuerpoSegunda.columns.map((columna) => columna.key)).toEqual(["IDEAS"]);
+
+    expect(await contarFilas(client, "board")).toBe(1);
+    expect(await contarFilas(client, "board_column")).toBe(1);
+  });
+
+  it("la misma clave con columns y sin columns es 422: el campo entra en el hash", async () => {
+    // El caso que importa de verdad: los dos cuerpos crean "el mismo" tablero
+    // por nombre pero con columnas distintas, asi que reproducir el primero le
+    // devolveria al cliente un tablero que no es el que pidio.
+    const clave = await emitirClave(client, ["WRITE"]);
+
+    const primera = await crear(
+      postear({ cuerpo: JSON.stringify({ name: "Tablero" }), clave, idempotencia: "k-mixta" }),
+    );
+
+    expect(primera.status).toBe(201);
+
+    const segunda = await crear(
+      postear({
+        cuerpo: JSON.stringify({ name: "Tablero", columns: [{ key: "IDEAS", name: "Ideas" }] }),
+        clave,
+        idempotencia: "k-mixta",
+      }),
+    );
+
+    expect(segunda.status).toBe(422);
+    expect((await leerError(segunda)).error.code).toBe("IDEMPOTENCY_MISMATCH");
+
+    // El primero quedo intacto, con sus cuatro por defecto, y no hay un segundo.
+    expect(await nombresDeTableros(client)).toEqual(["Tablero"]);
+    expect(await contarFilas(client, "board_column")).toBe(4);
   });
 
   it("la misma clave desde OTRA API key es otro cliente: crea su propio tablero", async () => {

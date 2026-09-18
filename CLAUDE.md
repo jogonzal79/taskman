@@ -16,8 +16,9 @@ hace falta es el comando que lo averigua, no el dato.
 
 - **Cuántas pruebas hay y si pasan**: `pnpm run verify`. Levanta la base, migra y
   corre las suites contra PostgreSQL real; cada paquete imprime su total, después
-  levanta `next dev` y le pide tres rutas (`pnpm run humo:dev`) y al final compila
-  y sirve la app para pasarle Playwright (`pnpm run e2e`).
+  levanta `next dev` y le pide las rutas que lista `apps/web/scripts/humo-dev.mjs`
+  (`pnpm run humo:dev`, que imprime cada una con su 200) y al final compila y
+  sirve la app para pasarle Playwright (`pnpm run e2e`).
 - **Qué cubre el nivel de extremo a extremo** de la 10, y sobre todo qué NO: los
   `apps/web/e2e/*.spec.ts`, y al pie de `tablero-lectura.spec.ts` está el mapeo
   contra los diez escenarios CT de la 10.2 con el motivo de cada hueco. Los datos
@@ -28,8 +29,11 @@ hace falta es el comando que lo averigua, no el dato.
   grep -rnE "^export (const|async function) (GET|POST|PATCH|PUT|DELETE)" apps/web/app --include=route.ts
   ```
 
-  El `conAuth("…")` de cada línea es el scope que ese endpoint exige (7.2). DOS
-  líneas salen sin `conAuth`, y no son el mismo caso:
+  El `conAuth("…")` de cada línea es el scope que ese endpoint exige (7.2). Las
+  tres de `/mcp` salen con `conAuthMcp`: autentican con la misma clave y el mismo
+  401, pero sin un scope por endpoint, porque en MCP el scope es de cada
+  herramienta y lo aplica `crearHerramientas` con los de la clave (8.1). DOS
+  líneas salen sin autenticar, y no son el mismo caso:
 
   `/api/health` es el único endpoint DEL CONTRATO de la 6.2 sin autenticación, y
   eso es TODO lo que lo hace distinto: no tiene 401, 403 ni el 429 de la 7.3, que
@@ -44,14 +48,19 @@ hace falta es el comando que lo averigua, no el dato.
   ensuciaría. NO autentica porque la UI no usa ninguna API key: invoca los
   servicios en el mismo proceso y no consume su propia API pública (9.1), así que
   no tiene con qué. LO QUE EXPONE, por cada escritura del sistema: el tipo de
-  actor, la acción, el tipo de entidad y su UUID. Nada de títulos, descripciones,
-  fechas ni contenido. Y que no lleve contenido NO quiere decir que el contenido
-  esté protegido: la UI entera no autentica. `GET /` sirve todos los tableros con
-  sus títulos y fechas, con `?tarea=` también la descripción, y las Server
-  Actions crean, editan, mueven y borran sin clave ni scopes (las dos lecturas,
-  medidas con `curl` sin cabecera `Authorization`: 200 y los datos en el HTML).
-  O sea que `/eventos` no expone nada que la página no exponga ya. Es el desvío
-  "La UI no tiene autenticación", más abajo.
+  actor, la acción, el tipo de entidad, su UUID y el `request_id` de la petición
+  que la hizo —los cinco campos de `AvisoDeCambio`, en
+  `packages/core/src/db/cambios.ts`—. Nada de títulos, descripciones, fechas ni
+  contenido. Y que no lleve contenido NO quiere decir que el contenido esté
+  protegido: la UI entera no autentica. `GET /` sirve todos los tableros con sus
+  títulos y fechas, con `?tarea=` también la descripción, y las Server Actions
+  crean, editan, mueven y borran sin clave ni scopes (las dos lecturas, medidas
+  con `curl` sin cabecera `Authorization`: 200 y los datos en el HTML). O sea que
+  `/eventos` no expone CONTENIDO que la página no exponga ya. Lo que sí agrega
+  son dos datos de cada escritura que `GET /` no pinta —el tipo de actor y el
+  `request_id`—, y ninguno de los dos es una llave: ningún endpoint acepta un
+  `request_id` como entrada, ni siquiera GET /api/audit lo filtra (ver la
+  deuda). Es el desvío "La UI no tiene autenticación", más abajo.
 - **Qué endpoints faltan**: la tabla de la 6.2 es el objetivo y el comando de
   arriba es el estado; la resta de los dos es la lista. Cualquier copia escrita
   acá empieza a envejecer el mismo día.
@@ -102,16 +111,6 @@ contador de pruebas no tiene ese commit.
   tildes se lee como roto; y la busqueda incremental mientras se escribe no es
   viable de entrada, porque `plainto_tsquery` no agrega `:*` y un prefijo no
   matchea (ver la entrada de arriba).
-- Un parametro de consulta DESCONOCIDO se ignora en silencio en los CINCO
-  endpoints de listado (GET /api/boards, GET /api/tasks, GET /api/tasks/search,
-  GET /api/audit y el listado por columna). No es que el `strictObject` lo
-  acepte: es que nunca lo ve, porque el handler arma el objeto a validar leyendo
-  SOLO los parametros que conoce, uno por uno. Lo peligroso no es el 200 sino
-  creer que el parametro acoto cuando quedo INERTE: `?column_key=TODO` en la
-  busqueda devuelve el tablero entero, y quien lo mando no se entera. Esta atado
-  con un test que afirma justamente eso. Cambiarlo —comparar las claves
-  recibidas contra las declaradas y devolver 400— afecta a los cinco endpoints a
-  la vez, asi que es su propio paso y no un arreglo al pasar.
 - `list_boards` y `list_tasks` devuelven `has_more` pero no el `cursor` (y
   `search_tasks` tiene el mismo hueco). El nucleo lo tiene —`Page.nextCursor`, y
   las herramientas lo leen para calcular `has_more`— pero lo descartan al
@@ -124,9 +123,95 @@ contador de pruebas no tiene ese commit.
   invalida— pero el dia no, que es el caso que alguien escribe de verdad. El
   contrato REST no comparte ese helper: `fechaSola` de `packages/contracts`
   valida con un ida y vuelta —reconstruye la fecha y la compara con lo que
-  entro— y eso si lo atrapa. El arreglo es el mismo ida y vuelta dentro de
-  `aFecha`, y conviene hacerlo ahi y no duplicar el de contracts, porque el borde
-  MCP no puede importar del paquete de contratos HTTP.
+  entro— y eso si lo atrapa. Y el MODO HTTP NO LO SALVA, aunque ahi la fecha
+  termine en ese contrato: `aFecha` corre antes, dentro de la herramienta, y
+  `HttpPort` manda la fecha YA CORRIDA —"2026-03-02"—, que `fechaSola` acepta
+  porque existe. Pasa igual por los tres caminos: stdio en `core`, stdio en
+  `http` y /mcp (leido del codigo; la conversion, comprobada con node). Que haya
+  DOS validaciones de la misma fecha es la causa y no un detalle: la 3.3 permite
+  que `packages/core` importe `contracts`, y la ADR-006 pide que los esquemas de
+  las herramientas se deriven de ahi, asi que el arreglo es que la fecha de las
+  herramientas se valide con `fechaSola`, dentro del paso de la entrada
+  siguiente. Copiar el ida y vuelta en `aFecha` cerraria este caso y dejaria
+  abierto el hueco que lo produjo. (Esta entrada decia antes que el borde MCP no
+  puede importar del paquete de contratos: era FALSO, lo desmienten la 3.3 y la
+  ADR-006, y no hay que volver a leerlo como regla.)
+  NO BLOQUEA EL CIERRE DE F4, decidido el 18 de septiembre de 2026 al cerrarla:
+  ni el entregable ni la definicion de terminado de la fila F4 de la 12 piden
+  validar lo que entra —son el registro, los puertos, los transportes y las once
+  herramientas ejecutables—. DISPARADOR: ninguno que esperar, porque el dano ya
+  ocurre y en silencio; lo que queda por decidir es CUANDO, y va con el paso de
+  la entrada siguiente.
+- Los ESQUEMAS DE ENTRADA DE LAS HERRAMIENTAS MCP NO SE DERIVAN DE
+  `packages/contracts`, y la ADR-006 lo pide con esas palabras: los esquemas de
+  contracts son "la unica definicion", y de ellos se derivan los tipos, el
+  OpenAPI "y los esquemas JSON de las herramientas MCP". Hoy `packages/core` no
+  depende de `@taskman/contracts` —ni en su package.json ni en un import— y cada
+  herramienta escribe su esquema a mano en `packages/core/src/mcp/tools/`:
+  `PRIORIDADES` de `campos.ts` repite la de `contracts/src/task.ts`, y `aFecha`
+  reimplementa `fechaSola` con un agujero (entrada anterior). Es el RT-03 de la
+  12.2 ya ocurrido, no un riesgo. La 3.3 lo permite —`packages/core` y
+  `apps/mcp-stdio` pueden importar `contracts`, que sigue siendo hoja— asi que no
+  hay regla que mover. Y `apps/mcp-stdio` YA lo importa desde el paso 11 de F4:
+  `http-port.ts` valida con los esquemas de contracts cada respuesta de la API
+  REST, asi que el precedente y el cableado existen y el unico que falta es
+  `packages/core`. Lo que ese paso tiene que decidir es QUE se deriva: las
+  entradas de las herramientas no son los cuerpos REST —`move_task` recibe
+  `task`, `board` y `to_column` por nombre, donde POST /api/tasks/{id}/move pide
+  `column_id` o `column_key`—, asi que el cuerpo entero no sale de ahi; lo que
+  comparten son piezas, como la prioridad, la fecha y los limites de largo. Es su
+  propio paso, no un arreglo al pasar. NO BLOQUEA EL CIERRE DE F4, por lo mismo
+  que la entrada anterior. DISPARADOR: el proximo cambio a una de esas piezas
+  —la lista de prioridades, la forma de la fecha, un limite de largo—, porque
+  ahi la copia a mano diverge y ninguna prueba ata las dos listas; o antes, si
+  se decide pagar `aFecha`, que va adentro de este paso.
+- El `strictObject` de las herramientas NO LLEGA AL SEGUNDO NIVEL.
+  `esquemaDeEntrada` rechaza un argumento que la herramienta no declara, pero
+  solo en el objeto de primer nivel: el item de `columns` de `create_board` es
+  un `z.object` comun, y ahi una clave de mas se DESCARTA EN SILENCIO. MEDIDO
+  con el servidor stdio compilado en modo core: `create_board` con
+  `columns: [{key: "ALFA", name: "Alfa", position: 7, color: "rojo"}]` contesta
+  "Tablero creado." y la columna queda en la posicion 0, sin rastro de
+  `position` ni de `color`; la misma herramienta con `sobra: 1` arriba da
+  -32602 nombrando la clave. REST no tiene el hueco —el item de
+  POST /api/boards es `definicionDeColumna`, un `strictObject`—, asi que en
+  modo http reaparece un nivel mas abajo la asimetria que el cierre de F4
+  cerro arriba: la herramienta descarta antes del cable lo que el endpoint
+  rechazaria. Hoy es el unico caso, porque `create_board` es la unica
+  herramienta con un objeto dentro de otro. El arreglo de fondo es el de la
+  entrada anterior —derivar el item de `definicionDeColumna`, que ya es
+  estricto—; un `z.strictObject` en el item lo cierra aislado. Disparador: el
+  paso de la entrada anterior, o antes si un agente empieza a mandar columnas
+  con campos propios creyendo que se aplican.
+- En MODO HTTP, la linea `mcp.tool` y `audit_log` pueden decir ACTORES DISTINTOS
+  para la misma operacion. El proceso stdio arma el contexto de cada llamada con
+  `contextoDeAgente` —`actorType` AGENT siempre, en los dos modos— y su linea
+  `mcp.tool` escribe ese valor; pero en `http` la fila de auditoria no la escribe
+  este proceso sino el servidor, con el `actor_type` de la CLAVE, que es API
+  salvo que se la haya emitido con `apikey:create --agent`. Sin la bandera, quien
+  vaya del `toolRequestId` al `serverRequestId` (README, "Diagnóstico") ve AGENT
+  en el log del agente y API en la auditoria: el sintoma que la regla de
+  `actor_type` de abajo evita dentro de un proceso, repartido entre dos. El lado
+  de la auditoria esta MEDIDO en cada verify ("el `ctx` del agente no lo mueve",
+  en `apps/web/test/http-port.test.ts`); el de la linea sale de leer
+  `mcp/contexto.ts` y `mcp/respuesta.ts`. El README recomienda `--agent` para
+  este caso, y explica que `request_id` y `actor_name` difieren entre modos, pero
+  no el tipo. Lo que el proceso NO puede es enterarse del `actor_type` de su
+  clave: no hay endpoint que lo devuelva, el mismo hueco que obligo a MEDIR los
+  scopes. Disparador: querer correlacionar de verdad el log de un agente en modo
+  http con la auditoria, o que se emita una clave de agente sin `--agent`.
+- En MODO HTTP el cupo de la 7.3 se gasta de a VARIAS PETICIONES POR
+  HERRAMIENTA, y el ejemplo 5 del Anexo A deja de entrar. Resolver un nombre
+  lista primero, asi que una llamada por nombre son de 1 a 5 peticiones REST
+  —un `move_task`, 4— de las que escribe UNA, y el arranque cobra 1 lectura y 2
+  escrituras, las de la sonda de scopes. MEDIDO en el paso 14 de F4, con el
+  detalle por herramienta en el README. Consecuencia: los 30 `move_task` por
+  minuto del ejemplo 5, que por /mcp entran justo (seccion "Servidor MCP"), por
+  stdio en modo http NO entran si el proceso arranco en ese mismo minuto: tras
+  el arranque entraron 28 escrituras y la 29 recibio 429. Lo que ya abarata sin
+  tocar codigo es referir por id, que se saltea el listado. Disparador: un
+  agente en modo http que opere en lote, o varios procesos con la misma clave,
+  que comparten el cupo.
 - GET /api/audit NO se puede filtrar por `request_id`, y es el filtro que mas se
   va a extra~nar: correlacionar el `X-Request-Id` que devolvio una respuesta con
   lo que esa peticion escribio es el uso mas natural del log, y es exactamente lo
@@ -167,8 +252,10 @@ contador de pruebas no tiene ese commit.
   VarChar(24) y la 4.1 dice (16) —`tmk_live_` mas 6 caracteres son 15, asi que 16
   alcanza justo y 24 deja aire—; `hash Char(64)` es `keyHash VarChar(64)` y ADEMAS
   `@unique`; `scopes String[]` es el enum `Scope[]`, que es mas estricto; y hay un
-  `updatedAt` que la 4.1 no declara. La que SI falta es `lastUsedAt`, y esa tiene
-  su entrada arriba.
+  `updatedAt` que la 4.1 no declara; y desde el paso 12 de F4 hay un `actorType`
+  que la 4.1 tampoco declara, con el que la 7.4 deriva el `actor_type` de lo que
+  entra por REST (ver la seccion de abajo). La que SI falta es `lastUsedAt`, y
+  esa tiene su entrada arriba.
 - La VENTANA DE REVOCACION del cache de claves de la 7.1: una clave revocada
   sigue autenticando hasta 60 s. Es la consecuencia aceptada de cachear la fila
   de `api_key` y esta MEDIDA de punta a punta, no supuesta: con el servidor
@@ -251,8 +338,8 @@ contador de pruebas no tiene ese commit.
   tocar `esVencida` sola: las dos puntas tienen que moverse juntas a la zona de
   quien mira, que el sistema hoy no conoce.
 - La LINEA DE LOG POR PETICION de la 11.1 —request_id, metodo, ruta, estado,
-  duracion, prefijo de clave y actor— solo la escriben `conAuth` y `/api/health`
-  (`registrarPeticion`). Las Server Actions no escriben ninguna: dejan rastro en
+  duracion, prefijo de clave y actor— solo la escriben `conAuth`, `conAuthMcp` y
+  `/api/health` (`registrarPeticion`). Las Server Actions no escriben ninguna: dejan rastro en
   el log solo cuando fallan sin controlar (`registrarFallo`, con su request_id),
   asi que una accion que sale bien, o que devuelve un error de dominio, no
   aparece. Tampoco escriben linea el render de `GET /` ni `/eventos`. El
@@ -424,9 +511,11 @@ motivo dejó de valer, ahí está el disparador para volver a mirarla.
   editan, mueven y borran sin clave ni scopes (7.2). De paso quedan fuera el
   límite de la 7.3, que se cobra por clave dentro de `conAuth`, y el `client_id`
   de la auditoría: la UI escribe como USER con `client_id` NULL. `/eventos` no
-  agrega exposición a eso. El motivo: es un sistema personal en un contenedor, y
-  la UI invoca los servicios en el mismo proceso y no consume su propia API
-  pública (9.1), así que no tiene clave que presentar ni a quién presentársela.
+  agrega contenido a eso: solo el tipo de actor y el `request_id` de cada
+  escritura, que no abren nada (ver Estado). El motivo: es un sistema personal en
+  un contenedor, y la UI invoca los servicios en el mismo proceso y no consume su
+  propia API pública (9.1), así que no tiene clave que presentar ni a quién
+  presentársela.
   OJO, la especificación se contradice sola en este punto. La ADR-005 (2.5) dice
   que "la sesión de la UI web usa el mismo mecanismo mediante una clave de
   servidor que nunca llega al navegador"; la 7.3 dice que "los Server Components
@@ -434,6 +523,14 @@ motivo dejó de valer, ahí está el disparador para volver a mirarla.
   ninguna clave. El repo sigue a la 7.3 y a la 9.1, y por eso el CT-08 no tiene
   superficie en la UI (ver el mapa CT). Disparador: que el puerto de la
   aplicación sea alcanzable por alguien más que quien administra la máquina.
+  PRECISIÓN DEL DISPARADOR, decidida el 14 de septiembre de 2026 al empezar F4:
+  el puerto NO se expone a internet, y el "cliente remoto" de la 8.1 NO lo
+  dispara. Ese cliente es un cliente MCP que no es el proceso stdio local —otra
+  máquina en la red del usuario, o el mismo host—, no un servicio público. Abrir
+  `/mcp` a internet abriría con él `GET /`, las Server Actions y `/eventos`, que
+  no autentican por este desvío: exponerlo no es un paso de F4, es el
+  disparador. El día que el producto se venda eso cambia, y arrastra la UI
+  entera con él.
 
 - **Sin el aislamiento de pruebas de la 10.3**, que pide "un esquema PostgreSQL
   propio, creado y destruido en el ciclo de vida de la suite, para permitir
@@ -446,6 +543,25 @@ motivo dejó de valer, ahí está el disparador para volver a mirarla.
   OJO, la otra mitad de la 10.3 SÍ está: el script de siembra determinista
   invocable con una semilla fija existe (`apps/web/e2e/semilla.ts`, una semilla
   por clave de `SEMILLAS`), y de él parten las pruebas de extremo a extremo.
+
+- **Sin la cuarta combinación de la ADR-003: `/mcp` con `HttpPort`.** La
+  justificación de la ADR-003 (2.3) dice que separar el transporte del acceso a
+  datos "permite las cuatro combinaciones útiles sin escribir código nuevo". Hay
+  tres —stdio con `CorePort`, stdio con `HttpPort` y `/mcp` con `CorePort`—, que
+  son las tres filas de la tabla de la 8.1, y la cuarta NO sale por
+  configuración: `HttpPort` vive en `apps/mcp-stdio`, `apps/web` lo ve solo como
+  devDependency de sus pruebas, y `lib/mcp.ts` construye `crearCorePort()` sin
+  variable que elija otro. O sea que esa frase de la ADR es hoy FALSA; lo que se
+  cumple es su decisión y la tabla normativa. El motivo está en la cabecera de
+  `http-port.ts`, del paso 11 de F4: un puerto con un único consumidor vive con
+  su consumidor, y un paquete propio sería una fila más en la 3.3 y una clase
+  para nadie. La cuarta, además, es un TaskMan que atiende MCP reenviando cada
+  llamada a una API REST —la de otro TaskMan, o la suya—, y ningún escenario del
+  documento la pide. La ubicación se decidió en ese paso; lo que no quedó
+  escrito hasta el cierre de F4 es su consecuencia sobre la ADR. Disparador: un
+  SEGUNDO consumidor de `HttpPort` —esa cuarta combinación lo sería—, y entonces
+  el costo no es una variable sino mover la clase a su propio paquete
+  (`packages/api-client`), que es lo que esa misma cabecera anticipa.
 
 ## Entorno
 
@@ -580,6 +696,13 @@ motivo dejó de valer, ahí está el disparador para volver a mirarla.
   Pendiente conocido: `@prisma/adapter-pg` SIGUE inerte y se empaqueta. Hoy no
   rompe nada —el bug era específico del runtime de `@prisma/client`— y el arreglo
   sería idéntico.
+  El caso CONTRARIO, que el realpath no ve: `@modelcontextprotocol/sdk` resuelve
+  desde `apps/web` y NO está en la lista, a propósito. Declararlo no sería inerte:
+  duplicaría zod en tiempo de ejecución —UNA copia física, DOS instancias, porque
+  Node carga el SDK con su zod nativa y el núcleo usa la empaquetada—. La medición
+  está en el comentario de `serverExternalPackages` en `next.config.ts`. Para
+  diagnosticar dos zod, `instanceof` NO sirve —en zod 4 compara traits y da true
+  igual—: solo `===` sobre la clase.
 - `instrumentation.ts` se compila TAMBIÉN para el runtime EDGE, donde no existe
   `fs` y donde `serverExternalPackages` NO aplica. O sea que nada de lo que ese
   archivo importe, ni directa ni transitivamente, puede terminar en `pg` o en
@@ -620,6 +743,19 @@ motivo dejó de valer, ahí está el disparador para volver a mirarla.
   sale VACIO, porque el blob normalizado es el mismo; un `git add` lo vuelve a
   dejar limpio sin stagear nada. O sea que ese ` M` no es un cambio de
   contenido, y buscarle uno es perder la tarde.
+- `process.exit()` DESPUÉS DE UN `fetch` ABORTA EL PROCESO en Windows. libuv
+  dispara `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING), file
+  src\win\async.c, line 76` y el proceso muere con 0xC0000409 (3221226505) en
+  vez de con el código que se le pasó. MEDIDO en el arranque de
+  `apps/mcp-stdio` en modo http cuando la sonda de scopes recibe un 401: el
+  mensaje sale entero por stderr —o sea que el síntoma NO es un mensaje
+  perdido— y lo único que miente es el código de salida, que quien lo mire lee
+  como un crash y no como una variable mal puesta. La salida es no llamar a
+  `process.exit()`: marcar `process.exitCode` y no montar el transporte, así el
+  loop se vacía y el proceso termina solo con el código correcto. Medido con el
+  servidor arriba y las conexiones keep-alive de undici abiertas: 1 ms, o sea
+  que "dejarlo terminar solo" no es esperar. Vale para cualquier proceso corto
+  que haga una petición y decida no seguir.
 - No mates procesos `node` con un `Stop-Process` amplio en esta máquina: se
   llevan puestos los servidores MCP de la sesión, que también son `node`.
   Filtrá por PID o por línea de comando.
@@ -707,6 +843,21 @@ motivo dejó de valer, ahí está el disparador para volver a mirarla.
   registro por intento y no se nota hasta que auditás en serio. Lo cubre la
   prueba de reintento de `packages/core/test/audit.test.ts`, que aborta el
   primer intento a propósito.
+- `actor_type` es una DERIVACION y ningun llamador puede elegirla (7.4). Cada
+  borde lo fija por construccion y con la fuente que ese borde SI puede ver:
+  `contextoDeUi` pone USER, `contextoDeMcp` y `contextoDeAgente` ponen AGENT
+  —/mcp y stdio saben por donde entro la peticion— y `contextoDeApi` lo LEE DE LA
+  CLAVE (`api_key.actor_type`), porque REST no lo sabe: una peticion del HttpPort
+  de la 8.1 y una de curl son la misma peticion en el cable. Que la fuente sea la
+  credencial y no una cabecera es lo que sostiene el invariante, porque la
+  credencial la emite quien administra (`apikey:create --agent`) y lo que un
+  cliente manda lo elige el cliente. MEDIDO: por cabecera se ignora, por cuerpo
+  es 400 —el `strictObject` de contracts— y por query se ignora. USER encima lo
+  prohibe la base (`api_key_actor_type_no_user`), asi que `apps/web/lib/actor.ts`
+  sigue siendo su unico productor. La LINEA DE LOG de la 11.1 usa la misma
+  derivacion y no una propia: si las dos no coincidieran, correlacionar por
+  `request_id` —que es lo que la 6.1 promete— devolveria dos actores para la
+  misma peticion.
 - (A partir de F1b) `packages/core` no importa Next, ni el SDK de MCP, ni nada
   de HTTP. Los adaptadores (REST, MCP) no contienen reglas de negocio. Ningún
   adaptador importa Prisma directamente.
@@ -850,11 +1001,41 @@ motivo dejó de valer, ahí está el disparador para volver a mirarla.
 
 ## Servidor MCP
 
-- El registro de herramientas y `TaskManagerPort` viven en `packages/core/mcp`,
-  pero el nucleo NO importa el SDK de MCP: las herramientas se declaran como
-  dato (`McpToolDefinition`) y cada app las monta sobre su `McpServer`. Es lo
-  que hace compatibles la regla de dependencias de arriba con el "registro
-  unico" de la 8.1.
+- El registro de herramientas, `TaskManagerPort` y el MONTAJE viven en
+  `packages/core/mcp`, pero el nucleo NO importa el SDK de MCP: las herramientas
+  se declaran como dato (`McpToolDefinition`) y `montarHerramientas`
+  (`montaje.ts`) las registra sobre un servidor descrito por su FORMA
+  (`ServidorDeHerramientas`), en el que el `McpServer` del SDK encaja por tipado
+  estructural. Cada app solo construye su `McpServer` y su transporte. Es lo que
+  hace compatibles la regla de dependencias de arriba con el "registro unico" de
+  la 8.1 y la ADR-003: el bucle vivia en `apps/mcp-stdio`, `apps/web` no puede
+  importarlo, y duplicarlo en /mcp era tener dos traducciones de la definicion al
+  protocolo. Ese encaje depende de que `McpToolResult` y `McpTextContent` sean
+  `type` y no `interface`: el resultado del SDK tiene firma de indice, y una
+  interface no se le asigna sin cast.
+- /mcp NO TIENE SESION (D4): cada POST arma su `McpServer` y su transporte
+  (`WebStandardStreamableHTTPServerTransport`, con `enableJsonResponse`) y los
+  cierra al responder; GET y DELETE dan 405. Asi los scopes se leen de la clave
+  en CADA mensaje. Por eso `actor_name` es la ETIQUETA de la clave y no el
+  `clientInfo.name` del initialize, que ese servidor nunca vio; `client_id` es el
+  prefijo y `request_id` el del X-Request-Id de la peticion (`contextoDeMcp`).
+- El LIMITE DE PETICIONES de /mcp cobra POR MENSAJE, en el cupo de la
+  HERRAMIENTA (D5, `cuposDeMensajes`): un `tools/call` a una de `write` o `delete`
+  cobra escritura, todo lo demas lectura, con la misma `CUBO_POR_SCOPE` de REST.
+  Por eso el cuerpo se lee ANTES de cobrar, al reves que `conAuth`. Un lote
+  JSON-RPC cobra un lugar por mensaje, y una herramienta que la clave no tiene
+  igual cobra su cupo. Consecuencia de producto medida: el ejemplo 5 del Anexo A
+  entra JUSTO con 30 move_task por minuto; el 31 recibe 429. Eso es POR /mcp:
+  por stdio en modo http no entra (ver la deuda).
+- ORIGIN: /mcp rechaza con 403 FORBIDDEN_ORIGIN toda peticion que TRAIGA `Origin`,
+  antes de autenticar, y deja pasar la que no lo trae, que es la de cualquier
+  cliente que no sea un navegador. No hay lista permitida ni variable: no existe
+  cliente de navegador, y el dia que exista entra junto con la lista de CORS de
+  la 7.3. No se usa el `allowedOrigins` del SDK, que esta `@deprecated`.
+- Un fallo no controlado de una herramienta NO expone la causa en NINGUN
+  transporte: la respuesta lleva INTERNAL_ERROR y el `request_id`, y la traza va
+  a la linea `mcp.tool` (campo `err`). Todo error MCP lleva `request_id`, porque
+  `respuestaError` lo exige como argumento.
 - La resolucion por nombre de la 8.3.1 esta en `packages/core/src/mcp/resolve.ts`
   y es UNA sola para tablero, columna y tarea. Si hace falta una regla distinta
   para alguna entidad, va como dato en el ambito, no como un `if` en el modulo.
@@ -863,10 +1044,39 @@ motivo dejó de valer, ahí está el disparador para volver a mirarla.
   titulo.
 - Una coincidencia ambigua NUNCA se resuelve eligiendo la primera. Devuelve
   AMBIGUOUS_MATCH con todos los candidatos y un `hint` que dice que hacer.
-- `apps/mcp-stdio` corre en modo `core` (MCP_PORT_MODE de la 8.1): habla con la
-  base por los servicios, en el mismo proceso, sin pasar por HTTP. La politica de
-  operaciones destructivas de la 8.3.2 se controla con MCP_DESTRUCTIVE_POLICY, y
-  el log estructurado es el de la 11.1: a stderr, nunca a stdout.
+- Un `McpServer` atiende a UNA sola clave. Los scopes entran al montar
+  (`OpcionesRegistro.scopes`, obligatorio) y `crearHerramientas` devuelve solo
+  las herramientas que alcanzan, asi que el filtrado de la 8.1 vive en la
+  instancia: reusar un servidor entre clientes le ofrece a cada uno el catalogo
+  del primero. Scopes y MCP_DESTRUCTIVE_POLICY son filtros INDEPENDIENTES y no
+  comparten mecanismo: el de scopes OMITE —el SDK responde "not found"— y el de
+  la politica MARCA `anunciada: false` —el SDK responde "disabled"—. Llevar los
+  scopes a `anunciada` es la forma de que uno deshaga al otro.
+- `apps/mcp-stdio` corre en los DOS modos de MCP_PORT_MODE (8.1). En `core`
+  habla con la base por los servicios, en el mismo proceso, sin pasar por HTTP;
+  en `http` habla con la API REST por `HttpPort` y NO abre ninguna conexion a la
+  base. La politica de operaciones destructivas de la 8.3.2 se controla con
+  MCP_DESTRUCTIVE_POLICY, y el log estructurado es el de la 11.1: a stderr, nunca
+  a stdout.
+- El esquema de la 11.2 de ese proceso es una UNION DISCRIMINADA por el modo, y
+  eso decide que variable es obligatoria donde: DATABASE_URL solo en `core`
+  —tal como dice la columna "Ambito" de la 11.2— y TASKMAN_API_URL y
+  TASKMAN_API_KEY solo en `http`. Lo que se gana no es validacion sino TIPO: la
+  rama que construye el `HttpPort` no compila sin las dos variables. Un objeto
+  plano con campos opcionales validaria lo mismo y devolveria el problema al
+  llamador.
+- EN MODO HTTP LOS SCOPES SE MIDEN, no se declaran. El catalogo de la 8.1 tiene
+  que ser el de la clave, y no hay endpoint que devuelva los scopes de una clave
+  —seria el numero dieciocho, fuera de la 6.2—, asi que `descubrirScopes()`
+  manda tres peticiones a `/api/tasks/sonda-de-scope` con GET, PATCH y DELETE:
+  403 es "no tiene ese scope" y el 400 del id invalido es "si lo tiene", porque
+  `conAuth` resuelve el scope ANTES del handler. DOS COSAS LO SOSTIENEN y las
+  dos viven en `apps/web`: que ese id no sea un UUID —por eso la sonda no puede
+  tocar nada— y que el rechazo del id sea VALIDATION_ERROR. Si lo segundo
+  cambiara, el scope pasa a "indeterminado" y se da por concedido con una linea
+  `mcp.scopes` de warn, que es la direccion segura: el agente ve de mas, no de
+  menos. Una variable `MCP_SCOPES` esta DESCARTADA: seria el cliente declarando
+  sobre una credencial que no emitio, justo lo que el paso 12 saco del cable.
 - stdout es el canal del protocolo: en `apps/mcp-stdio` todo diagnostico va a
   stderr. Un `console.log` suelto rompe la sesion MCP entera.
 - `apps/mcp-stdio` se empaqueta con esbuild porque `@taskman/core` y

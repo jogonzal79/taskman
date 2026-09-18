@@ -9,6 +9,7 @@ import { crearCorePort, type DeleteColumnOptions, type UpdateColumnInput } from 
 
 import { conAuth, contextoDeApi } from "../../../../lib/auth";
 import { aColumnaSalida } from "../../../../lib/columnas";
+import { leerConsulta } from "../../../../lib/consulta";
 import {
   leerCuerpo,
   responder,
@@ -154,27 +155,30 @@ export const DELETE = conAuth<[ContextoRuta]>("delete", async (request, auth, co
     return idInvalido(auth);
   }
 
-  // `?reassign_to=` vacio o con algo que no es un UUID no puede caer en
-  // "ausente": seria borrar con el comportamiento que rechaza tareas cuando
-  // quien llamo pidio explicitamente reasignarlas. Es el mismo criterio que
-  // `?limit=abc` en GET /api/boards.
-  const parametrosDeConsulta = new URL(request.url).searchParams;
-  const consulta = consultaDeBorradoDeColumna.safeParse({
-    reassign_to: parametrosDeConsulta.get("reassign_to") ?? undefined,
+  /**
+   * `?reassign_to=` vacio o con algo que no es un UUID no puede caer en
+   * "ausente": seria borrar con el comportamiento que rechaza tareas cuando
+   * quien llamo pidio explicitamente reasignarlas. Es el mismo criterio que
+   * `?limit=abc` en GET /api/boards.
+   *
+   * Y por el mismo motivo un parametro que el contrato no declara es 400 y no
+   * un borrado: `?reasign_to=...` mal tipeado quedaba inerte, o sea que un
+   * borrado con reasignacion se convertia en uno que exige la columna vacia.
+   */
+  const consulta = leerConsulta(request, consultaDeBorradoDeColumna, auth, {
+    mensaje: "El parametro reassign_to no es un UUID valido.",
+    hint: "Indica el id de otra columna del mismo tablero, o omiti el parametro para borrar una columna vacia.",
   });
 
-  if (!consulta.success) {
-    return respuestaDeError("VALIDATION_ERROR", "El parametro reassign_to no es un UUID valido.", 400, auth, {
-      details: { issues: consulta.error.issues },
-      hint: "Indica el id de otra columna del mismo tablero, o omiti el parametro para borrar una columna vacia.",
-    });
+  if (!consulta.ok) {
+    return consulta.respuesta;
   }
 
   // snake_case -> camelCase en el adaptador (6.1), y condicional porque ausente
   // es justamente lo que el nucleo lee como "no reasignar": con tareas dentro y
   // sin esto, la operacion tiene que fallar con COLUMN_NOT_EMPTY.
   const opciones: DeleteColumnOptions = {
-    ...(consulta.data.reassign_to === undefined ? {} : { reassignTo: consulta.data.reassign_to }),
+    ...(consulta.datos.reassign_to === undefined ? {} : { reassignTo: consulta.datos.reassign_to }),
   };
 
   // COLUMN_NOT_FOUND (404), COLUMN_NOT_EMPTY (409), COLUMN_NOT_IN_BOARD (409) e

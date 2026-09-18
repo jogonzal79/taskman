@@ -1,18 +1,25 @@
-// Del SUBCAMINO y no del barrel, y no es cosmetico: este modulo lo importa
+// De los SUBCAMINOS y no del barrel, y no es cosmetico: este modulo lo importa
 // `instrumentation.ts`, que Next compila TAMBIEN para el runtime edge. El barrel
 // reexporta los repositorios, o sea `@taskman/db` -> `@prisma/adapter-pg` -> `pg`
 // -> `fs`, y en edge no hay `fs`: el modulo no compila y TODA peticion de `next
-// dev` responde 500. `next build` no lo ve —sin rutas edge no emite ese bundle— y
-// `verify` tampoco lo veia, porque nada levantaba `next dev`.
+// dev` responde 500. `next build` no lo ve —sin rutas edge no emite ese bundle—;
+// lo ve `pnpm run humo:dev`, que levanta `next dev`.
 //
-// De los cuatro simbolos, tres son valores y uno es tipo, asi que `import type`
-// no alcanza: `leerNivelLog`, `NIVELES_LOG` y `NIVEL_LOG_POR_DEFECTO` se ejecutan
-// en el transform del esquema y sobreviven al borrado de tipos.
+// De cada subcamino se piden VALORES y no solo tipos, asi que `import type` no
+// alcanza: el lector, la lista y el valor por defecto se ejecutan en el transform
+// del esquema y sobreviven al borrado de tipos.
 //
-// `domain/logger.ts` es hoja —no importa nada, ni del nucleo ni de fuera— y por
-// eso el subcamino es seguro: pedirlo no arrastra grafo. Si algun dia deja de ser
-// hoja, esto vuelve a romperse igual de silenciosamente.
+// Los dos son seguros por lo mismo: pedirlos no arrastra grafo. `domain/logger.ts`
+// no importa nada, y `mcp/politica.ts` importa solo `zod`, que este archivo ya
+// importa y que resuelve a la misma copia fisica. Si alguno empieza a importar
+// del nucleo, esto vuelve a romperse.
 import { leerNivelLog, NIVEL_LOG_POR_DEFECTO, NIVELES_LOG, type NivelLog } from "@taskman/core/logger";
+import {
+  leerPoliticaDestructiva,
+  POLITICA_DESTRUCTIVA_POR_DEFECTO,
+  POLITICAS_DESTRUCTIVAS,
+  type PoliticaDestructiva,
+} from "@taskman/core/politica";
 import { z } from "zod";
 
 /**
@@ -28,12 +35,18 @@ import { z } from "zod";
  *
  * UN ESQUEMA POR PROCESO, y no uno compartido con partes: las variables de la
  * tabla NO son las mismas. API_KEY_PEPPER y RATE_LIMIT_ENABLED son de web;
- * MCP_PORT_MODE, MCP_DESTRUCTIVE_POLICY y las dos TASKMAN_* son de mcp-stdio, y
- * ahi la forma depende del modo —en `http` hacen falta la URL y la clave, en
- * `core` la base— o sea una union discriminada que solo tiene sentido en ese
- * proceso. Un esquema unico tendria que declarar API_KEY_PEPPER opcional para que
- * mcp-stdio pase, y entonces no validaria lo unico que este paso vino a validar.
- * Lo que SI se comparte es el VOCABULARIO, que ya vive en el nucleo
+ * MCP_PORT_MODE y las dos TASKMAN_* son de mcp-stdio, y ahi la forma depende del
+ * modo —en `http` hacen falta la URL y la clave, en `core` la base— o sea una
+ * union discriminada que solo tiene sentido en ese proceso. Un esquema unico
+ * tendria que declarar API_KEY_PEPPER opcional para que mcp-stdio pase, y
+ * entonces no validaria lo unico que este paso vino a validar.
+ *
+ * MCP_DESTRUCTIVE_POLICY es de LOS DOS. La 11.2 le da el ambito "mcp", no
+ * "mcp-stdio", y el servidor MCP no es solo el proceso stdio: la 8.1 monta el
+ * transporte Streamable HTTP en /mcp, y esa ruta corre en ESTE proceso. Cada
+ * proceso la lee de su propio entorno, asi que pueden tener valores distintos.
+ *
+ * Lo que SI se comparte es el VOCABULARIO, que vive en el nucleo
  * (`leerNivelLog`, `leerPoliticaDestructiva`) y lo usan los dos.
  *
  * NO LEE `process.env`, y eso es la mitad del punto: recibe el entorno como
@@ -85,8 +98,9 @@ function obligatoria(expectativa: string) {
  * OBLIGATORIAS: DATABASE_URL y API_KEY_PEPPER. Sin base no hay nada que servir, y
  * sin pepper las claves se hashearian sin secreto.
  *
- * CON VALOR POR DEFECTO: LOG_LEVEL (info, 11.2), RATE_LIMIT_ENABLED (encendido) y
- * NODE_ENV (lo fija Next; si viene, tiene que ser uno de los tres).
+ * CON VALOR POR DEFECTO: LOG_LEVEL (info, 11.2), RATE_LIMIT_ENABLED (encendido),
+ * MCP_DESTRUCTIVE_POLICY (confirm, 8.3.2) y NODE_ENV (lo fija Next; si viene,
+ * tiene que ser uno de los tres).
  */
 export const esquemaDeEntorno = z.object({
   DATABASE_URL: obligatoria("la cadena de conexion a PostgreSQL"),
@@ -122,6 +136,26 @@ export const esquemaDeEntorno = z.object({
     .enum(["true", "false"], { error: 'exactamente "true" o "false" (ausente deja el limite encendido)' })
     .optional()
     .transform((valor) => limiteHabilitado(valor)),
+
+  // Mismo vocabulario y misma validacion que en apps/mcp-stdio: los del nucleo.
+  // Un valor mal escrito NO cae en el valor por defecto: quien puso "denyy" cree
+  // tener el borrado apagado y lo tendria encendido, solo que preguntando primero.
+  // Y se rechaza al arrancar, no en la primera llamada a /mcp.
+  MCP_DESTRUCTIVE_POLICY: z
+    .string()
+    .optional()
+    .transform((valor, ctx): PoliticaDestructiva => {
+      try {
+        return leerPoliticaDestructiva(valor);
+      } catch {
+        ctx.addIssue({
+          code: "custom",
+          message: `uno de: ${POLITICAS_DESTRUCTIVAS.join(", ")} (ausente equivale a ${POLITICA_DESTRUCTIVA_POR_DEFECTO})`,
+        });
+
+        return POLITICA_DESTRUCTIVA_POR_DEFECTO;
+      }
+    }),
 });
 
 export type Entorno = z.infer<typeof esquemaDeEntorno>;

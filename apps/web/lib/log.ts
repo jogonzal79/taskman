@@ -1,4 +1,10 @@
-import { leerNivelLog, type CamposDeLog, type Logger, type NivelLog } from "@taskman/core";
+import {
+  leerNivelLog,
+  type ActorType,
+  type CamposDeLog,
+  type Logger,
+  type NivelLog,
+} from "@taskman/core";
 import pino from "pino";
 
 /**
@@ -82,17 +88,15 @@ export function fijarLogger(logger: Logger | undefined): void {
   globalParaLog.__taskmanLogWeb = logger;
 }
 
-/**
- * El tipo de actor de la 7.4 visto desde REST: siempre API.
- *
- * No es un dato que dependa de la peticion: USER es la UI web y AGENT es lo que
- * entra por MCP, asi que todo lo que pasa por estos Route Handlers es API por
- * construccion, autenticado o no. Es la misma constante que fija `contextoDeApi`
- * para la auditoria, y por eso se lee igual en las dos.
- */
-const ACTOR_REST = "API";
-
 export interface PeticionRegistrada {
+  /**
+   * El tipo de actor de la 7.4, que nunca lo decide la peticion. En REST lo
+   * rotula la CLAVE que autentico, igual que `contextoDeApi` para la auditoria,
+   * y API es solo el valor del borde cuando no se identifico ninguna (`conAuth`);
+   * en /mcp es AGENT por construccion (`conAuthMcp`). Obligatorio y sin valor por
+   * defecto: un borde nuevo que registre su linea tiene que decir cual es.
+   */
+  readonly actorType: ActorType;
   readonly requestId: string;
   readonly metodo: string;
   /** Solo el camino, sin query: ver la nota de abajo. */
@@ -132,7 +136,7 @@ export function registrarPeticion(peticion: PeticionRegistrada): void {
     status: peticion.status,
     duration_ms: peticion.duracionMs,
     client_id: peticion.clientId,
-    actor_type: ACTOR_REST,
+    actor_type: peticion.actorType,
   };
 
   if (peticion.status >= 500) {

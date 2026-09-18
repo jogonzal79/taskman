@@ -191,11 +191,10 @@ export interface Parametro extends ObjetoJson {
  * LO QUE SE PIERDE: los `.refine()` del esquema. Zod los descarta al convertir,
  * sin avisar, porque JSON Schema no puede expresarlos. En los esquemas de
  * consulta eso significa que las reglas ENTRE campos no llegan al documento
- * —"indica board_id o column_id" en GET /api/tasks y en la busqueda,
- * "entity_type junto a entity_id" en la auditoria—, y en los cuerpos, que los
- * topes de longitud medidos en puntos de codigo tampoco. Falta antes que
- * mentir: escribir a mano lo que el esquema no puede dar es el desfase que la
- * ADR-006 previene.
+ * —"indica board_id o column_id" en GET /api/tasks, "entity_type junto a
+ * entity_id" en la auditoria—, y en los cuerpos, que los topes de longitud
+ * medidos en puntos de codigo tampoco. Falta antes que mentir: escribir a mano
+ * lo que el esquema no puede dar es el desfase que la ADR-006 previene.
  */
 export function parametrosDe(esquema: z.ZodType, sitio: "path" | "query"): readonly Parametro[] {
   const convertido = aJsonSchema(esquema, "input");

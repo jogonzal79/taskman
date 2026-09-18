@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { columnaDetallada } from "./column";
+import { columnaDetallada, definicionDeColumna } from "./column";
 import { listadoDe } from "./pagination";
 
 /**
@@ -125,13 +125,36 @@ const descripcionDeTablero = z
   });
 
 /**
- * Cuerpo de POST /api/boards (6.2).
+ * Cuerpo de POST /api/boards (6.2, RF-01).
  *
- * NO acepta `columns`: por la 6.2 este endpoint crea el tablero "con columnas
- * por defecto", que son las cuatro de la 4.3, y para cualquier otra hay un
- * endpoint propio, POST /api/boards/{id}/columns. Al ser `strictObject`,
- * mandarlas no queda ignorado en silencio: es un 400 que dice exactamente que
- * campo sobra.
+ * ACEPTA `columns`, y hasta el paso 10a de F4 no: este esquema las rechazaba
+ * apoyandose en que la 6.2 describe el endpoint como "Crear tablero (con
+ * columnas por defecto)". Esa lectura era estrecha. La 4.3 escribe la regla
+ * completa —"Al crear un tablero SIN ESPECIFICAR COLUMNAS, el sistema DEBE
+ * crear las cuatro columnas por defecto"— y esa frase presupone que
+ * especificarlas es posible; `BoardService.create` lo hace desde F1, con su
+ * `input.columns ?? COLUMNAS_POR_DEFECTO`. O sea que el "(con columnas por
+ * defecto)" de la 6.2 nombra el DEFAULT, no una prohibicion, y la prohibicion
+ * no vivia en la especificacion sino en este comentario.
+ *
+ * OMITIR el campo es lo que pide las cuatro de la 4.3. Un array VACIO no: sin
+ * `.min(1)` llegaria al nucleo como `[]`, que NO cae en el `??` —solo cae
+ * `undefined`— y crearia un tablero sin ninguna columna, o sea uno donde no
+ * entra ninguna tarea. Son dos intenciones distintas y el esquema tiene que
+ * poder distinguirlas: ausente son las cuatro, vacio es un error.
+ *
+ * SIN TOPE de cuantas, a proposito: el dominio no lo tiene y el borde no
+ * inventa reglas que el dominio no tenga. Lo que las acota de hecho es el tope
+ * de 256 KB por cuerpo de la 7.3.
+ *
+ * LO QUE ESTE ESQUEMA NO COMPRUEBA son las keys REPETIDAS, y no es un hueco:
+ * la key se normaliza en el nucleo (5.2) y aca no —ver `keyDeColumna`— asi que
+ * el borde solo podria detectar las repetidas LITERALES y dejaria pasar
+ * `["todo", " TODO "]`, que son la misma. La misma condicion daria 400 unas
+ * veces y 409 otras. Las mira `BoardService.create` sobre las keys ya
+ * normalizadas, y responde DUPLICATE_KEY, que la 6.4 traduce a 409: el mismo
+ * codigo y el mismo estado con el que POST /api/boards/{id}/columns rechaza una
+ * key que ya existe.
  *
  * En el create, `description` ausente y `description: null` significan lo
  * mismo —un tablero sin descripcion— y por eso van juntos en `nullish`. En el
@@ -140,6 +163,13 @@ const descripcionDeTablero = z
 export const crearTablero = z.strictObject({
   name: nombreDeTablero,
   description: descripcionDeTablero.nullish(),
+  columns: z
+    .array(definicionDeColumna)
+    .min(1, {
+      error:
+        "Indica al menos una columna, u omiti el campo para que se creen las cuatro por defecto.",
+    })
+    .optional(),
 });
 
 export type CrearTablero = z.infer<typeof crearTablero>;

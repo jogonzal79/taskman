@@ -1,0 +1,56 @@
+-- Rotulo de actor de cada API key (7.4). Migracion ADITIVA.
+--
+-- OJO: `prisma migrate dev` genero ademas estas cuatro sentencias, que se
+-- BORRARON a mano de este archivo:
+--
+--   ALTER TABLE "task" DROP CONSTRAINT "task_column_same_board";
+--   DROP INDEX "column_board_pair";
+--   DROP INDEX "column_board_position_uniq";
+--   DROP INDEX "task_column_position_uniq";
+--
+-- No son drift real: son las restricciones que, por decision del proyecto,
+-- viven SOLO en el SQL crudo de la migracion inicial y no en schema.prisma
+-- (las UNIQUE de position tienen que ser DEFERRABLE, y Prisma no sabe
+-- expresarlo). Prisma no las ve en el esquema, las toma por sobrantes de la
+-- base y propone borrarlas. Aplicarlas se llevaria puestos el orden denso y la
+-- FK compuesta que impide que una tarea apunte a la columna de otro tablero.
+-- Es la TERCERA migracion seguida que las propone sin tener nada que ver con
+-- ellas: hay que sacarlas siempre a mano.
+
+-- AlterTable
+--
+-- De donde sale el `actor_type` de la 7.4 para lo que entra por REST. El borde
+-- no puede verlo en el cable —una peticion del HttpPort de la 8.1 y una de curl
+-- son la misma peticion— asi que se deriva de la CREDENCIAL, que la emite quien
+-- administra. Una cabecera de origen dejaria que el cliente eligiera lo que
+-- queda escrito en la auditoria.
+--
+-- EL DEFAULT ES 'API' Y ES LA MITAD DE LA MIGRACION: es el valor que rellena
+-- las claves ya emitidas, y es el unico que no cambia su comportamiento,
+-- porque hasta hoy `contextoDeApi` fijaba API a mano para todas. O sea que
+-- aplicar esto no mueve una sola fila de `audit_log` de sitio.
+--
+-- El DEFAULT se QUEDA en la columna despues de rellenar, a diferencia de un
+-- backfill de una sola vez: un INSERT que olvide la columna rotula API, que es
+-- el rotulo que no afirma nada. Fallar hacia el rotulo mas modesto es lo mismo
+-- que hace `conAuth` al exigir el scope como argumento obligatorio.
+ALTER TABLE "api_key" ADD COLUMN     "actor_type" "ActorType" NOT NULL DEFAULT 'API';
+
+-- ---------------------------------------------------------------------------
+-- SQL crudo: una clave NUNCA puede rotularse USER. La UI web es el unico actor
+-- USER y no usa ninguna clave —invoca el nucleo en el mismo proceso (9.1)— asi
+-- que una fila con USER produciria escrituras que dicen venir de la UI sin
+-- haber pasado por ella, y `apps/web/lib/actor.ts` promete lo contrario con
+-- todas las letras: que es el UNICO productor de USER.
+--
+-- Va como CHECK en la base y no como una validacion en el script de emision
+-- porque la base es el unico sitio que no se puede saltear: la revocacion de
+-- la 7.1 ya se hace tipeando UPDATE en psql (ver CLAUDE.md), asi que un UPDATE
+-- a mano sobre esta columna es exactamente el camino que hay que cerrar.
+--
+-- La forma es una LISTA PERMITIDA y no `<> 'USER'`, que hoy son equivalentes:
+-- si algun dia entra un cuarto valor en el enum `ActorType`, la lista lo
+-- rechaza hasta que alguien decida, y el `<>` lo aceptaria en silencio.
+-- ---------------------------------------------------------------------------
+ALTER TABLE api_key
+  ADD CONSTRAINT api_key_actor_type_no_user CHECK (actor_type IN ('AGENT', 'API'));

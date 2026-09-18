@@ -19,6 +19,7 @@ export function definirGetTask(port: TaskManagerPort, entorno: EntornoMcp): McpT
       "Devuelve una tarea con todos sus campos y su ubicacion: tablero, columna y posicion. " +
       "Sirve para leer la descripcion completa de una tarea que list_tasks solo resume, y para confirmar el estado de una antes de actuar sobre ella.",
     inputSchema: shape,
+    scope: "READ",
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,

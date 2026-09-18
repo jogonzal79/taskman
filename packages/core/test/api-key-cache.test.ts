@@ -118,6 +118,7 @@ function filaDe(clave: string, scopes: readonly Scope[] = ["READ"]): ApiKeyRow {
     prefix: prefijoDe(clave),
     keyHash: hashearClave(clave, PEPPER),
     scopes,
+    actorType: "API",
     revokedAt: null,
   };
 }

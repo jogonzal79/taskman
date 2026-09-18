@@ -136,6 +136,8 @@ export async function GET(): Promise<Response> {
    * identificar.
    */
   registrarPeticion({
+    // API como el resto de REST: no autentica, pero entra por /api.
+    actorType: "API",
     requestId: ctx.requestId,
     metodo: "GET",
     ruta: "/api/health",

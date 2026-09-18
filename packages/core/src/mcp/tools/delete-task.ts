@@ -89,6 +89,10 @@ export function definirDeleteTask(
     title: "Eliminar tarea",
     description: DESCRIPCIONES[politica],
     inputSchema: shape,
+    // DELETE con las tres politicas, tambien con `deny`: el scope dice que
+    // necesita la clave de quien llama (7.2) y la politica que permite el
+    // servidor (8.3.2). Son dos filtros independientes.
+    scope: "DELETE",
     annotations: {
       readOnlyHint: false,
       destructiveHint: true,
@@ -144,6 +148,7 @@ export function definirDeleteTask(
             // resolver un nombre que mientras tanto puede empatar con otra.
             hint: `Mostrale al usuario la tarea de arriba. Si la confirma, volve a llamar a delete_task con task=${JSON.stringify(tarea.id)} y confirm: true. Si no la confirma, no vuelvas a llamar.`,
           },
+          llamada.ctx.requestId,
           detalleDeTarea(tarea, real, columna),
         );
       }

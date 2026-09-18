@@ -29,7 +29,7 @@ import { z } from "zod";
  * tocar el entorno del proceso.
  */
 
-const MODOS = ["core"] as const;
+const MODOS = ["core", "http"] as const;
 
 export const MODO_POR_DEFECTO = "core";
 
@@ -41,36 +41,14 @@ function obligatoria(expectativa: string) {
 }
 
 /**
- * MCP_PORT_MODE (8.1). Solo `core` esta implementado: `http` esta en la
- * especificacion pero `HttpPort` no existe todavia, y arrancar en un modo sin
- * implementacion daria un servidor que lista herramientas y falla en la primera
- * llamada, que es peor que no arrancar.
+ * Lo que NO depende del modo: se valida igual en las dos ramas.
  *
- * Cuando exista, TASKMAN_API_URL y TASKMAN_API_KEY —las otras dos variables que
- * la 11.2 declara para este proceso— entran ACA, como campos obligatorios de la
- * rama `http` de una union discriminada por el modo. Hoy no se declaran porque
- * serian validacion de una rama inalcanzable, o sea codigo que nadie puede
- * ejercitar.
+ * Va como objeto suelto y no como un esquema del que las ramas hereden porque
+ * `z.discriminatedUnion` necesita dos `z.object` completos, y porque el mismo
+ * objeto sirve ademas para validar lo comun CUANDO EL MODO NO SE ENTIENDE (ver
+ * `validarEntorno`).
  */
-export const esquemaDeEntorno = z.object({
-  MCP_PORT_MODE: z
-    .enum(MODOS, {
-      error: `"${MODO_POR_DEFECTO}" (los servicios en proceso). El modo http de la 8.1 todavia no esta implementado`,
-    })
-    .optional()
-    .transform((valor) => valor ?? MODO_POR_DEFECTO),
-
-  /**
-   * Obligatoria porque el unico modo que existe habla con la base en proceso.
-   *
-   * El mensaje es el MISMO para la ausente y para la vacia: Zod usaria el del tipo
-   * en un caso y el del `min(1)` en el otro, y escribir dos deja al caso mas comun
-   * —la ausente— con el menos util. Para la 11.2 son el mismo caso.
-   */
-  DATABASE_URL: obligatoria(
-    "la cadena de conexion a PostgreSQL: definila en el bloque env del .mcp.json o en el entorno",
-  ),
-
+const COMUN = {
   NODE_ENV: z.enum(NODE_ENVS, { error: `uno de: ${NODE_ENVS.join(", ")}` }).optional(),
 
   LOG_LEVEL: z
@@ -109,7 +87,116 @@ export const esquemaDeEntorno = z.object({
         return POLITICA_DESTRUCTIVA_POR_DEFECTO;
       }
     }),
+};
+
+/**
+ * Modo `core` (8.1): los servicios en el mismo proceso, contra PostgreSQL.
+ *
+ * DATABASE_URL es obligatoria ACA Y SOLO ACA, que es lo que dice la columna
+ * "Ambito" de la 11.2 —"web, mcp-stdio (modo core)"— y que hasta este paso no se
+ * podia escribir porque no habia otra rama.
+ *
+ * El mensaje es el MISMO para la ausente y para la vacia: Zod usaria el del tipo
+ * en un caso y el del `min(1)` en el otro, y escribir dos deja al caso mas comun
+ * —la ausente— con el menos util. Para la 11.2 son el mismo caso.
+ */
+const esquemaCore = z.object({
+  ...COMUN,
+  MCP_PORT_MODE: z.literal("core"),
+  DATABASE_URL: obligatoria(
+    "la cadena de conexion a PostgreSQL: definila en el bloque env del .mcp.json o en el entorno",
+  ),
 });
+
+/**
+ * Modo `http` (8.1): el `HttpPort`, contra la API REST con una API key.
+ *
+ * DATABASE_URL NO SE PIDE, y no es un olvido: en este modo el proceso no abre
+ * ninguna conexion a la base —habla con `/api`, que es quien la tiene— asi que
+ * exigirla seria pedir un dato que nadie lee. Lo peor de pedirla no es la
+ * molestia: quien arranca contra un servidor remoto no tiene una cadena valida
+ * que poner, asi que inventaria una, y una cadena inventada que nadie usa es
+ * indistinguible de una equivocada que alguien si va a usar el dia que ese mismo
+ * bloque `env` vuelva a modo core. Si esta definida se IGNORA —el esquema no es
+ * estricto—, que es lo que pasa en una maquina de desarrollo donde el `.env` la
+ * tiene para todo lo demas.
+ *
+ * TASKMAN_API_KEY se valida aca solo como NO VACIA. Que la clave SIRVA lo decide
+ * el servidor, y lo comprueba el arranque con la sonda de
+ * `HttpPort.descubrirScopes()`: un 401 ahi impide arrancar igual que una
+ * variable ausente. La diferencia entre las dos validaciones no es de rigor sino
+ * de QUIEN PUEDE VERLA —la forma la ve este proceso, el valor solo el servidor—
+ * y por eso las dos terminan en lo mismo, que es lo que la 11.2 pide.
+ */
+const esquemaHttp = z.object({
+  ...COMUN,
+  MCP_PORT_MODE: z.literal("http"),
+  TASKMAN_API_URL: obligatoria(
+    "la URL base de la API: definila en el bloque env del .mcp.json o en el entorno",
+  ).refine(esUrlDeApi, {
+    error: "una URL absoluta http:// o https://, por ejemplo https://taskman.midominio.com",
+  }),
+  TASKMAN_API_KEY: obligatoria(
+    "la API key de la 7.1 tal cual se emitio: definila en el bloque env del .mcp.json o en el entorno",
+  ),
+});
+
+/**
+ * Una URL que `HttpPort` pueda usar como raiz.
+ *
+ * Se comprueba el ESQUEMA ademas de que parsee: `new URL("mailto:x")` parsea, y
+ * una TASKMAN_API_URL que no sea http(s) fallaria recien en el primer `fetch`,
+ * que es exactamente el "fallo posterior en tiempo de ejecucion" que la 11.2
+ * manda evitar. La barra final sobra o falta sin consecuencia: la recorta
+ * `HttpPort`.
+ */
+function esUrlDeApi(valor: string): boolean {
+  if (!URL.canParse(valor)) {
+    return false;
+  }
+
+  const { protocol } = new URL(valor);
+
+  return protocol === "http:" || protocol === "https:";
+}
+
+/**
+ * MCP_PORT_MODE (8.1) decide QUE OTRAS VARIABLES hacen falta, asi que el esquema
+ * es una union discriminada por el y no un objeto con campos opcionales.
+ *
+ * Lo que se gana es de TIPO y no de validacion: un objeto plano con
+ * `TASKMAN_API_URL?: string` mas un `superRefine` valida exactamente lo mismo,
+ * pero deja a quien construye el `HttpPort` con dos `string | undefined` que
+ * tiene que volver a comprobar —o afirmar con un `!`— justo donde el esquema ya
+ * lo sabia. Con la union, la rama que construye el puerto HTTP no compila sin
+ * las dos variables, y la que construye el `CorePort` no puede leerlas por
+ * error.
+ *
+ * EL DEFECTO DEL DISCRIMINANTE SE APLICA ANTES, en un `preprocess`, porque
+ * `z.discriminatedUnion` necesita el literal presente para elegir la rama. De
+ * paso queda alineado con las otras dos variables de vocabulario del nucleo
+ * (`leerNivelLog`, `leerPoliticaDestructiva`): ausente o vacia es el valor por
+ * defecto, y el valor se compara en minusculas. Antes `MCP_PORT_MODE=""` era un
+ * error y `MCP_PORT_MODE=CORE` tambien; ahora son las dos `core`, como
+ * `LOG_LEVEL=""` ya era `info`.
+ */
+export const esquemaDeEntorno = z.preprocess(
+  conModoNormalizado,
+  z.discriminatedUnion("MCP_PORT_MODE", [esquemaCore, esquemaHttp], {
+    error: `uno de: ${MODOS.join(", ")} (ausente equivale a ${MODO_POR_DEFECTO})`,
+  }),
+);
+
+function conModoNormalizado(valor: unknown): unknown {
+  if (typeof valor !== "object" || valor === null) {
+    return valor;
+  }
+
+  const env = valor as Record<string, unknown>;
+  const crudo = typeof env["MCP_PORT_MODE"] === "string" ? env["MCP_PORT_MODE"].trim() : "";
+
+  return { ...env, MCP_PORT_MODE: crudo === "" ? MODO_POR_DEFECTO : crudo.toLowerCase() };
+}
 
 export type Entorno = z.infer<typeof esquemaDeEntorno>;
 
@@ -128,7 +215,27 @@ export function validarEntorno(env: EntornoCrudo): Entorno {
     return resultado.data;
   }
 
-  const lineas = resultado.error.issues.map((issue) => {
+  const issues = [...resultado.error.issues];
+
+  /**
+   * UN MODO ILEGIBLE TAPA A TODO LO DEMAS, y hay que destaparlo a mano: cuando
+   * el discriminante no coincide con ninguna rama, `z.discriminatedUnion` no
+   * sabe cual validar y devuelve ese unico issue. Sin esto, un
+   * `MCP_PORT_MODE=htpp` junto a un `LOG_LEVEL=verbose` costaria dos arranques,
+   * que es justo lo que este esquema vino a terminar.
+   *
+   * Solo se recupera lo COMUN a los dos modos: cuales de las otras hacen falta es
+   * lo que el modo decide, asi que no se elige una rama por el.
+   */
+  if (issues.every((issue) => issue.path[0] === "MCP_PORT_MODE")) {
+    const comunes = z.object(COMUN).safeParse(env);
+
+    if (!comunes.success) {
+      issues.push(...comunes.error.issues);
+    }
+  }
+
+  const lineas = issues.map((issue) => {
     const nombre = String(issue.path[0] ?? "(sin nombre)");
     const valor = env[nombre];
     const vacia = valor === undefined || valor.trim() === "";
@@ -138,7 +245,5 @@ export function validarEntorno(env: EntornoCrudo): Entorno {
       : `  - ${nombre}="${valor}": se esperaba ${issue.message}.`;
   });
 
-  throw new Error(
-    ["La configuracion del entorno no es valida (11.2):", ...lineas].join("\n"),
-  );
+  throw new Error(["La configuracion del entorno no es valida (11.2):", ...lineas].join("\n"));
 }

@@ -73,6 +73,7 @@ export function definirSearchTasks(port: TaskManagerPort, entorno: EntornoMcp): 
       "Es la herramienta para 'donde estaba la tarea del contrato': devuelve cada coincidencia con su tablero y su columna, " +
       "asi que despues se puede consultar o mover sin volver a resolver nada. Para ver una columna entera en orden esta list_tasks.",
     inputSchema: shape,
+    scope: "READ",
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,

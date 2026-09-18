@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import type { Client as McpClient } from "@modelcontextprotocol/sdk/client/index.js";
 import type { ErrorDeApi } from "@taskman/contracts";
 import {
   crearCorePort,
@@ -12,6 +13,7 @@ import {
   type Scope,
 } from "@taskman/core";
 import { Client } from "pg";
+import { expect } from "vitest";
 
 /**
  * Lo que necesita la suite de contrato REST: conectar, vaciar, emitir claves y
@@ -119,13 +121,13 @@ export async function contarFilas(
 export async function emitirClave(
   client: Client,
   scopes: readonly Scope[],
-  opciones: { label?: string; revocada?: boolean } = {},
+  opciones: { label?: string; revocada?: boolean; agente?: boolean } = {},
 ): Promise<string> {
   const clave = generarClave();
 
   await client.query(
-    `INSERT INTO api_key (id, label, prefix, key_hash, scopes, revoked_at)
-     VALUES ($1, $2, $3, $4, $5::"Scope"[], $6)`,
+    `INSERT INTO api_key (id, label, prefix, key_hash, scopes, revoked_at, actor_type)
+     VALUES ($1, $2, $3, $4, $5::"Scope"[], $6, $7::"ActorType")`,
     [
       // El UUID lo genera la aplicacion, no la base (invariante del proyecto).
       randomUUID(),
@@ -134,6 +136,11 @@ export async function emitirClave(
       hashearClave(clave, PEPPER),
       scopes,
       opciones.revocada === true ? new Date() : null,
+      // Lo que hace `--agent` de `apikey:create`. El defecto es API y por eso
+      // las decenas de llamadas que no pasan `agente` siguen auditando igual que
+      // antes de que la columna existiera: es lo mismo que le pasa a una clave
+      // emitida antes de la migracion.
+      opciones.agente === true ? "AGENT" : "API",
     ],
   );
 
@@ -270,4 +277,58 @@ export async function sembrarTareas(
       ctx(),
     );
   }
+}
+
+// --- Leer el resultado de una herramienta MCP ---------------------------------
+//
+// Los comparten las dos suites que recorren las once herramientas: la de
+// `HttpPort` (http-port.test.ts) y la del transporte /mcp (mcp.test.ts). Vivian
+// en la primera; son las mismas, no una copia.
+
+/** Las cuatro de la 4.3, en el orden en que las crea el nucleo. */
+export const COLUMNAS_POR_DEFECTO = ["BACKLOG", "TODO", "IN_PROGRESS", "DONE"];
+
+export interface Resultado {
+  texto: string;
+  json: Record<string, unknown>;
+  isError: boolean;
+}
+
+/** El bloque JSON de la 8.5 va al final del texto, entre vallas ```json. */
+function extraerJson(texto: string): Record<string, unknown> {
+  const inicio = texto.indexOf("```json\n");
+  const fin = texto.lastIndexOf("\n```");
+  if (inicio === -1 || fin <= inicio) {
+    throw new Error(`La respuesta no trae bloque JSON:\n${texto}`);
+  }
+  return JSON.parse(texto.slice(inicio + "```json\n".length, fin)) as Record<string, unknown>;
+}
+
+export async function llamarCon(
+  cliente: McpClient,
+  name: string,
+  args: Record<string, unknown>,
+): Promise<Resultado> {
+  const salida = await cliente.callTool({ name, arguments: args });
+  const bloques = salida.content as Array<{ type: string; text?: string }>;
+
+  expect(bloques).toHaveLength(1);
+  const texto = bloques[0]?.text ?? "";
+
+  return { texto, json: extraerJson(texto), isError: salida.isError === true };
+}
+
+export function ok(resultado: Resultado): Record<string, unknown> {
+  expect(resultado.isError, resultado.texto).toBe(false);
+  return resultado.json;
+}
+
+export function error(resultado: Resultado): Record<string, unknown> {
+  expect(resultado.isError, resultado.texto).toBe(true);
+  return resultado.json["error"] as Record<string, unknown>;
+}
+
+/** El `id` de un objeto del bloque JSON de la 8.5. */
+export function idDe(objeto: unknown): string {
+  return (objeto as Record<string, unknown>)["id"] as string;
 }

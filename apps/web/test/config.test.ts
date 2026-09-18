@@ -29,6 +29,8 @@ describe("validarEntorno (apps/web)", () => {
     // 11.2: sin configurar, `info`. Y el limite de la 7.3 ENCENDIDO.
     expect(entorno.LOG_LEVEL).toBe("info");
     expect(entorno.RATE_LIMIT_ENABLED).toBe(true);
+    // 8.3.2: sin configurar, se pregunta antes de borrar.
+    expect(entorno.MCP_DESTRUCTIVE_POLICY).toBe("confirm");
     expect(entorno.NODE_ENV).toBeUndefined();
   });
 
@@ -99,6 +101,34 @@ describe("validarEntorno (apps/web)", () => {
     expect(validarEntorno({ ...COMPLETO, RATE_LIMIT_ENABLED: "true" }).RATE_LIMIT_ENABLED).toBe(
       true,
     );
+  });
+
+  it("un MCP_DESTRUCTIVE_POLICY invalido no valida: `denyy` no puede pasar por el defecto", () => {
+    const roto = { ...COMPLETO, MCP_DESTRUCTIVE_POLICY: "denyy" };
+
+    // Quien escribio "denyy" cree tener el borrado apagado; caer en `confirm` se
+    // lo dejaria encendido sin avisar.
+    expect(() => validarEntorno(roto)).toThrow(/MCP_DESTRUCTIVE_POLICY="denyy"/);
+    expect(() => validarEntorno(roto)).toThrow(/confirm, allow, deny/);
+  });
+
+  it("MCP_DESTRUCTIVE_POLICY en blanco es ausente: queda en confirm", () => {
+    expect(
+      validarEntorno({ ...COMPLETO, MCP_DESTRUCTIVE_POLICY: "  " }).MCP_DESTRUCTIVE_POLICY,
+    ).toBe("confirm");
+  });
+
+  it("las tres politicas validas pasan, y se normalizan", () => {
+    for (const politica of ["confirm", "allow", "deny"]) {
+      expect(
+        validarEntorno({ ...COMPLETO, MCP_DESTRUCTIVE_POLICY: politica }).MCP_DESTRUCTIVE_POLICY,
+      ).toBe(politica);
+    }
+
+    // El vocabulario es el del nucleo, el mismo que usa apps/mcp-stdio.
+    expect(
+      validarEntorno({ ...COMPLETO, MCP_DESTRUCTIVE_POLICY: " Deny " }).MCP_DESTRUCTIVE_POLICY,
+    ).toBe("deny");
   });
 
   it("un NODE_ENV que no es uno de los tres no valida", () => {

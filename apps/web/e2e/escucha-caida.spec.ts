@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 
-import { cortarLaEscucha, moverPorMcp } from "./base";
+import { cortarLaEscucha, moverPorElRegistroMcp } from "./base";
 import {
   TITULO_ALTA,
   TITULO_BAJA,
@@ -99,7 +99,7 @@ test("si PostgreSQL corta la escucha, el tablero deja de decir conectado, recone
       .toBeGreaterThan(0);
 
     // Con el tablero sordo, un agente mueve una tarea. Nadie escucha ese NOTIFY.
-    await moverPorMcp({ tarea: "Montar Playwright", aColumna: "BACKLOG", position: 0 });
+    await moverPorElRegistroMcp({ tarea: "Montar Playwright", aColumna: "BACKLOG", position: 0 });
 
     // La pantalla sigue en lo de antes: la unica forma de enterarse es la
     // reconexion, y esta retenida.
@@ -125,7 +125,7 @@ test("si PostgreSQL corta la escucha, el tablero deja de decir conectado, recone
   expect(await sigueElMismoDocumento(page)).toBe(true);
 
   // 3. VUELVE A OIR: lo que se escribe despues llega como aviso, con su marca.
-  await moverPorMcp({ tarea: TITULO_CORTO, aColumna: "IN_PROGRESS", position: 0 });
+  await moverPorElRegistroMcp({ tarea: TITULO_CORTO, aColumna: "IN_PROGRESS", position: 0 });
 
   await expect(titulos(page, EN_PROGRESO)).toHaveText([TITULO_CORTO]);
   await expect(titulosMarcados(page)).toHaveText([TITULO_CORTO]);

@@ -30,6 +30,23 @@ const config: NextConfig = {
    * rompe al reescribirlos. OJO con el precedente de `@prisma/client` y `pg`: una
    * entrada aca es INERTE si el paquete no se resuelve desde apps/web, asi que
    * `pino` va tambien en sus dependencies, apuntando a la MISMA copia fisica.
+   *
+   * `@modelcontextprotocol/sdk` NO ESTA, Y ES A PROPOSITO. Resuelve desde apps/web,
+   * asi que la entrada no seria inerte: haria algo, y lo que haria es DUPLICAR ZOD.
+   * Node cargaria el SDK con su zod nativa mientras el nucleo sigue usando la
+   * empaquetada, y quedan DOS instancias del mismo modulo aunque haya UNA sola
+   * copia fisica: el realpath no lo ve. Medido con `next build` + `next start` y
+   * una sonda que comparaba con `===` la clase de un esquema construido por el SDK
+   * contra `z.ZodObject`: sin declararlo, true; declarado, false. Hoy no rompe nada
+   * —las once herramientas se listan y validan igual— y es el mismo riesgo latente
+   * que el `instanceof Sql` de Prisma con otro nombre. Empaquetado no necesita
+   * configuracion: Turbopack empaqueta el SDK, que es ESM ya compilado, sin
+   * `transpilePackages`.
+   *
+   * Para diagnosticar dos zod, `instanceof` NO SIRVE: en zod 4 compara traits
+   * (`inst._zod.traits.has(nombre)`) y da true con dos instancias. Solo `===` sobre
+   * la clase lo ve. Si algun dia hiciera falta externalizar el SDK, la salida
+   * seria declarar tambien `zod`, y eso NO esta medido.
    */
   serverExternalPackages: ["@prisma/client", "@prisma/adapter-pg", "pg", "pino"],
 };

@@ -283,6 +283,34 @@ describe("GET /api/tasks/search", () => {
   });
 
   describe("ambito", () => {
+    it("SIN board_id ni column_id busca en TODOS los tableros", async () => {
+      /**
+       * ESTE CASO AFIRMABA LO CONTRARIO —un 400, entre los de validacion— y es
+       * el que decide el paso 10b de F4. La regla que afirmaba era del BORDE:
+       * un `.refine` de `consultaDeBusqueda` puesto en F2 por precedente con
+       * GET /api/tasks, no un requisito del RF-09 ni de la 6.3. El nucleo
+       * siempre acepto un `SearchScope` vacio. Se da vuelta en vez de borrarse
+       * porque es el unico caso que se pone rojo si alguien restaura el refine.
+       */
+      const uno = await sembrarTablero(taskman, { name: "Uno" });
+      const otro = await sembrarTablero(taskman, { name: "Otro" });
+      await sembrarTarea({ boardId: uno.id, title: "Revisar el contrato del uno" });
+      await sembrarTarea({ boardId: otro.id, title: "Revisar el contrato del otro" });
+      // Una que no coincide, para que "de todos los tableros" no se confunda
+      // con "todas las tareas".
+      await sembrarTarea({ boardId: otro.id, title: "Otra cosa" });
+
+      const cuerpo = await resultado("q=contrato");
+
+      expect(cuerpo.items.map((item) => item.title).sort()).toEqual([
+        "Revisar el contrato del otro",
+        "Revisar el contrato del uno",
+      ]);
+      expect(new Set(cuerpo.items.map((item) => item.board_id))).toEqual(
+        new Set([uno.id, otro.id]),
+      );
+    });
+
     it("una tarea de OTRO tablero que coincide NO aparece", async () => {
       // El caso que decide el paso.
       const uno = await sembrarTablero(taskman, { name: "Uno" });
@@ -369,6 +397,64 @@ describe("GET /api/tasks/search", () => {
       expect(ids.length).toBe(esperados.size);
     });
 
+    it("el orden por relevancia se mantiene ENTRE TABLEROS distintos", async () => {
+      // `ts_rank` puntua cada fila contra la consulta, sin nada por tablero de
+      // por medio, asi que los rank de dos tableros son comparables. Con la
+      // busqueda global eso dejo de ser un detalle interno: es el orden que ve
+      // quien no acoto.
+      const uno = await sembrarTablero(taskman, { name: "Uno" });
+      const otro = await sembrarTablero(taskman, { name: "Otro" });
+      await sembrarTarea({ boardId: uno.id, title: "contrato" });
+      await sembrarTarea({
+        boardId: otro.id,
+        title: "contrato contrato contrato",
+        description: "contrato contrato",
+      });
+
+      const cuerpo = await resultado("q=contrato");
+
+      expect(cuerpo.items.map((item) => item.board_id)).toEqual([otro.id, uno.id]);
+      expect(cuerpo.items[0]?.rank ?? 0).toBeGreaterThan(cuerpo.items[1]?.rank ?? 0);
+    });
+
+    it("las paginas del ambito GLOBAL son el conjunto exacto y cruzan los tableros", async () => {
+      // El keyset es `(rank, id)` y el ambito solo agrega condiciones al WHERE,
+      // pero se armo cuando acotar era obligatorio: lo que esto mide es que las
+      // paginas de una busqueda sin ambito sigan siendo una particion exacta.
+      const uno = await sembrarTablero(taskman, { name: "Uno" });
+      const otro = await sembrarTablero(taskman, { name: "Otro" });
+      const esperados = new Set<string>();
+      for (let i = 0; i < 3; i += 1) {
+        esperados.add(await sembrarTarea({ boardId: uno.id, title: `contrato uno ${i}` }));
+        esperados.add(await sembrarTarea({ boardId: otro.id, title: `contrato otro ${i}` }));
+      }
+
+      const ids: string[] = [];
+      const tableros = new Set<string>();
+      let cursor: string | null = null;
+      let vueltas = 0;
+
+      do {
+        const sufijo = cursor === null ? "" : `&cursor=${encodeURIComponent(cursor)}`;
+        const pagina = await resultado(`q=contrato&limit=2${sufijo}`);
+
+        expect(pagina.items.length).toBeLessThanOrEqual(2);
+        ids.push(...pagina.items.map((item) => item.id));
+        for (const item of pagina.items) {
+          tableros.add(item.board_id);
+        }
+        cursor = pagina.next_cursor;
+
+        vueltas += 1;
+        expect(vueltas, "la paginacion no termina").toBeLessThan(20);
+      } while (cursor !== null);
+
+      expect(new Set(ids)).toEqual(esperados);
+      expect(ids.length).toBe(esperados.size);
+      // Y el recorrido cruzo los dos tableros, no fue el de uno solo repetido.
+      expect(tableros).toEqual(new Set([uno.id, otro.id]));
+    });
+
     it("la primera pagina trae limit items y un next_cursor", async () => {
       const tablero = await sembrarTablero(taskman, { name: "Tablero" });
       for (let i = 0; i < 5; i += 1) {
@@ -383,15 +469,25 @@ describe("GET /api/tasks/search", () => {
   });
 
   describe("validacion y autorizacion", () => {
-    it("400 sin q", async () => {
+    it("400 sin q, con ambito y sin ambito", async () => {
+      /**
+       * `q` OBLIGATORIO es el piso que justifica que la busqueda pueda no
+       * acotar (ver `consultaDeBusqueda`): sin ambito igual hay que haber dicho
+       * QUE palabra. Por eso la peticion SIN NINGUN PARAMETRO —la que devolveria
+       * el sistema entero— se prueba aca y no en otro lado: es la que ese piso
+       * tiene que seguir rechazando.
+       */
       const tablero = await sembrarTablero(taskman, { name: "Tablero" });
 
-      const respuesta = await buscar(
-        peticion({ ruta: `/api/tasks/search?board_id=${tablero.id}`, clave: claveRead }),
-      );
+      for (const ruta of [
+        `/api/tasks/search?board_id=${tablero.id}`,
+        "/api/tasks/search",
+      ]) {
+        const respuesta = await buscar(peticion({ ruta, clave: claveRead }));
 
-      expect(respuesta.status).toBe(400);
-      expect((await leerError(respuesta)).error.code).toBe("VALIDATION_ERROR");
+        expect(respuesta.status, ruta).toBe(400);
+        expect((await leerError(respuesta)).error.code).toBe("VALIDATION_ERROR");
+      }
     });
 
     it("400 con q vacio o de solo espacios", async () => {
@@ -412,17 +508,6 @@ describe("GET /api/tasks/search", () => {
       }
     });
 
-    it("400 sin board_id ni column_id", async () => {
-      // El nucleo acepta un scope vacio y buscaria en TODOS los tableros; la
-      // regla la sostiene el borde, igual que en GET /api/tasks.
-      const respuesta = await buscar(
-        peticion({ ruta: "/api/tasks/search?q=contrato", clave: claveRead }),
-      );
-
-      expect(respuesta.status).toBe(400);
-      expect((await leerError(respuesta)).error.code).toBe("VALIDATION_ERROR");
-    });
-
     it("400 con limit fuera de rango", async () => {
       const tablero = await sembrarTablero(taskman, { name: "Tablero" });
 
@@ -438,30 +523,41 @@ describe("GET /api/tasks/search", () => {
       }
     });
 
-    it("column_key se IGNORA, no acota ni falla: la busqueda no lo acepta", async () => {
+    it("400 con column_key, que la busqueda no acepta: no acota, asi que no pasa", async () => {
       /**
        * `column_key` NO esta en la busqueda: el `SearchScope` del nucleo solo
        * acepta `columnId`, y resolver la key en el adaptador seria poner una
-       * resolucion de referencia en la capa equivocada.
+       * resolucion de referencia en la capa equivocada. Pero existe en
+       * GET /api/tasks, asi que se escribe de memoria contra este endpoint.
        *
-       * Y un parametro de consulta que el contrato no declara NO da 400: el
-       * handler arma el objeto a validar leyendo SOLO los parametros que conoce,
-       * asi que el `strictObject` nunca ve el de mas. Es el mismo comportamiento
-       * de GET /api/boards y GET /api/tasks. El test afirma lo que hoy pasa —y que
-       * el parametro queda INERTE, no silenciosamente honrado— porque lo peligroso
-       * no es el 200 sino creer que acoto cuando no acoto.
+       * ESTE TEST AFIRMABA LO CONTRARIO —que el parametro se ignoraba y la
+       * busqueda devolvia las coincidencias de TODAS las columnas— y estaba
+       * escrito para dejar constancia del agujero: el handler armaba el objeto a
+       * validar leyendo SOLO los parametros que conoce, asi que el `strictObject`
+       * del contrato nunca veia el de mas. Lo peligroso no era el 200 sino creer
+       * que se acoto cuando no se acoto; ahora el `strictObject` lo ve y lo
+       * rechaza. El mecanismo, para los cinco endpoints que leen query, esta en
+       * `consulta.test.ts`.
        */
       const tablero = await sembrarTablero(taskman, { name: "Tablero" });
       await sembrarTarea({ boardId: tablero.id, columnKey: "TODO", title: "contrato en TODO" });
       await sembrarTarea({ boardId: tablero.id, columnKey: "DONE", title: "contrato en DONE" });
 
-      const cuerpo = await resultado(`board_id=${tablero.id}&q=contrato&column_key=TODO`);
+      const respuesta = await buscar(
+        peticion({
+          ruta: `/api/tasks/search?board_id=${tablero.id}&q=contrato&column_key=TODO`,
+          clave: claveRead,
+        }),
+      );
 
-      // Las dos: el parametro no filtro nada.
-      expect(cuerpo.items.map((item) => item.title).sort()).toEqual([
-        "contrato en DONE",
-        "contrato en TODO",
-      ]);
+      expect(respuesta.status).toBe(400);
+
+      const cuerpo = await leerError(respuesta);
+
+      expect(cuerpo.error.code).toBe("VALIDATION_ERROR");
+      expect(cuerpo.error.message).toContain("'column_key'");
+      // Y sobre todo: NO el tablero entero disfrazado de resultado acotado.
+      expect(JSON.stringify(cuerpo)).not.toContain("contrato en DONE");
     });
 
     it("401 sin la cabecera Authorization", async () => {

@@ -23,6 +23,14 @@
 //                     el nucleo -> Prisma, que es el grafo que de verdad se
 //                     rompe. Un 200 aca es lo unico que prueba que la ruta
 //                     compilo Y que la cadena hasta la base funciona en dev.
+//   POST /mcp        tools/list por Streamable HTTP (8.1), con la misma clave.
+//                     Es el UNICO camino que mete el SDK de MCP en el bundle de
+//                     Next: la suite de vitest invoca el Route Handler directo,
+//                     sin Turbopack, y `next build` lo compila pero no lo pide.
+//                     Sin esto, un SDK que rompiera `next dev` dejaria `verify`
+//                     en verde. No alcanza el 200: exige que el listado traiga
+//                     `list_boards`, que es lo que prueba que el SDK monto las
+//                     herramientas del nucleo y no que respondio cualquier cosa.
 //   GET /            la UI de lectura de la 9.1. Es un Server Component, o sea
 //                     que su grafo es el mas grande del proyecto —React, el
 //                     nucleo, Prisma— y ademas es el UNICO camino que renderiza:
@@ -210,10 +218,20 @@ async function emitirClave() {
   return clave;
 }
 
-async function pedir(ruta, clave) {
+async function pedir({ metodo, ruta, clave, cuerpoJson }) {
   const cabeceras = clave === undefined ? {} : { authorization: `Bearer ${clave}` };
 
-  const respuesta = await fetch(`${BASE}${ruta}`, { headers: cabeceras });
+  if (cuerpoJson !== undefined) {
+    cabeceras["content-type"] = "application/json";
+    // Streamable HTTP exige que el cliente acepte las dos formas de respuesta.
+    cabeceras["accept"] = "application/json, text/event-stream";
+  }
+
+  const respuesta = await fetch(`${BASE}${ruta}`, {
+    method: metodo,
+    headers: cabeceras,
+    ...(cuerpoJson === undefined ? {} : { body: JSON.stringify(cuerpoJson) }),
+  });
   const texto = (await respuesta.text()).trimStart();
 
   // Un fallo de compilacion se sirve como la pagina de error de Next: 4 KB de
@@ -224,7 +242,20 @@ async function pedir(ruta, clave) {
     ? "(pagina de error HTML de Next; el motivo esta en la salida de abajo)"
     : texto.slice(0, 300);
 
-  return { estado: respuesta.status, cuerpo };
+  return { estado: respuesta.status, cuerpo, texto };
+}
+
+/** El tools/list de /mcp trae `list_boards`: el SDK monto el catalogo del nucleo. */
+function listaHerramientas(texto) {
+  try {
+    const nombres = JSON.parse(texto)?.result?.tools?.map((herramienta) => herramienta.name) ?? [];
+
+    return nombres.includes("list_boards")
+      ? undefined
+      : `tools/list no trajo list_boards (trajo: ${JSON.stringify(nombres)}).`;
+  } catch {
+    return "la respuesta no es JSON-RPC.";
+  }
 }
 
 /** Espera a que el servidor conteste ALGO. Un 500 tambien cuenta: es el fallo. */
@@ -286,24 +317,35 @@ log(`\`next dev\` (Turbopack) en ${BASE} (distDir ${DIST_DIR}, pid ${hijo.pid})`
 await esperarRespuesta();
 
 // En orden de grafo creciente, para que el primero que falle sea el mas barato de
-// diagnosticar: si caen las tres, el motivo esta en la de arriba.
+// diagnosticar: si caen todas, el motivo esta en la de arriba.
 const comprobaciones = [
-  { ruta: "/api/health", clave: undefined, que: "sin autenticacion (6.2)" },
-  { ruta: "/api/boards", clave, que: "autenticada, scope read (7.2)" },
-  { ruta: "/", clave: undefined, que: "la UI de lectura, Server Component (9.1)" },
+  { metodo: "GET", ruta: "/api/health", clave: undefined, que: "sin autenticacion (6.2)" },
+  { metodo: "GET", ruta: "/api/boards", clave, que: "autenticada, scope read (7.2)" },
+  {
+    metodo: "POST",
+    ruta: "/mcp",
+    clave,
+    cuerpoJson: { jsonrpc: "2.0", id: 1, method: "tools/list", params: {} },
+    que: "MCP por Streamable HTTP, tools/list (8.1)",
+    exigir: listaHerramientas,
+  },
+  { metodo: "GET", ruta: "/", clave: undefined, que: "la UI de lectura, Server Component (9.1)" },
 ];
 
 for (const comprobacion of comprobaciones) {
-  const { estado, cuerpo } = await pedir(comprobacion.ruta, comprobacion.clave);
+  const { metodo, ruta, que } = comprobacion;
+  const { estado, cuerpo, texto } = await pedir(comprobacion);
 
   if (estado !== 200) {
-    await fallar(
-      `GET ${comprobacion.ruta} (${comprobacion.que}) devolvio ${estado}, se esperaba 200.\n` +
-        `  cuerpo: ${cuerpo}`,
-    );
+    await fallar(`${metodo} ${ruta} (${que}) devolvio ${estado}, se esperaba 200.\n  cuerpo: ${cuerpo}`);
   }
 
-  log(`GET ${comprobacion.ruta} -> 200  (${comprobacion.que})`);
+  const problema = comprobacion.exigir?.(texto);
+  if (problema !== undefined) {
+    await fallar(`${metodo} ${ruta} (${que}) respondio 200, pero ${problema}\n  cuerpo: ${cuerpo}`);
+  }
+
+  log(`${metodo} ${ruta} -> 200  (${que})`);
 }
 
 matarServidor();

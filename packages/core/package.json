@@ -8,6 +8,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./logger": "./src/domain/logger.ts",
+    "./politica": "./src/mcp/politica.ts",
     "./cambios": "./src/db/cambios.ts"
   },
   "scripts": {

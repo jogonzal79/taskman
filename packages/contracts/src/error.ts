@@ -48,11 +48,14 @@ export type ErrorDeApi = z.infer<typeof errorDeApi>;
  * esa anotacion ES la comprobacion. Un codigo de dominio nuevo sin entrada ACA no
  * compila ALLA, con el mensaje apuntando al que falta.
  *
- * Corolario: las claves que no son codigos de dominio —UNAUTHENTICATED,
- * FORBIDDEN_SCOPE, RATE_LIMITED, INTERNAL_ERROR, que los produce el borde— sobran
- * respecto de ese `Record` y esta bien que sobren: asignar una variable (no un
- * literal) no dispara la comprobacion de propiedades en exceso, asi que la tabla
- * puede ser mas ancha que el dominio sin dejar de cubrirlo entero.
+ * Corolario: las claves que no son codigos de dominio —hoy INTERNAL_ERROR, la
+ * etiqueta de un fallo no controlado, y FORBIDDEN_ORIGIN, que es del transporte
+ * de /mcp— sobran respecto de ese `Record` y esta bien que sobren: asignar una
+ * variable (no un literal) no dispara la comprobacion de propiedades en exceso,
+ * asi que la tabla puede ser mas ancha que el dominio sin dejar de cubrirlo
+ * entero. UNAUTHENTICATED, FORBIDDEN_SCOPE, RATE_LIMITED y PAYLOAD_TOO_LARGE
+ * tambien los produce el borde, pero desde el paso 11 de F4 son del catalogo de
+ * dominio (ver la nota del 413, abajo).
  */
 export const ESTADO_POR_CODIGO = {
   // --- 400 ---------------------------------------------------------------
@@ -77,6 +80,13 @@ export const ESTADO_POR_CODIGO = {
   // --- 401 y 403 ---------------------------------------------------------
   UNAUTHENTICATED: 401,
   FORBIDDEN_SCOPE: 403,
+
+  // Una peticion a /mcp con un Origin que no esta permitido. No lo pide la
+  // especificacion del proyecto sino el protocolo: Streamable HTTP exige validar
+  // Origin contra DNS rebinding y responder 403 cuando es invalido. Es del BORDE
+  // MCP, como PAYLOAD_TOO_LARGE lo es del HTTP, y REST no lo produce: /api no lo
+  // valida porque la 7.3 resuelve el caso del navegador con CORS apagado.
+  FORBIDDEN_ORIGIN: 403,
 
   // MCP_DESTRUCTIVE_POLICY=deny: el servidor no borra, se pida como se pida. No
   // lo puede producir REST hoy —es del borde MCP— pero el `Record` del adaptador
@@ -108,9 +118,12 @@ export const ESTADO_POR_CODIGO = {
    * porque un 400 le diria a un cliente que revise lo que mando cuando lo que
    * tiene que revisar es cuanto mando.
    *
-   * Es un codigo del BORDE, como UNAUTHENTICATED o RATE_LIMITED, y por eso no
-   * entra en `DomainErrorCode`: el nucleo no sabe que existen las peticiones, y
-   * mucho menos cuanto pesan.
+   * Es un codigo del BORDE, como UNAUTHENTICATED o RATE_LIMITED: el nucleo no
+   * lo produce, porque no sabe que existen las peticiones, y mucho menos cuanto
+   * pesan. Aun asi ESTA en `DomainErrorCode` desde el paso 11 de F4, igual que
+   * esos dos y FORBIDDEN_SCOPE: `HttpPort` lo recibe en la envoltura de la 6.4 y
+   * lo reconstruye como error de dominio (ver `CODIGOS_DE_DOMINIO` en
+   * `packages/core/src/domain/errors.ts`).
    */
   PAYLOAD_TOO_LARGE: 413,
 

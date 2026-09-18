@@ -7,9 +7,9 @@ import {
 } from "../src/index";
 
 /**
- * MCP_DESTRUCTIVE_POLICY (8.3.2 y 11.2). Es el unico archivo de este paquete
- * que no toca la base: la validacion de configuracion es una funcion pura, y
- * probarla contra PostgreSQL no la haria mas cierta.
+ * MCP_DESTRUCTIVE_POLICY (8.3.2 y 11.2). No toca la base: la validacion de
+ * configuracion es una funcion pura, y probarla contra PostgreSQL no la haria
+ * mas cierta.
  */
 
 describe("leerPoliticaDestructiva", () => {

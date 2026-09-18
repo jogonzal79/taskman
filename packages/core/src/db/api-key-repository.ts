@@ -1,5 +1,6 @@
 import { prisma, type PrismaClient } from "@taskman/db";
 
+import type { ActorType } from "../domain/actor";
 import { esScope, type Scope } from "../domain/api-key";
 
 /**
@@ -19,6 +20,19 @@ export interface ApiKeyRow {
   prefix: string;
   keyHash: string;
   scopes: readonly Scope[];
+  /**
+   * Con que `actor_type` audita lo que entre con esta clave (7.4). Lo eligio
+   * quien la emitio, no quien la usa: es lo que hace que el tipo de actor siga
+   * siendo una DERIVACION y no algo que un cliente declara.
+   *
+   * La base garantiza que NUNCA es USER (`api_key_actor_type_no_user`), y por
+   * eso aca no hay un segundo filtro como el de `scopes` de abajo: el CHECK es
+   * el unico sitio que no se puede saltear —la revocacion de la 7.1 ya se hace
+   * tipeando SQL a mano— y repetirlo en codigo seria un segundo sitio diciendo
+   * lo mismo, con la desventaja de que la unica reaccion posible ahi seria
+   * reescribir el valor en silencio.
+   */
+  actorType: ActorType;
   /** 7.1 / 6.4: una clave revocada se trata igual que una inexistente. */
   revokedAt: Date | null;
 }
@@ -47,6 +61,7 @@ export async function buscarClavePorPrefijo(
     // no sobra: si alguien agrega un valor a `Scope` en una migracion y no aca,
     // preferimos ignorarlo a propagar un scope que el nucleo no sabe evaluar.
     scopes: fila.scopes.filter(esScope),
+    actorType: fila.actorType,
     revokedAt: fila.revokedAt,
   };
 }

@@ -80,7 +80,7 @@ export class CorePort implements TaskManagerPort {
    * Para GET /api/boards/{id} (6.2). Deliberadamente NO esta en
    * `TaskManagerPort`: el recuento lo pide el borde REST, y la herramienta MCP
    * get_board ya arma el suyo por su cuenta. Agregarlo a la interfaz obligaria
-   * a implementarlo tambien al HttpPort que todavia no existe, para nadie.
+   * a implementarlo tambien en `HttpPort` (`apps/mcp-stdio`), para nadie.
    */
   async getBoardWithTaskCounts(boardId: string): Promise<BoardWithTaskCounts> {
     return this.#boards.getWithTaskCounts(boardId);
@@ -119,9 +119,9 @@ export class CorePort implements TaskManagerPort {
    * Para PATCH /api/boards/{id} (6.2). Igual que `getBoardWithTaskCounts`, va
    * SOLO aca y no en `TaskManagerPort`: el catalogo de la 8.2 no tiene una
    * herramienta `update_board`, asi que sumarlo a la interfaz obligaria a
-   * implementarlo tambien al HttpPort que todavia no existe, para ningun
-   * llamador. `crearCorePort()` devuelve la clase concreta, asi que el
-   * adaptador REST lo alcanza sin ampliar el puerto.
+   * implementarlo tambien en `HttpPort`, para ningun llamador. `crearCorePort()`
+   * devuelve la clase concreta, asi que el adaptador REST lo alcanza sin ampliar
+   * el puerto.
    */
   async updateBoard(
     boardId: string,
@@ -135,7 +135,7 @@ export class CorePort implements TaskManagerPort {
    * Para DELETE /api/boards/{id} (6.2). Va SOLO aca por lo mismo que
    * `updateBoard` y `getBoardWithTaskCounts`: la 8.2 no tiene una herramienta
    * `delete_board` —la unica destructiva del catalogo es `delete_task`— asi que
-   * sumarlo al puerto obligaria a implementarlo en el HttpPort que no existe.
+   * sumarlo al puerto obligaria a implementarlo tambien en `HttpPort`.
    *
    * Devuelve void porque eso devuelve el servicio: lo borrado ya no esta y no
    * hay nada que informar de vuelta. El recuento de lo que se llevo la cascada
@@ -163,9 +163,9 @@ export class CorePort implements TaskManagerPort {
    * Para PATCH /api/columns/{id} (6.2). Va SOLO aca y no en `TaskManagerPort`,
    * por lo mismo que `updateBoard` y `deleteBoard`: el catalogo de la 8.2 no
    * tiene una herramienta `update_column`, asi que sumarlo a la interfaz
-   * obligaria a implementarlo tambien al HttpPort que todavia no existe, para
-   * ningun llamador. `crearCorePort()` devuelve la clase concreta, asi que el
-   * adaptador REST lo alcanza sin ampliar el puerto.
+   * obligaria a implementarlo tambien en `HttpPort`, para ningun llamador.
+   * `crearCorePort()` devuelve la clase concreta, asi que el adaptador REST lo
+   * alcanza sin ampliar el puerto.
    */
   async updateColumn(
     columnId: string,
@@ -229,7 +229,7 @@ export class CorePort implements TaskManagerPort {
    * por lo mismo que `updateBoard`, `deleteBoard`, `updateColumn` y
    * `deleteColumn`: el catalogo de la 8.2 no tiene ninguna herramienta de
    * auditoria, asi que sumarlo a la interfaz obligaria a implementarlo tambien
-   * en el HttpPort que todavia no existe, para ningun llamador.
+   * en `HttpPort`, para ningun llamador.
    *
    * Es la unica LECTURA que se agrega al puerto sin pasar por los tres
    * servicios de entidad, y por eso el campo es un servicio aparte: ver

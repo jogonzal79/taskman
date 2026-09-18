@@ -102,6 +102,9 @@
             "headers": {
               "X-Request-Id": {
                 "$ref": "#/components/headers/XRequestId"
+              },
+              "WWW-Authenticate": {
+                "$ref": "#/components/headers/WWWAuthenticate"
               }
             },
             "content": {
@@ -164,7 +167,7 @@
       },
       "post": {
         "operationId": "postBoards",
-        "summary": "Crear tablero (con columnas por defecto)",
+        "summary": "Crear tablero (con columnas propias o las cuatro por defecto)",
         "description": "Requiere una API key con scope `write` (7.2). Acepta la cabecera `Idempotency-Key` (6.5). Requisito funcional: RF-01.",
         "tags": [
           "boards"
@@ -205,7 +208,7 @@
             }
           },
           "400": {
-            "description": "Peticion invalida. Codigos: VALIDATION_ERROR, NAME_REQUIRED, NAME_TOO_LONG, DESCRIPTION_TOO_LONG.",
+            "description": "Peticion invalida. Codigos: VALIDATION_ERROR, NAME_REQUIRED, NAME_TOO_LONG, DESCRIPTION_TOO_LONG, COLUMN_KEY_REQUIRED, COLUMN_KEY_TOO_LONG.",
             "headers": {
               "X-Request-Id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -224,6 +227,9 @@
             "headers": {
               "X-Request-Id": {
                 "$ref": "#/components/headers/XRequestId"
+              },
+              "WWW-Authenticate": {
+                "$ref": "#/components/headers/WWWAuthenticate"
               }
             },
             "content": {
@@ -236,6 +242,21 @@
           },
           "403": {
             "description": "Prohibido. Codigos: FORBIDDEN_SCOPE.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDeApi"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicto. Codigos: DUPLICATE_KEY.",
             "headers": {
               "X-Request-Id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -372,6 +393,9 @@
             "headers": {
               "X-Request-Id": {
                 "$ref": "#/components/headers/XRequestId"
+              },
+              "WWW-Authenticate": {
+                "$ref": "#/components/headers/WWWAuthenticate"
               }
             },
             "content": {
@@ -513,6 +537,9 @@
             "headers": {
               "X-Request-Id": {
                 "$ref": "#/components/headers/XRequestId"
+              },
+              "WWW-Authenticate": {
+                "$ref": "#/components/headers/WWWAuthenticate"
               }
             },
             "content": {
@@ -652,6 +679,9 @@
             "headers": {
               "X-Request-Id": {
                 "$ref": "#/components/headers/XRequestId"
+              },
+              "WWW-Authenticate": {
+                "$ref": "#/components/headers/WWWAuthenticate"
               }
             },
             "content": {
@@ -801,6 +831,9 @@
             "headers": {
               "X-Request-Id": {
                 "$ref": "#/components/headers/XRequestId"
+              },
+              "WWW-Authenticate": {
+                "$ref": "#/components/headers/WWWAuthenticate"
               }
             },
             "content": {
@@ -989,6 +1022,9 @@
             "headers": {
               "X-Request-Id": {
                 "$ref": "#/components/headers/XRequestId"
+              },
+              "WWW-Authenticate": {
+                "$ref": "#/components/headers/WWWAuthenticate"
               }
             },
             "content": {
@@ -1138,6 +1174,9 @@
             "headers": {
               "X-Request-Id": {
                 "$ref": "#/components/headers/XRequestId"
+              },
+              "WWW-Authenticate": {
+                "$ref": "#/components/headers/WWWAuthenticate"
               }
             },
             "content": {
@@ -1389,6 +1428,9 @@
             "headers": {
               "X-Request-Id": {
                 "$ref": "#/components/headers/XRequestId"
+              },
+              "WWW-Authenticate": {
+                "$ref": "#/components/headers/WWWAuthenticate"
               }
             },
             "content": {
@@ -1526,6 +1568,9 @@
             "headers": {
               "X-Request-Id": {
                 "$ref": "#/components/headers/XRequestId"
+              },
+              "WWW-Authenticate": {
+                "$ref": "#/components/headers/WWWAuthenticate"
               }
             },
             "content": {
@@ -1743,6 +1788,9 @@
             "headers": {
               "X-Request-Id": {
                 "$ref": "#/components/headers/XRequestId"
+              },
+              "WWW-Authenticate": {
+                "$ref": "#/components/headers/WWWAuthenticate"
               }
             },
             "content": {
@@ -1861,6 +1909,9 @@
             "headers": {
               "X-Request-Id": {
                 "$ref": "#/components/headers/XRequestId"
+              },
+              "WWW-Authenticate": {
+                "$ref": "#/components/headers/WWWAuthenticate"
               }
             },
             "content": {
@@ -2002,6 +2053,9 @@
             "headers": {
               "X-Request-Id": {
                 "$ref": "#/components/headers/XRequestId"
+              },
+              "WWW-Authenticate": {
+                "$ref": "#/components/headers/WWWAuthenticate"
               }
             },
             "content": {
@@ -2141,6 +2195,9 @@
             "headers": {
               "X-Request-Id": {
                 "$ref": "#/components/headers/XRequestId"
+              },
+              "WWW-Authenticate": {
+                "$ref": "#/components/headers/WWWAuthenticate"
               }
             },
             "content": {
@@ -2284,6 +2341,9 @@
             "headers": {
               "X-Request-Id": {
                 "$ref": "#/components/headers/XRequestId"
+              },
+              "WWW-Authenticate": {
+                "$ref": "#/components/headers/WWWAuthenticate"
               }
             },
             "content": {
@@ -2499,6 +2559,9 @@
             "headers": {
               "X-Request-Id": {
                 "$ref": "#/components/headers/XRequestId"
+              },
+              "WWW-Authenticate": {
+                "$ref": "#/components/headers/WWWAuthenticate"
               }
             },
             "content": {
@@ -2649,6 +2712,13 @@
           "minimum": 1
         },
         "required": true
+      },
+      "WWWAuthenticate": {
+        "description": "El desafio que el RFC 7235 exige en todo 401: `Bearer realm=\"taskman\"`, el esquema de la 7.1. Sin `error` ni `resource_metadata`: la 6.4 no distingue una clave ausente de una invalida, y no hay servidor de autorizacion OAuth que anunciar.",
+        "schema": {
+          "type": "string"
+        },
+        "required": true
       }
     },
     "schemas": {
@@ -2773,6 +2843,28 @@
               "string",
               "null"
             ]
+          },
+          "columns": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "key": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "name",
+                "key"
+              ],
+              "additionalProperties": false
+            }
           }
         },
         "required": [

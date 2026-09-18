@@ -18,6 +18,7 @@ import {
 } from "@taskman/core";
 
 import { conAuth, contextoDeApi } from "../../../lib/auth";
+import { leerConsulta } from "../../../lib/consulta";
 import {
   leerCuerpo,
   responder,
@@ -88,59 +89,39 @@ const ORDEN_DE_DOMINIO: Record<OrdenDeTarea, TaskOrderBy> = {
  * create— asi que por key y por id se filtra igual sin que el borde lo sepa.
  */
 export const GET = conAuth("read", async (request, auth): Promise<Response> => {
-  const parametros = new URL(request.url).searchParams;
-
   /**
-   * `getAll` para `priority`, que la 6.3.2 declara repetible: `?priority=HIGH&
-   * priority=URGENT` actua como OR. Los demas son escalares, y `?x=abc` no puede
-   * caer en un default —seria devolver otra cosa a quien pidio algo concreto y no
-   * enterarse nunca— asi que van al esquema tal como llegaron.
+   * `priority` es el UNICO repetible de este endpoint, y la 6.3.2 lo declara
+   * asi: `?priority=HIGH&priority=URGENT` actua como OR, de modo que va al
+   * esquema como array aunque llegue uno solo. Los demas son escalares, y
+   * `?x=abc` no puede caer en un default —seria devolver otra cosa a quien pidio
+   * algo concreto y no enterarse nunca— asi que van tal como llegaron.
    */
-  const prioridades = parametros.getAll("priority");
+  const consulta = leerConsulta(request, consultaDeTareas, auth, { repetibles: ["priority"] });
 
-  const consulta = consultaDeTareas.safeParse({
-    limit: parametros.get("limit") ?? undefined,
-    cursor: parametros.get("cursor") ?? undefined,
-    board_id: parametros.get("board_id") ?? undefined,
-    column_id: parametros.get("column_id") ?? undefined,
-    column_key: parametros.get("column_key") ?? undefined,
-    priority: prioridades.length === 0 ? undefined : prioridades,
-    due_before: parametros.get("due_before") ?? undefined,
-    due_after: parametros.get("due_after") ?? undefined,
-    overdue: parametros.get("overdue") ?? undefined,
-    order_by: parametros.get("order_by") ?? undefined,
-  });
-
-  if (!consulta.success) {
-    return respuestaDeError(
-      "VALIDATION_ERROR",
-      "Los parametros de la consulta no superan el esquema.",
-      400,
-      auth,
-      { details: { issues: consulta.error.issues } },
-    );
+  if (!consulta.ok) {
+    return consulta.respuesta;
   }
 
   // Todo lo opcional va condicional y no como `campo: undefined`, por
   // exactOptionalPropertyTypes: la propiedad presente en undefined no es lo mismo
   // que ausente.
   const query: ListTasksQuery = {
-    limit: consulta.data.limit,
-    ...(consulta.data.cursor === undefined ? {} : { cursor: consulta.data.cursor }),
-    ...(consulta.data.board_id === undefined ? {} : { boardId: consulta.data.board_id }),
-    ...(consulta.data.column_id === undefined ? {} : { columnId: consulta.data.column_id }),
-    ...(consulta.data.column_key === undefined ? {} : { columnKey: consulta.data.column_key }),
-    ...(consulta.data.priority === undefined ? {} : { priority: consulta.data.priority }),
-    ...(consulta.data.due_before === undefined
+    limit: consulta.datos.limit,
+    ...(consulta.datos.cursor === undefined ? {} : { cursor: consulta.datos.cursor }),
+    ...(consulta.datos.board_id === undefined ? {} : { boardId: consulta.datos.board_id }),
+    ...(consulta.datos.column_id === undefined ? {} : { columnId: consulta.datos.column_id }),
+    ...(consulta.datos.column_key === undefined ? {} : { columnKey: consulta.datos.column_key }),
+    ...(consulta.datos.priority === undefined ? {} : { priority: consulta.datos.priority }),
+    ...(consulta.datos.due_before === undefined
       ? {}
-      : { dueBefore: aFechaUtc(consulta.data.due_before) }),
-    ...(consulta.data.due_after === undefined
+      : { dueBefore: aFechaUtc(consulta.datos.due_before) }),
+    ...(consulta.datos.due_after === undefined
       ? {}
-      : { dueAfter: aFechaUtc(consulta.data.due_after) }),
-    ...(consulta.data.overdue === undefined ? {} : { overdue: consulta.data.overdue }),
-    ...(consulta.data.order_by === undefined
+      : { dueAfter: aFechaUtc(consulta.datos.due_after) }),
+    ...(consulta.datos.overdue === undefined ? {} : { overdue: consulta.datos.overdue }),
+    ...(consulta.datos.order_by === undefined
       ? {}
-      : { orderBy: ORDEN_DE_DOMINIO[consulta.data.order_by] }),
+      : { orderBy: ORDEN_DE_DOMINIO[consulta.datos.order_by] }),
   };
 
   const pagina = await taskman.listTasks(query);

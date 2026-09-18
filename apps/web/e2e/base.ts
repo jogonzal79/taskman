@@ -1,11 +1,15 @@
 import { randomUUID } from "node:crypto";
 
+import { Client as McpClient } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import {
   crearCorePort,
   crearHerramientas,
   generarClave,
   hashearClave,
   prefijoDe,
+  SCOPES,
   type ActorContext,
   type CorePort,
   type McpToolDefinition,
@@ -224,22 +228,23 @@ export async function borrarPorElNucleo(titulo: string): Promise<void> {
 // --- Los dos caminos AJENOS: MCP y la API REST -------------------------------
 
 /**
- * MUEVE UNA TAREA POR EL REGISTRO DE HERRAMIENTAS MCP (CT-07).
+ * MUEVE UNA TAREA POR EL REGISTRO DE HERRAMIENTAS MCP, SIN TRANSPORTE.
  *
  * Es `moverPorElNucleo` un escalon mas arriba, y la diferencia importa: aquella
  * llama al `CorePort` directamente, y esta pasa por `crearHerramientas` —el
- * registro unico de la 8.1— o sea por el MISMO codigo que ejecuta
- * `apps/mcp-stdio`. Recorre la validacion del esquema de entrada, la resolucion
- * por NOMBRE de la 8.3.1 (por eso los argumentos son titulos y keys, no UUID) y
- * el `contextoDeAgente` que fija `actorType: AGENT` por construccion.
+ * registro unico de la 8.1— o sea por el MISMO codigo que ejecutan los dos
+ * transportes. Recorre la validacion del esquema de entrada, la resolucion por
+ * NOMBRE de la 8.3.1 (por eso los argumentos son titulos y keys, no UUID) y el
+ * contexto por defecto del registro, que fija `actorType: AGENT`.
  *
- * LO UNICO QUE NO RECORRE es el transporte stdio, que es lo que el criterio
- * permite explicitamente ("o por el mismo camino del nucleo que usa MCP").
- * Levantar el proceso de `apps/mcp-stdio` dentro de una prueba de navegador
- * agregaria un `esbuild` y un proceso hijo para ejercitar `StdioServerTransport`,
- * que es del SDK y ya tiene su propia suite de contrato en ese paquete.
+ * NO RECORRE NINGUN TRANSPORTE, ni stdio ni /mcp, y desde el paso 8 de F4 eso
+ * es a proposito: el CT-07 ya no la usa (va por `moverPorMcpRemoto`). La usan
+ * las pruebas que necesitan un cambio de agente como PUNTO DE PARTIDA —la marca
+ * que aguanta, el cambio durante un arrastre— y lo que miden es la pantalla, no
+ * el transporte. Asi, si /mcp se rompe, cae el CT-07 y estas siguen en verde, y
+ * el fallo queda localizado en vez de repartido por todo el archivo.
  */
-export async function moverPorMcp(args: {
+export async function moverPorElRegistroMcp(args: {
   tablero?: string;
   tarea: string;
   aColumna: string;
@@ -260,10 +265,80 @@ export async function moverPorMcp(args: {
   }
 }
 
+/**
+ * MUEVE UNA TAREA POR /mcp, CON EL CLIENTE DE LA SDK (CT-07).
+ *
+ * Es el camino de un cliente MCP REMOTO de punta a punta, contra el servidor que
+ * Playwright levanto: `StreamableHTTPClientTransport` por red, initialize, la
+ * clave Bearer que `conAuthMcp` verifica, los scopes que deciden el catalogo, el
+ * cupo de la 7.3, `montarHerramientas` y recien ahi el mismo `move_task` del
+ * registro. El actor que queda es AGENT con la ETIQUETA de la clave y su prefijo
+ * como `client_id`, que por el registro directo seria NULL: por eso el CT-07 lo
+ * afirma, es la huella de que paso por /mcp.
+ *
+ * Un cliente por movimiento, como se conectaria un agente de verdad. /mcp no
+ * tiene sesion, asi que conectar cuesta cuatro peticiones y ningun estado.
+ */
+export async function moverPorMcpRemoto(args: {
+  base: string;
+  clave: string;
+  tablero?: string;
+  tarea: string;
+  aColumna: string;
+  position: number | "end";
+}): Promise<void> {
+  const cliente = new McpClient({ name: "e2e-ct07", version: "0.0.0" });
+  const transporte = new StreamableHTTPClientTransport(new URL("/mcp", args.base), {
+    requestInit: { headers: { Authorization: `Bearer ${args.clave}` } },
+  });
+
+  // El cast es por el SDK: su transporte declara `sessionId: string | undefined`
+  // y su `Transport` pide `sessionId?: string`, distintos con
+  // `exactOptionalPropertyTypes` (TS2379). Mismo caso que `test/mcp.test.ts`.
+  await cliente.connect(transporte as Transport);
+
+  try {
+    const resultado = await cliente.callTool({
+      name: "move_task",
+      arguments: {
+        board: args.tablero ?? TABLERO,
+        task: args.tarea,
+        to_column: args.aColumna,
+        position: args.position,
+      },
+    });
+
+    if (resultado.isError === true) {
+      throw new Error(`move_task por /mcp fallo: ${JSON.stringify(resultado.content)}`);
+    }
+  } finally {
+    await cliente.close();
+  }
+}
+
+/** Quien movio una tarea, segun `audit_log`, y con que clave. */
+export interface MovimientoAuditado {
+  readonly actorType: string;
+  readonly actorName: string;
+  readonly clientId: string | null;
+}
+
+/** Los MOVE de `audit_log` sobre la tarea con este titulo, en orden. */
+export async function movimientosDeTarea(titulo: string): Promise<MovimientoAuditado[]> {
+  return consultar<MovimientoAuditado>(
+    `SELECT a.actor_type::text AS "actorType", a.actor_name AS "actorName", a.client_id AS "clientId"
+       FROM audit_log a
+       JOIN task t ON a.entity_id = t.id::text
+      WHERE a.entity_type = 'task' AND a.action = 'MOVE' AND t.title = $1
+      ORDER BY a.id ASC`,
+    [titulo],
+  );
+}
+
 let herramientas: McpToolDefinition[] | undefined;
 
 function herramienta(nombre: string): McpToolDefinition {
-  herramientas ??= crearHerramientas(corePort());
+  herramientas ??= crearHerramientas(corePort(), { scopes: SCOPES });
 
   const definicion = herramientas.find((candidata) => candidata.name === nombre);
 

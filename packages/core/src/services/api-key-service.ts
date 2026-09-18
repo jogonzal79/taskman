@@ -1,4 +1,5 @@
 import { buscarClavePorPrefijo, type ApiKeyRow } from "../db/api-key-repository";
+import type { ActorType } from "../domain/actor";
 import { hashearClave, hashesIguales, prefijoDe, type Scope } from "../domain/api-key";
 import { conCache } from "./api-key-cache";
 
@@ -16,6 +17,19 @@ export interface ClaveAutenticada {
   prefix: string;
   label: string;
   scopes: readonly Scope[];
+  /**
+   * Con que tipo de actor audita esta clave (7.4). Va con el resto de lo que el
+   * borde necesita saber de ella y no como una consulta aparte: es un dato de la
+   * clave, igual que sus scopes, y viaja por el mismo camino ya cacheado.
+   *
+   * QUE HACE EL BORDE CON ESTO depende del borde, y los dos tienen razon:
+   * `contextoDeApi` lo lee, porque en REST una peticion del HttpPort de la 8.1 y
+   * una de curl son la misma peticion y la credencial es lo unico que las
+   * distingue; `contextoDeMcp` lo IGNORA y fija AGENT, porque ahi el borde ya
+   * sabe por donde entro. La 7.4 dice "se deriva del origen" y en /mcp el origen
+   * se ve; en /api, no.
+   */
+  actorType: ActorType;
 }
 
 /**
@@ -33,6 +47,15 @@ export type ResultadoAutenticacion =
       readonly clave: ClaveAutenticada;
       readonly scopeRequerido: Scope;
     };
+
+/**
+ * Lo que devuelve `identificar`: la misma union sin el caso de scope, porque ahi
+ * no se pide ninguno.
+ */
+export type ResultadoIdentificacion = Exclude<
+  ResultadoAutenticacion,
+  { readonly motivo: "SCOPE_INSUFICIENTE" }
+>;
 
 export type BuscadorDeClaves = (prefix: string) => Promise<ApiKeyRow | null>;
 
@@ -92,6 +115,33 @@ export class ApiKeyService {
    * claves cual de sus intentos existe.
    */
   async autenticar(claveEnClaro: string, scopeRequerido: Scope): Promise<ResultadoAutenticacion> {
+    const identificada = await this.identificar(claveEnClaro);
+
+    if (!identificada.ok) {
+      return identificada;
+    }
+
+    if (!identificada.clave.scopes.includes(scopeRequerido)) {
+      return { ok: false, motivo: "SCOPE_INSUFICIENTE", clave: identificada.clave, scopeRequerido };
+    }
+
+    return identificada;
+  }
+
+  /**
+   * Autentica una clave en claro SIN exigir un scope, y devuelve los que tiene.
+   *
+   * Es para el borde donde el scope no es uno por endpoint sino uno por
+   * herramienta: /mcp (8.1). Ahi la clave decide QUE herramientas se montan
+   * (`crearHerramientas` recibe sus scopes), y no hay un scope que exigirle a la
+   * peticion entera. Pedirle a `autenticar` uno cualquiera y leer la clave del
+   * SCOPE_INSUFICIENTE funcionaria, pero diria "le falta un scope" de una clave a
+   * la que no se le pidio ninguno.
+   *
+   * `autenticar` pasa por aca: la verificacion de la clave —hash en tiempo
+   * constante, revocacion, cache de la 7.1— es UNA, y los dos bordes la comparten.
+   */
+  async identificar(claveEnClaro: string): Promise<ResultadoIdentificacion> {
     const fila = await this.#buscar(prefijoDe(claveEnClaro));
 
     if (fila === null) {
@@ -108,17 +158,15 @@ export class ApiKeyService {
       return { ok: false, motivo: "NO_AUTENTICADA" };
     }
 
-    const clave: ClaveAutenticada = {
-      id: fila.id,
-      prefix: fila.prefix,
-      label: fila.label,
-      scopes: fila.scopes,
+    return {
+      ok: true,
+      clave: {
+        id: fila.id,
+        prefix: fila.prefix,
+        label: fila.label,
+        scopes: fila.scopes,
+        actorType: fila.actorType,
+      },
     };
-
-    if (!fila.scopes.includes(scopeRequerido)) {
-      return { ok: false, motivo: "SCOPE_INSUFICIENTE", clave, scopeRequerido };
-    }
-
-    return { ok: true, clave };
   }
 }

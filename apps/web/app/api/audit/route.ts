@@ -6,7 +6,8 @@ import {
 import { crearCorePort, type AuditEntry, type ListAuditQuery } from "@taskman/core";
 
 import { conAuth } from "../../../lib/auth";
-import { respuestaDeError, respuestaDeFallo, responder } from "../../../lib/http";
+import { leerConsulta } from "../../../lib/consulta";
+import { respuestaDeFallo, responder } from "../../../lib/http";
 import { registrarContratoRoto } from "../../../lib/log";
 
 /**
@@ -57,21 +58,13 @@ function aSalida(entrada: AuditEntry): RegistroDeAuditoria {
 }
 
 export const GET = conAuth("read", async (request, auth): Promise<Response> => {
-  const parametros = new URL(request.url).searchParams;
+  // Sin repetibles: los cuatro filtros de la 6.2 son escalares. Un parametro que
+  // el contrato no declara sale con 400 y no ignorado, que en este endpoint es lo
+  // que evita leer como "filtrado" un log que vino entero.
+  const consulta = leerConsulta(request, consultaDeAuditoria, auth);
 
-  const consulta = consultaDeAuditoria.safeParse({
-    limit: parametros.get("limit") ?? undefined,
-    cursor: parametros.get("cursor") ?? undefined,
-    entity_type: parametros.get("entity_type") ?? undefined,
-    entity_id: parametros.get("entity_id") ?? undefined,
-    created_after: parametros.get("created_after") ?? undefined,
-    created_before: parametros.get("created_before") ?? undefined,
-  });
-
-  if (!consulta.success) {
-    return respuestaDeError("VALIDATION_ERROR", "Los parametros de la consulta no superan el esquema.", 400, auth, {
-      details: { issues: consulta.error.issues },
-    });
+  if (!consulta.ok) {
+    return consulta.respuesta;
   }
 
   /**
@@ -85,16 +78,16 @@ export const GET = conAuth("read", async (request, auth): Promise<Response> => {
    * ningun dia que se pueda correr.
    */
   const query: ListAuditQuery = {
-    limit: consulta.data.limit,
-    ...(consulta.data.cursor === undefined ? {} : { cursor: consulta.data.cursor }),
-    ...(consulta.data.entity_type === undefined ? {} : { entityType: consulta.data.entity_type }),
-    ...(consulta.data.entity_id === undefined ? {} : { entityId: consulta.data.entity_id }),
-    ...(consulta.data.created_after === undefined
+    limit: consulta.datos.limit,
+    ...(consulta.datos.cursor === undefined ? {} : { cursor: consulta.datos.cursor }),
+    ...(consulta.datos.entity_type === undefined ? {} : { entityType: consulta.datos.entity_type }),
+    ...(consulta.datos.entity_id === undefined ? {} : { entityId: consulta.datos.entity_id }),
+    ...(consulta.datos.created_after === undefined
       ? {}
-      : { createdAfter: new Date(consulta.data.created_after) }),
-    ...(consulta.data.created_before === undefined
+      : { createdAfter: new Date(consulta.datos.created_after) }),
+    ...(consulta.datos.created_before === undefined
       ? {}
-      : { createdBefore: new Date(consulta.data.created_before) }),
+      : { createdBefore: new Date(consulta.datos.created_before) }),
   };
 
   // La consulta la resuelve `AuditRepository` en una sola lectura sin

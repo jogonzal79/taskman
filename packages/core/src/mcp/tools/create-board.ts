@@ -51,6 +51,7 @@ export function definirCreateBoard(
       "asi que el tablero queda listo para recibir tareas en la misma llamada. " +
       "Devuelve el tablero y sus columnas con sus ids y keys, para poder crear tareas a continuacion sin volver a consultar.",
     inputSchema: shape,
+    scope: "WRITE",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,

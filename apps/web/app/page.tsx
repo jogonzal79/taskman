@@ -90,9 +90,10 @@ export default async function PaginaTablero({
    * `?tarea=` que no apunta a nada, que dibuja el tablero sin panel. La falta de
    * un panel se ve sola; otro tablero en su lugar no: quien abre un enlace a un
    * tablero borrado y ve otro con columnas y tareas puede no darse cuenta de que el
-   * suyo ya no esta. Seria el parametro inerte que CLAUDE.md anota para los
-   * listados REST, con la diferencia de que aca la pantalla SI puede decirlo. Ni
-   * 404 ni 500: un enlace viejo no es un fallo del sistema.
+   * suyo ya no esta. Seria el parametro INERTE que los listados REST rechazan con
+   * 400 (`leerConsulta`), con la diferencia de que aca la pantalla SI puede
+   * decirlo, asi que no hace falta rechazar: se muestra el aviso. Ni 404 ni 500:
+   * un enlace viejo no es un fallo del sistema.
    */
   if (actual === undefined) {
     return (

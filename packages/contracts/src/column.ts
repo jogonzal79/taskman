@@ -112,6 +112,28 @@ const keyDeColumna = z
 const posicionDeColumna = z.union([z.int().min(0), z.literal("end")]).optional();
 
 /**
+ * Una columna DEFINIDA, sin posicion: el par que la describe antes de existir.
+ *
+ * Existe porque hay DOS sitios que piden columnas nuevas —POST
+ * /api/boards/{id}/columns una por una, y el `columns` de POST /api/boards en
+ * lote— y las reglas de su nombre y de su key son las mismas en los dos.
+ * Escribirlas dos veces seria dejar que se separen, que es el mismo argumento
+ * con el que `nombreDeTablero` se comparte entre el POST y el PATCH de tablero.
+ *
+ * SIN `position`, y no es un olvido: en el lote la posicion es el ORDEN DEL
+ * ARRAY —el nucleo asigna 0..n-1 en el orden recibido— asi que un campo
+ * `position` ahi seria una segunda fuente para el mismo dato, libre de
+ * contradecir a la primera. Donde una columna se crea sola, `crearColumna` la
+ * agrega.
+ */
+export const definicionDeColumna = z.strictObject({
+  name: nombreDeColumna,
+  key: keyDeColumna,
+});
+
+export type DefinicionDeColumna = z.infer<typeof definicionDeColumna>;
+
+/**
  * Cuerpo de POST /api/boards/{id}/columns (6.2, RF-02).
  *
  * El tablero NO va en el cuerpo: va en la ruta. Al ser `strictObject`, mandar
@@ -119,8 +141,7 @@ const posicionDeColumna = z.union([z.int().min(0), z.literal("end")]).optional()
  * fuentes para el mismo dato que pueden contradecirse.
  */
 export const crearColumna = z.strictObject({
-  name: nombreDeColumna,
-  key: keyDeColumna,
+  ...definicionDeColumna.shape,
   position: posicionDeColumna,
 });
 

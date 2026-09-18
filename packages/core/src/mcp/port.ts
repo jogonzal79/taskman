@@ -21,9 +21,9 @@ import type {
  * Lo que las herramientas MCP necesitan del sistema, y nada mas.
  *
  * Existe para que el registro de herramientas sea uno solo (8.1) y funcione
- * con los servicios en proceso (`CorePort`) o, mas adelante, contra la API REST
- * (`HttpPort`, que todavia no existe). Las herramientas no conocen ninguna de
- * las dos implementaciones: solo esta interfaz.
+ * con los servicios en proceso (`CorePort`) o contra la API REST (`HttpPort`,
+ * en `apps/mcp-stdio`). Las herramientas no conocen ninguna de las dos
+ * implementaciones: solo esta interfaz.
  *
  * Cubre el catalogo completo de la 8.2. `deleteTask` es la ultima que llego y
  * la unica destructiva: la politica de confirmacion (8.3.2) NO esta aca, es del

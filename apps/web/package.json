@@ -17,6 +17,7 @@
     "@dnd-kit/core": "6.3.1",
     "@dnd-kit/sortable": "10.0.0",
     "@dnd-kit/utilities": "3.2.2",
+    "@modelcontextprotocol/sdk": "1.30.0",
     "@prisma/client": "7.10.0",
     "@taskman/contracts": "workspace:*",
     "@taskman/core": "workspace:*",
@@ -29,6 +30,7 @@
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",
+    "@taskman/mcp-stdio": "workspace:*",
     "@types/node": "24.13.3",
     "@types/pg": "8.23.1",
     "@types/react": "19.2.18",
