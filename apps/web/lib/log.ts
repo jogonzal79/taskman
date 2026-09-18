@@ -90,10 +90,11 @@ export function fijarLogger(logger: Logger | undefined): void {
 
 export interface PeticionRegistrada {
   /**
-   * El tipo de actor de la 7.4, que lo decide POR DONDE entro la peticion y no la
-   * peticion: API para REST (lo fija `conAuth`, igual que `contextoDeApi` para la
-   * auditoria), AGENT para /mcp (lo fija `conAuthMcp`). Obligatorio y sin valor
-   * por defecto: un borde nuevo que registre su linea tiene que decir cual es.
+   * El tipo de actor de la 7.4, que nunca lo decide la peticion. En REST lo
+   * rotula la CLAVE que autentico, igual que `contextoDeApi` para la auditoria,
+   * y API es solo el valor del borde cuando no se identifico ninguna (`conAuth`);
+   * en /mcp es AGENT por construccion (`conAuthMcp`). Obligatorio y sin valor por
+   * defecto: un borde nuevo que registre su linea tiene que decir cual es.
    */
   readonly actorType: ActorType;
   readonly requestId: string;

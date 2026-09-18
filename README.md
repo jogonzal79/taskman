@@ -400,9 +400,11 @@ Remove-Item Env:DATABASE_URL -ErrorAction SilentlyContinue   # no se usa; si est
 
 | Paquete | Qué hay |
 | --- | --- |
+| `packages/contracts` | Los esquemas Zod del borde REST —cuerpos, consultas, respuestas y la envoltura de error de la 6.4— y el generador de `openapi.json` (`pnpm run openapi:generate`). No importa nada del proyecto (3.3). |
 | `packages/db` | Esquema Prisma, migraciones y cliente. |
-| `packages/core` | Servicios, repositorios, errores de dominio y el registro de herramientas MCP (`src/mcp`). |
-| `apps/mcp-stdio` | Entrypoint stdio: monta el registro del núcleo sobre un `McpServer`. |
+| `packages/core` | Servicios, repositorios, errores de dominio y el registro de herramientas MCP (`src/mcp`), con `CorePort`. |
+| `apps/web` | La app Next.js: la API REST (`app/api`), el Streamable HTTP de `/mcp` (`app/mcp`), la UI del tablero (`app/page.tsx` y `components/`) y el flujo de cambios `/eventos`. |
+| `apps/mcp-stdio` | Entrypoint stdio: monta el registro del núcleo sobre un `McpServer`, en modo `core` o `http`. En `http` el puerto es `HttpPort` (`src/http-port.ts`), el cliente de la API REST. |
 
 El registro de herramientas vive en `packages/core/mcp` y está declarado como
 dato: el núcleo no importa el SDK de MCP (ver `CLAUDE.md`). Cada transporte lo

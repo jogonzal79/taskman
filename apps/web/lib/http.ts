@@ -21,8 +21,11 @@ import { registrarFallo } from "./log";
  * un UUID v4 sin guiones y no un ULID: un ULID ordena por tiempo, que es util
  * cuando se indexa, pero aca no se indexa: el log de la 11.1 escribe el
  * request_id como campo y la auditoria lo guarda en su columna, y en los dos se
- * busca por igualdad. No valia traer una dependencia para eso. Si mas adelante conviene ordenar por el, se cambia aca y en un solo
- * lugar.
+ * busca por igualdad. No valia traer una dependencia para eso. Si mas adelante
+ * conviene ordenar por el, se cambia aca y en `nuevoRequestIdLocal` de
+ * `apps/mcp-stdio/src/http-port.ts`, que desde el paso 11 de F4 repite este
+ * formato a proposito —la linea `http.request` empareja los dos ids— y no puede
+ * importarlo de esta app.
  */
 export function nuevoRequestId(): string {
   return `req_${randomUUID().replaceAll("-", "")}`;

@@ -330,10 +330,13 @@ test("por debajo de 1024 px sale el aviso, no una version degradada", async ({ p
  *          `audit_log`: AGENT con la etiqueta de la clave y su prefijo como
  *          `client_id`. Hasta el paso 8 de F4 iba por el registro sin transporte.
  *          Lo que NO recorre: el transporte stdio (`apps/mcp-stdio` tiene su suite
- *          de contrato por el protocolo) ni el modo http con HttpPort, que no
- *          existe todavia. Las demas pruebas del archivo que necesitan un cambio de
- *          agente siguen por el registro directo, a proposito: miden la pantalla, y
- *          asi un /mcp roto hace caer SOLO este caso (contraprueba hecha).
+ *          de contrato por el protocolo) ni el modo http con HttpPort, que tiene
+ *          la suya en `apps/web/test`: `http-port.test.ts` para las once contra
+ *          el servidor y `mcp-stdio-modo-http.test.ts` para el cableado del
+ *          proceso; ninguna de las dos mira la pantalla. Las demas pruebas del
+ *          archivo que necesitan un cambio de agente siguen por el registro
+ *          directo, a proposito: miden la pantalla, y asi un /mcp roto hace caer
+ *          SOLO este caso (contraprueba hecha).
  *   CT-08  Clave sin scope delete contra la UI de borrado.    Falta: la UI no usa
  *          la API ni claves (9.1), asi que este escenario no tiene superficie aca
  *          —es el desvio "la UI no tiene autenticacion" de CLAUDE.md—; el scope

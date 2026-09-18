@@ -5,9 +5,11 @@ import { nuevoRequestId } from "./http";
 /**
  * El `ActorContext` de una escritura hecha desde la UI web (7.4).
  *
- * Es el TERCER borde que arma uno, y el tercero que fija su `actorType` por
- * construccion: `contextoDeApi` pone API, `contextoDeAgente` pone AGENT y este
- * pone USER. La 7.4 lo dice como una derivacion —"actor_type se deriva del
+ * Es el TERCER borde que arma uno, y ninguno deja que el llamador elija su
+ * `actorType`: `contextoDeAgente` pone AGENT, este pone USER, y `contextoDeApi`
+ * lo lee de la clave que autentico (`api_key.actor_type`: API, o AGENT si se
+ * emitio con `apikey:create --agent`), porque REST no ve por donde entro la
+ * peticion. La 7.4 lo dice como una derivacion —"actor_type se deriva del
  * origen"— y la unica forma de que sea de verdad una derivacion y no una
  * convencion es que ningun llamador pueda elegirla. Por eso esto no recibe el
  * tipo por parametro ni lo lee de la configuracion: una Server Action no tiene

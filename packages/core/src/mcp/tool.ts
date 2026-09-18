@@ -133,8 +133,10 @@ export interface McpToolDefinition {
    *
    * El SDK tambien valida antes de llamar, asi que en produccion la segunda
    * pasada no rechaza nada. Se hace igual para que la definicion sea
-   * autocontenida: un `HttpPort` o una prueba pueden invocar el handler
-   * directamente sin reimplementar la validacion ni la traduccion de errores.
+   * autocontenida: una prueba puede invocar el handler directamente —el e2e lo
+   * hace en `moverPorElRegistroMcp`— sin reimplementar la validacion ni la
+   * traduccion de errores. `HttpPort` no: es un puerto, esta DEBAJO de las
+   * herramientas y nunca invoca un handler.
    */
   handler(args: unknown): Promise<McpToolResult>;
 }

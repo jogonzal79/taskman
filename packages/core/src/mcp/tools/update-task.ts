@@ -18,10 +18,10 @@ import {
 /**
  * Los campos que un agente va a intentar cambiar aca y que NO se cambian aca.
  *
- * Se declaran en el esquema en vez de omitirse. Omitirlos seria peor: el
- * validador descarta las claves que no conoce, asi que un `position` de mas
- * pasaria en silencio y la herramienta contestaria "actualizada" sin haber
- * movido nada. Declarados, el agente lee en la descripcion que existe otra
+ * Se declaran en el esquema en vez de omitirse. Omitidos, un `position` de mas
+ * ya no pasaria en silencio —desde el cierre de F4 la entrada es estricta
+ * (`esquemaDeEntrada`) y se rechazaria—, pero el rechazo solo diria que la
+ * clave sobra. Declarados, el agente lee en la descripcion que existe otra
  * herramienta y, si igual los manda, obtiene un error que la nombra.
  */
 const REDIRIGIDOS: Record<string, string> = {

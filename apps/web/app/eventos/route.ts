@@ -18,17 +18,23 @@ import { suscribirseACambios } from "../../lib/cambios";
  * plomeria de la pantalla y no contrato.
  *
  * QUE EXPONE, entonces, sin autenticacion: por cada escritura del sistema, el
- * tipo de actor, la accion, el tipo de entidad y su UUID. No lleva titulos, ni
- * descripciones, ni fechas, ni el contenido de nada. Es el minimo que la
- * pantalla necesita para saber a que tarjeta ponerle la marca, y no hay forma de
- * reconstruir un tablero con eso.
+ * tipo de actor, la accion, el tipo de entidad, su UUID y el `request_id` de la
+ * peticion que la hizo —los cinco campos de `AvisoDeCambio`—. No lleva titulos,
+ * ni descripciones, ni fechas, ni el contenido de nada. Es el minimo que la
+ * pantalla necesita para saber a que tarjeta ponerle la marca —y, con el
+ * `request_id`, para intentar reconocer su propia escritura, que hoy no llega a
+ * tiempo (ver la deuda en CLAUDE.md)—, y no hay forma de reconstruir un tablero
+ * con eso.
  *
  * Lo que eso NO hace es proteger el contenido: la UI entera no autentica. `GET /`
  * sirve los tableros con sus titulos y fechas, `?tarea=` agrega la descripcion,
- * y las Server Actions escriben y borran sin clave. Esta ruta no expone nada que
- * la pagina no exponga ya. Es una decision de sistema personal en un contenedor,
- * declarada en los desvios de CLAUDE.md ("La UI no tiene autenticacion"); el dia
- * que esto se publique, va con la misma cabecera que el resto.
+ * y las Server Actions escriben y borran sin clave. Esta ruta no expone ningun
+ * CONTENIDO que la pagina no exponga ya; lo que agrega son el tipo de actor y el
+ * `request_id` de cada escritura, que `GET /` no pinta y que no abren nada:
+ * ningun endpoint acepta un `request_id` como entrada. Es una decision de
+ * sistema personal en un contenedor, declarada en los desvios de CLAUDE.md ("La
+ * UI no tiene autenticacion"); el dia que esto se publique, va con la misma
+ * cabecera que el resto.
  *
  * --- POR QUE SSE Y NO WEBSOCKET ---------------------------------------------
  *

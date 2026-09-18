@@ -22,7 +22,10 @@ export interface ActorContext {
   /**
    * De donde viene la operacion (7.4): USER para la UI web, AGENT para lo que
    * llega por MCP, API para el resto de clientes REST. Lo decide el ADAPTADOR,
-   * no el llamador: es el borde el que sabe por donde entro la peticion.
+   * nunca el llamador. La UI y los bordes MCP lo fijan por construccion, porque
+   * saben por donde entro la peticion; el borde REST no lo sabe —una peticion de
+   * `HttpPort` y una de curl son iguales en el cable— y lo lee de la clave que
+   * autentico (`api_key.actor_type`, desde el paso 12 de F4).
    */
   readonly actorType: ActorType;
   /** Nombre legible del actor: "claude-code", "web-ui". Maximo 120 caracteres. */

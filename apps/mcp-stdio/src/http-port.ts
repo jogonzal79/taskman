@@ -454,10 +454,12 @@ export class HttpPort implements TaskManagerPort {
   }
 
   /**
-   * `ctx` NO se manda, y es del paso 12 y no un olvido: el actor de la
-   * auditoria en este modo lo deriva el servidor de la clave que autentico
-   * (`contextoDeApi`), asi que todo lo que este proceso escriba queda como API
-   * con la etiqueta de la clave. Lo mismo vale para las otras cinco escrituras.
+   * `ctx` NO viaja al servidor, y no es un olvido: solo va a la linea de log
+   * (ver `Peticion.ctx`). El actor de la auditoria en este modo lo deriva el
+   * servidor de la clave que autentico (`contextoDeApi`, paso 12 de F4), asi
+   * que lo que este proceso escriba queda con el `actor_type` de la clave —API
+   * por defecto, AGENT si se emitio con `apikey:create --agent`— y con su
+   * etiqueta. Lo mismo vale para las otras cinco escrituras.
    */
   async createBoard(input: CreateBoardInput, ctx: ActorContext): Promise<BoardDetail> {
     return aTableroDetallado(

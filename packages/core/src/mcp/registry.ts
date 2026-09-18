@@ -24,10 +24,11 @@ export interface OpcionesRegistro {
    * registra: es el filtrado en el listado que pide la 8.1.
    *
    * OBLIGATORIO y sin valor por defecto, por lo mismo que `scope` en cada
-   * definicion. Con un defecto, el montaje que se olvide de pasarlo —el de /mcp,
-   * que todavia no existe— le ofreceria las once a cualquier clave; asi, no
-   * compila. Quien de verdad no tiene clave que consultar pasa `SCOPES` y queda
-   * escrito (ver `apps/mcp-stdio/src/index.ts`).
+   * definicion. Con un defecto, un montaje que se olvidara de pasarlo —el de
+   * /mcp, que los lee de la clave en cada POST, o el de stdio en modo http, que
+   * los mide contra el servidor— le ofreceria las once a cualquier clave; asi,
+   * no compila. Quien de verdad no tiene clave que consultar pasa `SCOPES` y
+   * queda escrito (el modo core de `apps/mcp-stdio/src/index.ts`).
    */
   scopes: readonly Scope[];
   /** MCP_DESTRUCTIVE_POLICY (8.3.2). Ausente equivale a `confirm`. */
@@ -50,8 +51,8 @@ export interface OpcionesRegistro {
  * El registro unico de herramientas de la 8.1.
  *
  * Es una funcion del puerto y de la configuracion, y nada mas: la misma lista
- * sirve para el transporte stdio y, cuando exista, para el Streamable HTTP, sin
- * que ninguno de los dos pueda quedarse con una version distinta del catalogo.
+ * sirve para el transporte stdio y para el Streamable HTTP de /mcp, sin que
+ * ninguno de los dos pueda quedarse con una version distinta del catalogo.
  *
  * DOS FILTROS INDEPENDIENTES, y ninguno toca lo que decide el otro:
  *
