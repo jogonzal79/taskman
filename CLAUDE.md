@@ -165,6 +165,24 @@ contador de pruebas no tiene ese commit.
   —la lista de prioridades, la forma de la fecha, un limite de largo—, porque
   ahi la copia a mano diverge y ninguna prueba ata las dos listas; o antes, si
   se decide pagar `aFecha`, que va adentro de este paso.
+- El `strictObject` de las herramientas NO LLEGA AL SEGUNDO NIVEL.
+  `esquemaDeEntrada` rechaza un argumento que la herramienta no declara, pero
+  solo en el objeto de primer nivel: el item de `columns` de `create_board` es
+  un `z.object` comun, y ahi una clave de mas se DESCARTA EN SILENCIO. MEDIDO
+  con el servidor stdio compilado en modo core: `create_board` con
+  `columns: [{key: "ALFA", name: "Alfa", position: 7, color: "rojo"}]` contesta
+  "Tablero creado." y la columna queda en la posicion 0, sin rastro de
+  `position` ni de `color`; la misma herramienta con `sobra: 1` arriba da
+  -32602 nombrando la clave. REST no tiene el hueco —el item de
+  POST /api/boards es `definicionDeColumna`, un `strictObject`—, asi que en
+  modo http reaparece un nivel mas abajo la asimetria que el cierre de F4
+  cerro arriba: la herramienta descarta antes del cable lo que el endpoint
+  rechazaria. Hoy es el unico caso, porque `create_board` es la unica
+  herramienta con un objeto dentro de otro. El arreglo de fondo es el de la
+  entrada anterior —derivar el item de `definicionDeColumna`, que ya es
+  estricto—; un `z.strictObject` en el item lo cierra aislado. Disparador: el
+  paso de la entrada anterior, o antes si un agente empieza a mandar columnas
+  con campos propios creyendo que se aplican.
 - En MODO HTTP, la linea `mcp.tool` y `audit_log` pueden decir ACTORES DISTINTOS
   para la misma operacion. El proceso stdio arma el contexto de cada llamada con
   `contextoDeAgente` —`actorType` AGENT siempre, en los dos modos— y su linea
