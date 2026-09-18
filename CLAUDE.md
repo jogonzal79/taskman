@@ -48,14 +48,19 @@ hace falta es el comando que lo averigua, no el dato.
   ensuciaría. NO autentica porque la UI no usa ninguna API key: invoca los
   servicios en el mismo proceso y no consume su propia API pública (9.1), así que
   no tiene con qué. LO QUE EXPONE, por cada escritura del sistema: el tipo de
-  actor, la acción, el tipo de entidad y su UUID. Nada de títulos, descripciones,
-  fechas ni contenido. Y que no lleve contenido NO quiere decir que el contenido
-  esté protegido: la UI entera no autentica. `GET /` sirve todos los tableros con
-  sus títulos y fechas, con `?tarea=` también la descripción, y las Server
-  Actions crean, editan, mueven y borran sin clave ni scopes (las dos lecturas,
-  medidas con `curl` sin cabecera `Authorization`: 200 y los datos en el HTML).
-  O sea que `/eventos` no expone nada que la página no exponga ya. Es el desvío
-  "La UI no tiene autenticación", más abajo.
+  actor, la acción, el tipo de entidad, su UUID y el `request_id` de la petición
+  que la hizo —los cinco campos de `AvisoDeCambio`, en
+  `packages/core/src/db/cambios.ts`—. Nada de títulos, descripciones, fechas ni
+  contenido. Y que no lleve contenido NO quiere decir que el contenido esté
+  protegido: la UI entera no autentica. `GET /` sirve todos los tableros con sus
+  títulos y fechas, con `?tarea=` también la descripción, y las Server Actions
+  crean, editan, mueven y borran sin clave ni scopes (las dos lecturas, medidas
+  con `curl` sin cabecera `Authorization`: 200 y los datos en el HTML). O sea que
+  `/eventos` no expone CONTENIDO que la página no exponga ya. Lo que sí agrega
+  son dos datos de cada escritura que `GET /` no pinta —el tipo de actor y el
+  `request_id`—, y ninguno de los dos es una llave: ningún endpoint acepta un
+  `request_id` como entrada, ni siquiera GET /api/audit lo filtra (ver la
+  deuda). Es el desvío "La UI no tiene autenticación", más abajo.
 - **Qué endpoints faltan**: la tabla de la 6.2 es el objetivo y el comando de
   arriba es el estado; la resta de los dos es la lista. Cualquier copia escrita
   acá empieza a envejecer el mismo día.
@@ -442,9 +447,11 @@ motivo dejó de valer, ahí está el disparador para volver a mirarla.
   editan, mueven y borran sin clave ni scopes (7.2). De paso quedan fuera el
   límite de la 7.3, que se cobra por clave dentro de `conAuth`, y el `client_id`
   de la auditoría: la UI escribe como USER con `client_id` NULL. `/eventos` no
-  agrega exposición a eso. El motivo: es un sistema personal en un contenedor, y
-  la UI invoca los servicios en el mismo proceso y no consume su propia API
-  pública (9.1), así que no tiene clave que presentar ni a quién presentársela.
+  agrega contenido a eso: solo el tipo de actor y el `request_id` de cada
+  escritura, que no abren nada (ver Estado). El motivo: es un sistema personal en
+  un contenedor, y la UI invoca los servicios en el mismo proceso y no consume su
+  propia API pública (9.1), así que no tiene clave que presentar ni a quién
+  presentársela.
   OJO, la especificación se contradice sola en este punto. La ADR-005 (2.5) dice
   que "la sesión de la UI web usa el mismo mecanismo mediante una clave de
   servidor que nunca llega al navegador"; la 7.3 dice que "los Server Components
