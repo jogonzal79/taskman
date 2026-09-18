@@ -7,13 +7,17 @@
  *
  * DOS diferencias con la 5.1, las dos deliberadas:
  *
- *   - No esta `scopes`. Pertenece a la autenticacion (7.1 y 7.2), que no
- *     existe todavia: declararlo hoy obligaria a cada llamador a inventar una
- *     lista que nadie mira, que es exactamente lo que hizo diferir `ctx`.
+ *   - No esta `scopes`. La autorizacion de la 7.2 se resuelve en el BORDE,
+ *     antes de llegar aca —`conAuth` exige el scope del endpoint y
+ *     `crearHerramientas` monta solo las herramientas que la clave alcanza— y
+ *     ningun servicio lo mira: en el contexto seria una lista que nadie lee, que
+ *     es exactamente lo que hizo diferir `ctx`.
  *   - `ctx` NO viaja en las lecturas. La 5.1 lo pone en todas las firmas, pero
  *     la 7.4 dice que las lecturas no se auditan, asi que ahi seria de nuevo un
- *     parametro sin lector. Cuando exista el log correlacionado de la 11.1, las
- *     lecturas van a tener su motivo para recibirlo.
+ *     parametro sin lector. El log correlacionado de la 11.1 tampoco lo pidio:
+ *     la linea de una lectura la escribe el borde con su request_id
+ *     —`registrarPeticion` en REST, la linea `mcp.tool` en MCP— sin que los
+ *     servicios lo reciban.
  */
 
 export type ActorType = "USER" | "AGENT" | "API";

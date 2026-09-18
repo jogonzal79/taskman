@@ -15,7 +15,7 @@ import { leerError, leerJson } from "./helpers";
  * respuesta. Lo que se prueba aca es justamente lo que no se probaba.
  *
  * COMO SE SIMULA LA BASE CAIDA: mockeando `comprobarConexion` del nucleo, no
- * tumbando el contenedor. Tumbarlo dejaria sin base a los otros doce archivos de
+ * tumbando el contenedor. Tumbarlo dejaria sin base al resto de los archivos de
  * la suite —corren en el mismo proceso de vitest, de a uno pero contra la misma
  * instancia— y el 503 no es un estado de la base sino la traduccion que hace el
  * adaptador de que la sonda falle, que es lo que le toca probar a esta suite. El

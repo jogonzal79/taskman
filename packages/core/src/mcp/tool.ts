@@ -67,9 +67,11 @@ export type EntradaDeHerramienta<Shape extends EsquemaEntrada = EsquemaEntrada> 
  * Lo que el protocolo manda por su cuenta NO pasa por aca: `_meta`, `task` y el
  * resto viajan en `params`, al lado de `arguments`, no adentro. Y el cliente de
  * la SDK no agrega nada adentro de `arguments`: si lo hiciera, ninguna llamada
- * valida pasaria un esquema estricto, y las pasan en las tres suites que usan
- * ese cliente, por los dos transportes. Lo unico que un objeto estricto rechaza
- * es lo que el llamador escribio de mas.
+ * valida pasaria un esquema estricto, y las pasan todas las suites que usan ese
+ * cliente —en memoria (`apps/mcp-stdio` y `http-port.test.ts`), contra el Route
+ * Handler de /mcp (`apps/web/test/mcp.test.ts`) y por red (el CT-07 de
+ * Playwright)—. Lo unico que un objeto estricto rechaza es lo que el llamador
+ * escribio de mas.
  *
  * En el JSON Schema de tools/list esto sale como `additionalProperties: false`,
  * que es la misma regla dicha en el idioma del cliente.

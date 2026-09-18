@@ -14,7 +14,7 @@
 // devolviendo 500 en TODA peticion. Eso paso de verdad, entre 2518c5f y 5b1bb9c,
 // y sobrevivio cuatro commits con `verify` en verde.
 //
-// QUE COMPRUEBA, y por que las dos cosas y no una:
+// QUE COMPRUEBA, y por que no alcanza con una sola ruta:
 //
 //   GET /api/health   no lleva `conAuth`, asi que su grafo es el mas chico del
 //                     proyecto. Que responda 200 prueba que el proceso arranco y
@@ -37,7 +37,10 @@
 //                     un fallo al evaluar el componente o al cargar su CSS no lo
 //                     ve ninguna otra comprobacion. La suite de vitest importa
 //                     Route Handlers y los invoca a mano; nunca renderiza una
-//                     pagina, y no hay Playwright todavia.
+//                     pagina. Playwright si renderiza, pero contra `next start`
+//                     sobre la compilacion de produccion (`.next-e2e`), no
+//                     contra `next dev`: un fallo que solo exista en dev no lo
+//                     ve.
 //
 // Health sola no alcanzaria: en el fallo de 2518c5f las DOS daban 500, pero el
 // modo de fallo contrario —una ruta con `conAuth` rota y health sana— existe

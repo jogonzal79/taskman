@@ -14,8 +14,9 @@
  * se lee igual de bien y no se puede filtrar por herramienta.
  *
  * Vive en `domain/` por la misma razon que `ActorContext`: es un contrato
- * transversal, sin dependencias, que los adaptadores llenan. Cuando exista la
- * API REST va a usar esta misma interfaz para la linea por peticion de la 11.1.
+ * transversal, sin dependencias, que los adaptadores llenan. La API REST usa
+ * esta misma interfaz para la linea por peticion de la 11.1: `crearLogger` de
+ * `apps/web/lib/log.ts` devuelve un `Logger`.
  */
 
 /** Los campos estructurados de una linea. Se serializan a JSON tal cual. */

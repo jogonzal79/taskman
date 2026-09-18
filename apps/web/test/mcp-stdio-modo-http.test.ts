@@ -25,7 +25,8 @@ import { levantarServidorRest, type ServidorRest } from "./servidor-rest";
  * `HttpPort`, que los scopes descubiertos sean los que se usan para montar y que
  * una variable ausente impida el arranque en vez de fallar en la primera
  * llamada (11.2). Nada de eso pasa por `HttpPort` ni por el registro: pasa por
- * `src/index.ts`, que es codigo que ninguna otra prueba ejecuta.
+ * la rama `http` de `src/index.ts`, que ninguna otra prueba ejecuta —las de
+ * `apps/mcp-stdio` arrancan el mismo binario, pero en modo core—.
  */
 
 const ENTRADA = createRequire(import.meta.url).resolve("@taskman/mcp-stdio");

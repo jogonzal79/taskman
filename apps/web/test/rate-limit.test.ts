@@ -327,7 +327,8 @@ describe("ventana deslizante", () => {
     // La decision de que cuenta como escritura, fijada. El typecheck obliga a
     // clasificar un scope nuevo, pero no a clasificarlo BIEN: si alguien mueve
     // delete al cupo de lectura, los DELETE pasarian a tener el cupo de 120 y
-    // ningun otro test lo notaria.
+    // por REST ningun otro test lo notaria. Por /mcp si: la prueba D5 de
+    // `mcp.test.ts` cobra 30 delete_task y espera el 429 en el siguiente.
     expect(CUBO_POR_SCOPE).toEqual({
       read: "lectura",
       write: "escritura",

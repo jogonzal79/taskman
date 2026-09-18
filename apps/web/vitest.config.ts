@@ -10,12 +10,12 @@ export default defineConfig({
      * 11.2 declara la variable ("permite desactivar el limite en entornos de
      * prueba").
      *
-     * Las otras once suites ejercitan los endpoints, no el limite, y varias
+     * El resto de las suites ejercita los endpoints, no el limite, y varias
      * hacen bastante mas de 30 escrituras por minuto con la misma clave: con el
      * limite encendido dejarian de medir lo que miden y empezarian a medir el
-     * cupo, con la fragilidad de un test que depende del reloj. La que SI
-     * ejercita el limite lo enciende ella, por prueba, y lo puede hacer porque
-     * el interruptor se lee por peticion y no al importar el modulo.
+     * cupo, con la fragilidad de un test que depende del reloj. Las que SI
+     * ejercitan el limite lo encienden ellas, por prueba, y lo pueden hacer
+     * porque el interruptor se lee por peticion y no al importar el modulo.
      *
      * Va en la configuracion y no en los helpers a proposito: asi no depende de
      * que un archivo nuevo se acuerde de importar nada.

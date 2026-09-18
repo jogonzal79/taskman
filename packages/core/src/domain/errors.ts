@@ -59,7 +59,7 @@ export const CODIGOS_DE_DOMINIO = [
 
   /**
    * LOS CUATRO DE ABAJO NO LOS PRODUCE NINGUN SERVICIO, y no son una excepcion
-   * nueva: `IDEMPOTENCY_MISMATCH`, doce lineas mas arriba, ya estaba en esta
+   * nueva: `IDEMPOTENCY_MISMATCH`, mas arriba, ya estaba en esta
    * lista con ese mismo argumento —lo produce el borde, que es el unico que ve
    * la cabecera— y `DESTRUCTIVE_POLICY_DENIED` lo produce el borde MCP. Este
    * catalogo no es "lo que sabe la base": es el vocabulario de errores que

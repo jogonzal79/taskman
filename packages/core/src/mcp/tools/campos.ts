@@ -35,7 +35,7 @@ export const campoColumn = z
 /**
  * La referencia a una tarea, con la accion de cada herramienta metida en la
  * frase. La parte que importa —que un titulo ambiguo NO se resuelve solo— se
- * escribe una vez para las tres herramientas que aceptan una tarea.
+ * escribe una vez para todas las herramientas que aceptan una tarea.
  */
 export function campoTask(accion: string): z.ZodString {
   return z

@@ -5,9 +5,10 @@ import { respuestaDeError, type ContextoPeticion } from "./http";
 /**
  * EL UNICO punto por donde se leen los parametros de consulta de un endpoint.
  *
- * Existe por lo mismo que `leerCuerpo`: los cinco handlers de listado armaban
- * cada uno el objeto a validar leyendo SOLO los parametros que conocen, uno por
- * uno, asi que el `strictObject` del contrato nunca veia el parametro de mas.
+ * Existe por lo mismo que `leerCuerpo`: los cinco handlers que leen parametros
+ * de consulta —cuatro listados y el DELETE de columnas— armaban cada uno el
+ * objeto a validar leyendo SOLO los parametros que conocen, uno por uno, asi
+ * que el `strictObject` del contrato nunca veia el parametro de mas.
  * DECLARABA que los desconocidos se rechazan y el borde no lo honraba. Lo
  * peligroso no era el 200 sino creer que el parametro acoto cuando quedo
  * INERTE: `?column_key=TODO` en la busqueda devolvia el tablero entero y quien

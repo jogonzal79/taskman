@@ -61,10 +61,12 @@ const payloadDeAuditoria = z.record(z.string(), z.unknown()).nullable();
  * `before_data` y `after_data` van SIEMPRE, sin recorte ni resumen. Son el
  * contenido del log: un registro que dice que algo cambio sin decir que sirve
  * para saber que paso algo y para nada mas, y la 7.4 los especifica campo por
- * campo justamente para poder reconstruir. El peso maximo hoy es el CREATE de
- * un tablero con sus cuatro columnas, del orden de 1 KB. Si algun dia crecen,
- * la salida es un parametro para pedir la linea de tiempo sin payloads, no
- * recortarlos por defecto y que el log deje de servir.
+ * campo justamente para poder reconstruir. Su peso NO tiene un tope chico: un
+ * tablero con las cuatro columnas por defecto ronda 1 KB, pero una tarea guarda
+ * su descripcion, que es TEXT sin limite en el nucleo, asi que lo que la acota
+ * es el tope de cuerpo de cada borde. Si algun dia pesan de verdad, la salida
+ * es un parametro para pedir la linea de tiempo sin payloads, no recortarlos
+ * por defecto y que el log deje de servir.
  */
 export const registroDeAuditoria = z.strictObject({
   id: idDeRegistro,

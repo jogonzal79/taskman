@@ -8,8 +8,9 @@
 // por defecto. Es lo que hace que lo que entre por el HttpPort de la 8.1 en
 // modo http audite como agente: el borde REST no puede ver por donde entro una
 // peticion —HttpPort y curl mandan la misma— asi que el rotulo va en la
-// CREDENCIAL, que la elige quien emite. Sin la bandera, API, que es lo que
-// audita hoy cualquier clave y por lo tanto lo que no cambia nada.
+// CREDENCIAL, que la elige quien emite. Sin la bandera, API: el valor por
+// defecto de la columna y lo que auditaba toda escritura REST antes de que la
+// bandera existiera, asi que omitirla no cambia nada respecto de antes.
 //
 // Va como bandera y no como argumento posicional porque los scopes son
 // variadicos: no hay hueco donde meter uno mas. Y como bandera SIN valor
@@ -78,8 +79,8 @@ if (desconocidas.length > 0) {
   );
 }
 
-// El rotulo de actor de la 7.4. Sin bandera, API: es lo que audita hoy toda
-// clave, asi que omitirla no cambia nada.
+// El rotulo de actor de la 7.4. Sin bandera, API: el valor por defecto de la
+// columna y lo que auditaba toda escritura REST antes de la bandera.
 const actorType = banderas.includes(BANDERA_AGENTE) ? "AGENT" : "API";
 
 const [label, ...scopesCrudos] = argumentos;

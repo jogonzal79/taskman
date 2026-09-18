@@ -28,7 +28,7 @@ import { connectDb, ctx, truncateAll } from "./helpers";
  * real de la SDK sobre un transporte en memoria.
  *
  * Se prueba por el borde y no invocando los handlers a mano porque la mitad de
- * lo que decide si esto sirve pasa en el borde: que las tres herramientas se
+ * lo que decide si esto sirve pasa en el borde: que las herramientas se
  * anuncien con sus esquemas, que cada campo lleve descripcion y que un error de
  * dominio llegue como resultado legible en vez de como excepcion.
  */

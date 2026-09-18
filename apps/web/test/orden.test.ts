@@ -12,12 +12,11 @@ import {
 /**
  * La aritmetica del arrastre (`lib/orden.ts`), probada SIN navegador y SIN base.
  *
- * Es la unica suite de `apps/web` que no abre una conexion, y no es una rareza:
- * lo que mide son funciones puras. La traduccion del indice VISIBLE al
- * `position` REAL es lo mas facil de equivocar de todo el paso —se equivoca
- * callada, dejando la tarea un lugar corrida— y desde Playwright se veria el
- * resultado y no la cuenta, asi que un fallo ahi diria "la tarjeta quedo mal"
- * sin decir por que.
+ * No abre una conexion, y no es una rareza: lo que mide son funciones puras.
+ * La traduccion del indice VISIBLE al `position` REAL es lo mas facil de
+ * equivocar de todo el paso —se equivoca callada, dejando la tarea un lugar
+ * corrida— y desde Playwright se veria el resultado y no la cuenta, asi que un
+ * fallo ahi diria "la tarjeta quedo mal" sin decir por que.
  *
  * EL ORACULO DE CADA CASO es `computeMoveOrder` del nucleo, reimplementado aca
  * abajo en tres lineas (`comoElNucleo`). No se importa del nucleo a proposito:
