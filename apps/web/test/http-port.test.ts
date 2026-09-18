@@ -22,13 +22,19 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { reiniciarLimiteDePeticiones, LIMITE_POR_CUBO } from "../lib/rate-limit";
 import {
+  COLUMNAS_POR_DEFECTO,
   connectDb,
   contarFilas,
   ctx,
   emitirClave,
+  error,
+  idDe,
+  llamarCon,
+  ok,
   port,
   sembrarTablero,
   truncateAll,
+  type Resultado,
 } from "./helpers";
 import { levantarServidorRest, type ServidorRest } from "./servidor-rest";
 
@@ -149,63 +155,19 @@ beforeEach(async () => {
 });
 
 // --- Utilidades del borde MCP ------------------------------------------------
-
-interface Resultado {
-  texto: string;
-  json: Record<string, unknown>;
-  isError: boolean;
-}
-
-/** El bloque JSON de la 8.5 va al final del texto, entre vallas ```json. */
-function extraerJson(texto: string): Record<string, unknown> {
-  const inicio = texto.indexOf("```json\n");
-  const fin = texto.lastIndexOf("\n```");
-  if (inicio === -1 || fin <= inicio) {
-    throw new Error(`La respuesta no trae bloque JSON:\n${texto}`);
-  }
-  return JSON.parse(texto.slice(inicio + "```json\n".length, fin)) as Record<string, unknown>;
-}
-
-async function llamarCon(
-  cliente: McpClient,
-  name: string,
-  args: Record<string, unknown>,
-): Promise<Resultado> {
-  const salida = await cliente.callTool({ name, arguments: args });
-  const bloques = salida.content as Array<{ type: string; text?: string }>;
-
-  expect(bloques).toHaveLength(1);
-  const texto = bloques[0]?.text ?? "";
-
-  return { texto, json: extraerJson(texto), isError: salida.isError === true };
-}
+//
+// Las de leer un resultado (`llamarCon`, `ok`, `error`, `idDe`) viven en
+// `helpers.ts`: las comparte la suite de /mcp, que recorre las mismas once por
+// el otro transporte.
 
 /** Por HttpPort, que es el camino que esta suite ejercita. */
 async function llamar(name: string, args: Record<string, unknown>): Promise<Resultado> {
   return llamarCon(porHttp, name, args);
 }
 
-function ok(resultado: Resultado): Record<string, unknown> {
-  expect(resultado.isError, resultado.texto).toBe(false);
-  return resultado.json;
-}
-
-function error(resultado: Resultado): Record<string, unknown> {
-  expect(resultado.isError, resultado.texto).toBe(true);
-  return resultado.json["error"] as Record<string, unknown>;
-}
-
 /** Las lineas que dejo `HttpPort`, en orden. */
 function peticionesHttp(): CamposDeLog[] {
   return lineas.filter((linea) => linea.campos["evt"] === "http.request").map((l) => l.campos);
-}
-
-/** Las cuatro de la 4.3, en el orden en que las crea el nucleo. */
-const COLUMNAS_POR_DEFECTO = ["BACKLOG", "TODO", "IN_PROGRESS", "DONE"];
-
-/** El `id` de un objeto del bloque JSON de la 8.5. */
-function idDe(objeto: unknown): string {
-  return (objeto as Record<string, unknown>)["id"] as string;
 }
 
 async function tablero(name = "Tablero"): Promise<BoardDetail> {

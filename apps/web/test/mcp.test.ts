@@ -10,12 +10,19 @@ import { LIMITE_CUERPO_BYTES } from "../lib/http";
 import { fijarLogger } from "../lib/log";
 import { LIMITE_POR_CUBO, reiniciarLimiteDePeticiones } from "../lib/rate-limit";
 import {
+  COLUMNAS_POR_DEFECTO,
   connectDb,
+  ctx,
   emitirClave,
+  error,
+  idDe,
+  llamarCon,
+  ok,
   port,
   sembrarTablero,
   sembrarTareas,
   truncateAll,
+  type Resultado,
 } from "./helpers";
 
 /**
@@ -295,6 +302,244 @@ describe("/mcp con clave: los scopes deciden el catalogo (8.1)", () => {
       expect(respuesta.headers.get("allow")).toBe("POST");
       expect(respuesta.headers.get("x-request-id")).toMatch(/^req_/);
     }
+  });
+});
+
+/**
+ * LAS ONCE POR EL TRANSPORTE, UNA POR UNA, CON EFECTO.
+ *
+ * El bloque de arriba mide el CATALOGO de /mcp; esto mide que cada herramienta
+ * del catalogo HACE lo que dice cuando entra por aca. Antes solo cuatro corrian
+ * por /mcp —create_board, list_tasks, move_task, list_boards— y las otras siete
+ * aparecian en el listado y en ningun otro lado: una rotura del transporte que
+ * les tocara a ellas dejaba `verify` en verde. Cada herramienta llega al nucleo
+ * con sus propios argumentos, asi que probar cuatro y suponer siete es suponer
+ * justamente lo que puede fallar.
+ *
+ * Son los mismos once casos que `http-port.test.ts` corre por HttpPort, y NO lo
+ * duplican: aquella suite monta el registro sobre un transporte en memoria y lo
+ * que pone a prueba es el PUERTO; esta usa `CorePort` y lo que pone a prueba es
+ * el TRANSPORTE —el cliente de la SDK, `conAuthMcp`, `atenderMcp`, el cuerpo
+ * leido por `leerCuerpo` y el `WebStandardStreamableHTTPServerTransport`—.
+ *
+ * EL EFECTO SE LEE POR SQL, con la conexion `pg` de la suite, y no de lo que
+ * contesto la herramienta: preguntarle al que acaba de escribir si escribio es
+ * preguntarle al acusado. Las LECTURAS no tienen efecto que leer, asi que lo que
+ * se compara es su salida contra lo que la base dice, no contra un valor escrito
+ * aca.
+ *
+ * `delete_task` va con una clave que TIENE `delete` y la politica en `confirm`,
+ * puesta explicita y no heredada del entorno: es la de la 8.3.2 por defecto y
+ * la unica que recorre los dos pasos —la pregunta, que no toca nada, y el
+ * borrado confirmado—. `allow` saltearia el primero y `deny` no borraria.
+ */
+describe("/mcp: las once herramientas de la 8.2, con efecto, por el transporte", () => {
+  let cliente: McpClient;
+
+  beforeEach(async () => {
+    const clave = await emitirClave(db, ["READ", "WRITE", "DELETE"], { label: "las once por /mcp" });
+    cliente = await conectar(clave);
+  });
+
+  afterEach(async () => {
+    await cliente.close();
+  });
+
+  function llamar(name: string, args: Record<string, unknown>): Promise<Resultado> {
+    return llamarCon(cliente, name, args);
+  }
+
+  /** La tarea tal como quedo en la base, con la key de su columna. */
+  async function tareaEnLaBase(id: string): Promise<Record<string, unknown> | undefined> {
+    const filas = await db.query(
+      `SELECT t.title, t.description, t.priority::text AS priority,
+              t.due_date::text AS due_date, t.position, c.key AS column_key
+         FROM task t JOIN board_column c ON c.id = t.column_id
+        WHERE t.id = $1`,
+      [id],
+    );
+    return filas.rows[0];
+  }
+
+  it("list_boards lista los tableros que hay en la base", async () => {
+    await sembrarTablero(port(), { name: "Uno" });
+    await sembrarTablero(port(), { name: "Dos" });
+
+    const salida = ok(await llamar("list_boards", {}));
+
+    const enLaBase = await db.query<{ id: string }>("SELECT id FROM board ORDER BY id");
+    expect((salida["boards"] as unknown[]).map(idDe).sort()).toEqual(
+      enLaBase.rows.map((fila) => fila.id),
+    );
+  });
+
+  it("get_board trae las columnas del tablero y el recuento de cada una", async () => {
+    const tablero = await sembrarTablero(port(), { name: "QA" });
+    await sembrarTareas(port(), { boardId: tablero.id, columnKey: "TODO", prefijo: "t", cantidad: 2 });
+
+    const salida = ok(await llamar("get_board", { board: "QA" }));
+
+    const enLaBase = await db.query<{ key: string; task_count: number }>(
+      `SELECT c.key, count(t.id)::int AS task_count
+         FROM board_column c LEFT JOIN task t ON t.column_id = c.id
+        WHERE c.board_id = $1 GROUP BY c.id ORDER BY c.position`,
+      [tablero.id],
+    );
+    const columnas = salida["columns"] as Array<{ key: string; task_count: number }>;
+    expect(columnas.map(({ key, task_count }) => ({ key, task_count }))).toEqual(enLaBase.rows);
+  });
+
+  it("create_board escribe el tablero con sus cuatro columnas", async () => {
+    const salida = ok(await llamar("create_board", { name: "Nuevo" }));
+
+    const tableros = await db.query<{ id: string }>("SELECT id FROM board WHERE name = 'Nuevo'");
+    expect(tableros.rows.map((fila) => fila.id)).toEqual([idDe(salida["board"])]);
+    const columnas = await db.query<{ key: string }>(
+      "SELECT key FROM board_column WHERE board_id = $1 ORDER BY position",
+      [idDe(salida["board"])],
+    );
+    expect(columnas.rows.map((fila) => fila.key)).toEqual(COLUMNAS_POR_DEFECTO);
+  });
+
+  it("create_column escribe la columna al final del tablero", async () => {
+    const tablero = await sembrarTablero(port(), { name: "QA" });
+
+    ok(await llamar("create_column", { board: "QA", name: "En revision", key: "REVIEW" }));
+
+    const columnas = await db.query<{ key: string; name: string }>(
+      "SELECT key, name FROM board_column WHERE board_id = $1 ORDER BY position",
+      [tablero.id],
+    );
+    expect(columnas.rows.at(-1)).toEqual({ key: "REVIEW", name: "En revision" });
+    expect(columnas.rows).toHaveLength(COLUMNAS_POR_DEFECTO.length + 1);
+  });
+
+  it("list_tasks lista las tareas de una columna, en el orden de la base", async () => {
+    const tablero = await sembrarTablero(port(), { name: "QA" });
+    await sembrarTareas(port(), { boardId: tablero.id, columnKey: "TODO", prefijo: "todo", cantidad: 2 });
+    await sembrarTareas(port(), { boardId: tablero.id, columnKey: "DONE", prefijo: "done", cantidad: 1 });
+
+    const salida = ok(await llamar("list_tasks", { board: "QA", column: "TODO" }));
+
+    const enLaBase = await db.query<{ id: string }>(
+      `SELECT t.id FROM task t JOIN board_column c ON c.id = t.column_id
+        WHERE c.board_id = $1 AND c.key = 'TODO' ORDER BY t.position`,
+      [tablero.id],
+    );
+    expect((salida["tasks"] as unknown[]).map(idDe)).toEqual(enLaBase.rows.map((fila) => fila.id));
+  });
+
+  it("search_tasks encuentra por texto en todos los tableros", async () => {
+    const taskman = port();
+    const uno = await sembrarTablero(taskman, { name: "Uno" });
+    const dos = await sembrarTablero(taskman, { name: "Dos" });
+    await taskman.createTask({ boardId: uno.id, columnKey: "TODO", title: "Revisar contrato" }, ctx());
+    await taskman.createTask({ boardId: dos.id, columnKey: "TODO", title: "Firmar contrato" }, ctx());
+    await taskman.createTask({ boardId: dos.id, columnKey: "TODO", title: "Otra cosa" }, ctx());
+
+    const salida = ok(await llamar("search_tasks", { text: "contrato" }));
+
+    const enLaBase = await db.query<{ id: string }>(
+      "SELECT id FROM task WHERE title LIKE '%contrato' ORDER BY id",
+    );
+    expect((salida["tasks"] as unknown[]).map(idDe).sort()).toEqual(
+      enLaBase.rows.map((fila) => fila.id),
+    );
+  });
+
+  it("get_task devuelve la tarea como esta en la base", async () => {
+    const tablero = await sembrarTablero(port(), { name: "QA" });
+    const tarea = await port().createTask(
+      { boardId: tablero.id, columnKey: "TODO", title: "Revisar HU-25", description: "el detalle" },
+      ctx(),
+    );
+
+    const salida = ok(await llamar("get_task", { task: tarea.id }));
+
+    const enLaBase = await tareaEnLaBase(tarea.id);
+    const devuelta = salida["task"] as Record<string, unknown>;
+    expect({
+      title: devuelta["title"],
+      description: devuelta["description"],
+      column_key: devuelta["column_key"],
+    }).toEqual({
+      title: enLaBase?.["title"],
+      description: enLaBase?.["description"],
+      column_key: enLaBase?.["column_key"],
+    });
+  });
+
+  it("create_task escribe la tarea al final de la columna, con prioridad y fecha", async () => {
+    const tablero = await sembrarTablero(port(), { name: "QA" });
+    await sembrarTareas(port(), { boardId: tablero.id, columnKey: "TODO", prefijo: "primera", cantidad: 1 });
+
+    const salida = ok(
+      await llamar("create_task", {
+        board: "QA",
+        column: "TODO",
+        title: "segunda",
+        priority: "HIGH",
+        due_date: "2026-09-11",
+      }),
+    );
+
+    expect(await tareaEnLaBase(idDe(salida["task"]))).toMatchObject({
+      title: "segunda",
+      priority: "HIGH",
+      due_date: "2026-09-11",
+      position: 1,
+      column_key: "TODO",
+    });
+  });
+
+  it("update_task escribe los campos, y un null borra", async () => {
+    const tablero = await sembrarTablero(port(), { name: "QA" });
+    const tarea = await port().createTask(
+      { boardId: tablero.id, columnKey: "TODO", title: "vieja", description: "con descripcion" },
+      ctx(),
+    );
+
+    ok(await llamar("update_task", { task: tarea.id, title: "nueva", description: null }));
+
+    expect(await tareaEnLaBase(tarea.id)).toMatchObject({ title: "nueva", description: null });
+  });
+
+  it("move_task cambia la tarea de columna y deja denso el orden", async () => {
+    const tablero = await sembrarTablero(port(), { name: "QA" });
+    await sembrarTareas(port(), { boardId: tablero.id, columnKey: "TODO", prefijo: "queda", cantidad: 1 });
+    const tarea = await port().createTask(
+      { boardId: tablero.id, columnKey: "TODO", title: "viajera" },
+      ctx(),
+    );
+
+    ok(await llamar("move_task", { task: tarea.id, to_column: "DONE" }));
+
+    expect(await tareaEnLaBase(tarea.id)).toMatchObject({ column_key: "DONE", position: 0 });
+    const enTodo = await db.query<{ position: number }>(
+      `SELECT t.position FROM task t JOIN board_column c ON c.id = t.column_id
+        WHERE c.board_id = $1 AND c.key = 'TODO'`,
+      [tablero.id],
+    );
+    expect(enTodo.rows).toEqual([{ position: 0 }]);
+  });
+
+  it("delete_task, con confirm: la pregunta no toca la base y el borrado confirmado la borra", async () => {
+    process.env["MCP_DESTRUCTIVE_POLICY"] = "confirm";
+    const tablero = await sembrarTablero(port(), { name: "QA" });
+    const tarea = await port().createTask(
+      { boardId: tablero.id, columnKey: "TODO", title: "condenada" },
+      ctx(),
+    );
+
+    // 8.3.2: el primer paso es una pregunta, no un fallo, y no toca nada.
+    expect(error(await llamar("delete_task", { task: tarea.id }))["code"]).toBe(
+      "CONFIRMATION_REQUIRED",
+    );
+    expect(await tareaEnLaBase(tarea.id)).toMatchObject({ title: "condenada" });
+
+    ok(await llamar("delete_task", { task: tarea.id, confirm: true }));
+
+    expect(await tareaEnLaBase(tarea.id)).toBeUndefined();
   });
 });
 
