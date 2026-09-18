@@ -946,7 +946,11 @@ describe("los scopes de la clave, medidos contra el servidor (8.1)", () => {
     // si alguna se hubiera saltado, el conteo de arriba pasaria por no hacer
     // nada en vez de por no poder hacer nada.
     const sondas = peticionesHttp().filter((linea) => linea["route"] === "/api/tasks/sonda-de-scope");
-    expect(sondas.map((linea) => linea["method"])).toEqual(["GET", "PATCH", "DELETE"]);
+    // Ordenados antes de comparar: `descubrirScopes` lanza las tres en paralelo
+    // y cada linea se escribe al llegar SU respuesta, asi que el orden del log
+    // es el de llegada. Sigue siendo una igualdad exacta: una sonda de mas, de
+    // menos o repetida no da la misma lista.
+    expect(sondas.map((linea) => linea["method"]).sort()).toEqual(["DELETE", "GET", "PATCH"]);
     expect(sondas.map((linea) => linea["status"])).toEqual([400, 400, 400]);
   });
 
