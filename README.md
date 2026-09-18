@@ -6,7 +6,9 @@ Especificación en `docs/`:
 - Documento Técnico-Funcional v1.0
 - Especificación Técnica de Desarrollo v1.0
 
-Estado: F2.3 — servidor MCP por stdio con el catálogo completo de la sección 8.2.
+Estado: F4 — MCP, con el catálogo de la sección 8.2 sobre los dos transportes de
+la 8.1. En qué punto exacto de la fase, `git log --oneline`; los nombres de fase
+salen del plan de la sección 12.
 
 ## Puesta en marcha
 
@@ -73,7 +75,29 @@ elige: hay que desambiguar.
 El mismo proceso de arriba, pero hablando con la API REST en vez de con la base.
 Es el escenario "Claude Code local contra servidor remoto" de la 8.1, y el
 bloque `env` es el de la 8.6: `DATABASE_URL` no va, y en su lugar van la URL y
-la clave.
+la clave. Las once herramientas se ejecutaron por este camino con Claude Code
+2.1.274.
+
+Hay un paso que el modo `core` no pide y sin el cual esto no arranca: **la app
+tiene que estar levantada**, porque acá es ella la que habla con la base. En
+orden, desde la raíz del repo:
+
+```powershell
+pnpm run db:up                                  # PostgreSQL en Docker
+pnpm --filter @taskman/web run build
+pnpm --filter @taskman/web run start            # http://localhost:3000; dejalo corriendo
+curl.exe http://localhost:3000/api/health       # 200 antes de seguir
+pnpm --filter @taskman/mcp-stdio run build      # o pnpm run build
+```
+
+Después van la clave (más abajo) y el `.mcp.json` con este bloque, y recién
+entonces `claude`, arrancado desde esa misma raíz: el `args` es relativo al
+directorio desde el que arranca el cliente, no al del archivo. La clave se
+muestra una sola vez y **cada `verify` vacía `api_key`**, así que después de
+correr las pruebas hay que emitir otra y volver a pegarla acá. El bloque puede
+convivir con el de modo `core` bajo OTRO nombre —`"taskman-http"`— y entonces
+las herramientas se distinguen por el prefijo, igual que con `/mcp`:
+`mcp__taskman-http__move_task` contra `mcp__taskman__move_task`.
 
 ```json
 "taskman": {
@@ -114,15 +138,37 @@ siguen siendo variádicos.
   con tres peticiones que no pueden tocar nada (`GET`, `PATCH` y `DELETE` sobre
   `/api/tasks/sonda-de-scope`, un id que no es un UUID y que los tres handlers
   rechazan con 400 antes de mirar la base). En el log del servidor se ven esas
-  tres líneas cada vez que arranca un agente; no son un cliente roto.
+  tres líneas cada vez que arranca un agente; no son un cliente roto. Para las
+  **once** hace falta una clave con `delete`, que la 7.2 recomienda no darle a
+  un agente autónomo: va en una prueba supervisada, igual que en `/mcp` (más
+  abajo).
 - **La auditoría la escribe el servidor**, con el rótulo de la clave y su
   prefijo como `client_id`, y el `request_id` que queda en `audit_log` es el del
   servidor y no uno que elija este proceso.
 - **Rige el límite de la 7.3**, que se cobra por clave: 120 lecturas y 30
-  escrituras por minuto, compartido con todo lo que use esa misma clave.
+  escrituras por minuto, compartido con todo lo que use esa misma clave. Y se
+  gasta **más rápido que por `/mcp`**, donde cada `tools/call` cobra uno: acá una
+  herramienta son entre 1 y 5 peticiones REST, porque resolver un nombre lista
+  primero. Medido con las referencias por NOMBRE, que es el caso normal
+  —resolver por id se ahorra el listado—, peticiones por llamada: `list_boards`
+  y `create_board` 1; `get_board` y `list_tasks` 3; `create_column`,
+  `create_task`, `get_task`, `update_task` y `move_task` 4; el `delete_task` ya
+  confirmado, 5. `search_tasks` es 1 más un tablero por cada TABLERO DISTINTO
+  que aparezca entre las coincidencias (3 en la medición, con resultados de dos
+  tableros). De todas ésas, la que escribe es UNA; el resto son lecturas. El
+  arranque también cobra: las tres peticiones de la sonda son 1 lectura y 2
+  escrituras —medido con una clave nueva, después de arrancar el servidor
+  entraron 28 escrituras más en el minuto y la 29.ª recibió 429—. O sea que los
+  30 `move_task` por minuto del ejemplo 5 del Anexo A, que por `/mcp` entran
+  justo, por acá no entran si el proceso arrancó en ese mismo minuto.
 
 **Si no arranca**, el motivo sale en stderr y el proceso termina con código 1
-(sección 11.2), que es lo que Claude Code muestra como servidor `failed`:
+(sección 11.2). OJO CON DÓNDE LEERLO: Claude Code **no muestra ese stderr**. En
+la sesión el servidor figura como `failed`, y lo único que ve el agente es
+`taskman (CONNECTION_CLOSED): "Connection closed"`, que no dice nada de la
+causa. El mensaje está en otros dos lados: arrancando el proceso a mano (ver
+Diagnóstico, al final) o lanzando `claude --debug`, que lo escribe precedido de
+`Server stderr:` en `~/.claude/debug/<sesión>.txt`. Estos son los tres:
 
 | Mensaje en stderr | Qué pasó |
 | --- | --- |
@@ -283,10 +329,21 @@ Lo que escribe es log estructurado en JSON, una línea por evento (sección 11.1
 | `mcp.tool` | Una por invocación de herramienta | `tool`, `durationMs`, `outcome` (`ok`, `domain_error`, `error`) y `code` solo si hubo error de dominio |
 | `mcp.resolve` | Una por resolución por nombre (sección 8.3.1) | `entity`, `strategy` (`uuid`, `exact`, `partial`), `matches` y `resolvedId` solo si hubo exactamente una |
 | `mcp.resolve.ref` | Igual que la anterior, pero solo en `debug` | `reference`: el texto crudo que mandó el agente, que para una tarea es su título |
+| `http.request` | Sólo en modo `http`: una por petición REST, incluidas las tres de la sonda de scopes | `method`, `route`, `status`, `durationMs`, `serverRequestId` (el que devolvió el servidor) y `toolRequestId` sólo en las escrituras, que son las que llevan contexto |
 
-Todas llevan `requestId`, y es **el mismo** que queda en la columna `request_id`
-de `audit_log`: con él se cruza lo que pidió un agente, cómo se resolvió y qué
-escribió. Las de `mcp.tool` llevan además `actorType` y `actorName`.
+Todas llevan `requestId`, y las de `mcp.tool` llevan además `actorType` y
+`actorName`. CON QUÉ SE CRUZA LA AUDITORÍA depende del modo, y los dos valores
+no son el mismo:
+
+- En `core`, el `requestId` de estas líneas ES el que queda en la columna
+  `request_id` de `audit_log` (un UUID pelado), y `actor_name` es el
+  `clientInfo.name` del cliente —`claude-code`— con `client_id` en NULL.
+- En `http`, la fila de `audit_log` la escribe el servidor, así que su
+  `request_id` es el del servidor: el `serverRequestId` de la línea
+  `http.request`, con formato `req_…`, y el que aparece también en la línea por
+  petición del log de la app. El `requestId` de `mcp.tool` no sale de este
+  proceso; para ir de uno al otro está el `toolRequestId` de `http.request`. Y
+  `actor_name` es la ETIQUETA de la clave, con su prefijo en `client_id`.
 
 `LOG_LEVEL` controla el detalle: `debug`, `info` (por defecto), `warn` o
 `error`. Un valor fuera de esos cuatro impide el arranque, igual que
@@ -328,6 +385,16 @@ una línea de log, el canal del protocolo está contaminado y el cliente la reci
 como si fuera un mensaje: es exactamente lo que verifica `test/log.test.ts`.
 Sin el archivo de entrada, el servidor se queda esperando mensajes por stdin y
 `Ctrl+C` lo corta.
+
+Para el modo `http` es el mismo bloque con otras tres variables —y es LA forma
+de leer el motivo de un arranque fallido, que Claude Code no muestra:
+
+```powershell
+$env:MCP_PORT_MODE  = "http"
+$env:TASKMAN_API_URL = "http://localhost:3000"
+$env:TASKMAN_API_KEY = "tmk_live_PEGA_LA_CLAVE"
+Remove-Item Env:DATABASE_URL -ErrorAction SilentlyContinue   # no se usa; si está, se ignora
+```
 
 ## Estructura
 
