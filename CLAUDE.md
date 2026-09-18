@@ -123,15 +123,25 @@ contador de pruebas no tiene ese commit.
   invalida— pero el dia no, que es el caso que alguien escribe de verdad. El
   contrato REST no comparte ese helper: `fechaSola` de `packages/contracts`
   valida con un ida y vuelta —reconstruye la fecha y la compara con lo que
-  entro— y eso si lo atrapa. Que haya DOS validaciones de la misma fecha es la
-  causa y no un detalle: la 3.3 permite que `packages/core` importe `contracts`, y
-  la ADR-006 pide que los esquemas de las herramientas se deriven de ahi, asi que
-  el arreglo es que la fecha de las herramientas se valide con `fechaSola`,
-  dentro del paso de la entrada siguiente. Copiar el ida y vuelta en `aFecha`
-  cerraria este caso y dejaria abierto el hueco que lo produjo. (Esta entrada
-  decia antes que el borde MCP no puede importar del paquete de contratos: era
-  FALSO, lo desmienten la 3.3 y la ADR-006, y no hay que volver a leerlo como
-  regla.)
+  entro— y eso si lo atrapa. Y el MODO HTTP NO LO SALVA, aunque ahi la fecha
+  termine en ese contrato: `aFecha` corre antes, dentro de la herramienta, y
+  `HttpPort` manda la fecha YA CORRIDA —"2026-03-02"—, que `fechaSola` acepta
+  porque existe. Pasa igual por los tres caminos: stdio en `core`, stdio en
+  `http` y /mcp (leido del codigo; la conversion, comprobada con node). Que haya
+  DOS validaciones de la misma fecha es la causa y no un detalle: la 3.3 permite
+  que `packages/core` importe `contracts`, y la ADR-006 pide que los esquemas de
+  las herramientas se deriven de ahi, asi que el arreglo es que la fecha de las
+  herramientas se valide con `fechaSola`, dentro del paso de la entrada
+  siguiente. Copiar el ida y vuelta en `aFecha` cerraria este caso y dejaria
+  abierto el hueco que lo produjo. (Esta entrada decia antes que el borde MCP no
+  puede importar del paquete de contratos: era FALSO, lo desmienten la 3.3 y la
+  ADR-006, y no hay que volver a leerlo como regla.)
+  NO BLOQUEA EL CIERRE DE F4, decidido el 18 de septiembre de 2026 al cerrarla:
+  ni el entregable ni la definicion de terminado de la fila F4 de la 12 piden
+  validar lo que entra —son el registro, los puertos, los transportes y las once
+  herramientas ejecutables—. DISPARADOR: ninguno que esperar, porque el dano ya
+  ocurre y en silencio; lo que queda por decidir es CUANDO, y va con el paso de
+  la entrada siguiente.
 - Los ESQUEMAS DE ENTRADA DE LAS HERRAMIENTAS MCP NO SE DERIVAN DE
   `packages/contracts`, y la ADR-006 lo pide con esas palabras: los esquemas de
   contracts son "la unica definicion", y de ellos se derivan los tipos, el
@@ -142,12 +152,48 @@ contador de pruebas no tiene ese commit.
   reimplementa `fechaSola` con un agujero (entrada anterior). Es el RT-03 de la
   12.2 ya ocurrido, no un riesgo. La 3.3 lo permite —`packages/core` y
   `apps/mcp-stdio` pueden importar `contracts`, que sigue siendo hoja— asi que no
-  hay regla que mover. Lo que ese paso tiene que decidir es QUE se deriva: las
+  hay regla que mover. Y `apps/mcp-stdio` YA lo importa desde el paso 11 de F4:
+  `http-port.ts` valida con los esquemas de contracts cada respuesta de la API
+  REST, asi que el precedente y el cableado existen y el unico que falta es
+  `packages/core`. Lo que ese paso tiene que decidir es QUE se deriva: las
   entradas de las herramientas no son los cuerpos REST —`move_task` recibe
   `task`, `board` y `to_column` por nombre, donde POST /api/tasks/{id}/move pide
   `column_id` o `column_key`—, asi que el cuerpo entero no sale de ahi; lo que
   comparten son piezas, como la prioridad, la fecha y los limites de largo. Es su
-  propio paso, no un arreglo al pasar.
+  propio paso, no un arreglo al pasar. NO BLOQUEA EL CIERRE DE F4, por lo mismo
+  que la entrada anterior. DISPARADOR: el proximo cambio a una de esas piezas
+  —la lista de prioridades, la forma de la fecha, un limite de largo—, porque
+  ahi la copia a mano diverge y ninguna prueba ata las dos listas; o antes, si
+  se decide pagar `aFecha`, que va adentro de este paso.
+- En MODO HTTP, la linea `mcp.tool` y `audit_log` pueden decir ACTORES DISTINTOS
+  para la misma operacion. El proceso stdio arma el contexto de cada llamada con
+  `contextoDeAgente` —`actorType` AGENT siempre, en los dos modos— y su linea
+  `mcp.tool` escribe ese valor; pero en `http` la fila de auditoria no la escribe
+  este proceso sino el servidor, con el `actor_type` de la CLAVE, que es API
+  salvo que se la haya emitido con `apikey:create --agent`. Sin la bandera, quien
+  vaya del `toolRequestId` al `serverRequestId` (README, "Diagnóstico") ve AGENT
+  en el log del agente y API en la auditoria: el sintoma que la regla de
+  `actor_type` de abajo evita dentro de un proceso, repartido entre dos. El lado
+  de la auditoria esta MEDIDO en cada verify ("el `ctx` del agente no lo mueve",
+  en `apps/web/test/http-port.test.ts`); el de la linea sale de leer
+  `mcp/contexto.ts` y `mcp/respuesta.ts`. El README recomienda `--agent` para
+  este caso, y explica que `request_id` y `actor_name` difieren entre modos, pero
+  no el tipo. Lo que el proceso NO puede es enterarse del `actor_type` de su
+  clave: no hay endpoint que lo devuelva, el mismo hueco que obligo a MEDIR los
+  scopes. Disparador: querer correlacionar de verdad el log de un agente en modo
+  http con la auditoria, o que se emita una clave de agente sin `--agent`.
+- En MODO HTTP el cupo de la 7.3 se gasta de a VARIAS PETICIONES POR
+  HERRAMIENTA, y el ejemplo 5 del Anexo A deja de entrar. Resolver un nombre
+  lista primero, asi que una llamada por nombre son de 1 a 5 peticiones REST
+  —un `move_task`, 4— de las que escribe UNA, y el arranque cobra 1 lectura y 2
+  escrituras, las de la sonda de scopes. MEDIDO en el paso 14 de F4, con el
+  detalle por herramienta en el README. Consecuencia: los 30 `move_task` por
+  minuto del ejemplo 5, que por /mcp entran justo (seccion "Servidor MCP"), por
+  stdio en modo http NO entran si el proceso arranco en ese mismo minuto: tras
+  el arranque entraron 28 escrituras y la 29 recibio 429. Lo que ya abarata sin
+  tocar codigo es referir por id, que se saltea el listado. Disparador: un
+  agente en modo http que opere en lote, o varios procesos con la misma clave,
+  que comparten el cupo.
 - GET /api/audit NO se puede filtrar por `request_id`, y es el filtro que mas se
   va a extra~nar: correlacionar el `X-Request-Id` que devolvio una respuesta con
   lo que esa peticion escribio es el uso mas natural del log, y es exactamente lo
@@ -479,6 +525,25 @@ motivo dejó de valer, ahí está el disparador para volver a mirarla.
   OJO, la otra mitad de la 10.3 SÍ está: el script de siembra determinista
   invocable con una semilla fija existe (`apps/web/e2e/semilla.ts`, una semilla
   por clave de `SEMILLAS`), y de él parten las pruebas de extremo a extremo.
+
+- **Sin la cuarta combinación de la ADR-003: `/mcp` con `HttpPort`.** La
+  justificación de la ADR-003 (2.3) dice que separar el transporte del acceso a
+  datos "permite las cuatro combinaciones útiles sin escribir código nuevo". Hay
+  tres —stdio con `CorePort`, stdio con `HttpPort` y `/mcp` con `CorePort`—, que
+  son las tres filas de la tabla de la 8.1, y la cuarta NO sale por
+  configuración: `HttpPort` vive en `apps/mcp-stdio`, `apps/web` lo ve solo como
+  devDependency de sus pruebas, y `lib/mcp.ts` construye `crearCorePort()` sin
+  variable que elija otro. O sea que esa frase de la ADR es hoy FALSA; lo que se
+  cumple es su decisión y la tabla normativa. El motivo está en la cabecera de
+  `http-port.ts`, del paso 11 de F4: un puerto con un único consumidor vive con
+  su consumidor, y un paquete propio sería una fila más en la 3.3 y una clase
+  para nadie. La cuarta, además, es un TaskMan que atiende MCP reenviando cada
+  llamada a una API REST —la de otro TaskMan, o la suya—, y ningún escenario del
+  documento la pide. La ubicación se decidió en ese paso; lo que no quedó
+  escrito hasta el cierre de F4 es su consecuencia sobre la ADR. Disparador: un
+  SEGUNDO consumidor de `HttpPort` —esa cuarta combinación lo sería—, y entonces
+  el costo no es una variable sino mover la clase a su propio paquete
+  (`packages/api-client`), que es lo que esa misma cabecera anticipa.
 
 ## Entorno
 
@@ -942,7 +1007,8 @@ motivo dejó de valer, ahí está el disparador para volver a mirarla.
   Por eso el cuerpo se lee ANTES de cobrar, al reves que `conAuth`. Un lote
   JSON-RPC cobra un lugar por mensaje, y una herramienta que la clave no tiene
   igual cobra su cupo. Consecuencia de producto medida: el ejemplo 5 del Anexo A
-  entra JUSTO con 30 move_task por minuto; el 31 recibe 429.
+  entra JUSTO con 30 move_task por minuto; el 31 recibe 429. Eso es POR /mcp:
+  por stdio en modo http no entra (ver la deuda).
 - ORIGIN: /mcp rechaza con 403 FORBIDDEN_ORIGIN toda peticion que TRAIGA `Origin`,
   antes de autenticar, y deja pasar la que no lo trae, que es la de cualquier
   cliente que no sea un navegador. No hay lista permitida ni variable: no existe
