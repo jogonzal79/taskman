@@ -119,13 +119,13 @@ export async function contarFilas(
 export async function emitirClave(
   client: Client,
   scopes: readonly Scope[],
-  opciones: { label?: string; revocada?: boolean } = {},
+  opciones: { label?: string; revocada?: boolean; agente?: boolean } = {},
 ): Promise<string> {
   const clave = generarClave();
 
   await client.query(
-    `INSERT INTO api_key (id, label, prefix, key_hash, scopes, revoked_at)
-     VALUES ($1, $2, $3, $4, $5::"Scope"[], $6)`,
+    `INSERT INTO api_key (id, label, prefix, key_hash, scopes, revoked_at, actor_type)
+     VALUES ($1, $2, $3, $4, $5::"Scope"[], $6, $7::"ActorType")`,
     [
       // El UUID lo genera la aplicacion, no la base (invariante del proyecto).
       randomUUID(),
@@ -134,6 +134,11 @@ export async function emitirClave(
       hashearClave(clave, PEPPER),
       scopes,
       opciones.revocada === true ? new Date() : null,
+      // Lo que hace `--agent` de `apikey:create`. El defecto es API y por eso
+      // las decenas de llamadas que no pasan `agente` siguen auditando igual que
+      // antes de que la columna existiera: es lo mismo que le pasa a una clave
+      // emitida antes de la migracion.
+      opciones.agente === true ? "AGENT" : "API",
     ],
   );
 

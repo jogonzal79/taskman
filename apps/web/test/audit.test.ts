@@ -380,6 +380,120 @@ describe("GET /api/audit", () => {
     expect(requestId).toMatch(/^req_[0-9a-f]{32}$/);
   });
 
+  describe("el actor lo deriva la CLAVE, no la peticion (7.4)", () => {
+    /**
+     * De donde sale `actor_type` para REST, despues del paso 12: de la columna
+     * `api_key.actor_type`, que fija quien emite la clave.
+     *
+     * El borde no puede derivarlo de otra cosa. Una peticion del HttpPort de la
+     * 8.1 en modo http y una de curl llegan por el mismo Route Handler y son
+     * identicas en el cable, asi que "por donde entro" no es observable aca. Lo
+     * que SI es observable es con que credencial entro.
+     *
+     * Por eso se descarto una cabecera de origen: lo que un cliente manda, un
+     * cliente lo elige. Los tres casos de mas abajo son esa propiedad medida —
+     * cabecera, cuerpo y query— y son la razon de ser de esta forma y no de la
+     * otra.
+     */
+    async function crearCon(
+      clave: string,
+      opciones: {
+        titulo: string;
+        boardId: string;
+        cabeceras?: Record<string, string>;
+        extraEnCuerpo?: Record<string, unknown>;
+        query?: string;
+      },
+    ): Promise<Response> {
+      return crearTarea(
+        peticion({
+          metodo: "POST",
+          ruta: `/api/tasks${opciones.query ?? ""}`,
+          clave,
+          ...(opciones.cabeceras === undefined ? {} : { cabeceras: opciones.cabeceras }),
+          cuerpo: {
+            board_id: opciones.boardId,
+            column_key: "TODO",
+            title: opciones.titulo,
+            ...opciones.extraEnCuerpo,
+          },
+        }),
+      );
+    }
+
+    /** El actor con el que se auditó la ultima escritura sobre tareas. */
+    async function actorDeLaUltimaTarea(): Promise<string | undefined> {
+      const filas = await client.query<{ actor_type: string }>(
+        `SELECT actor_type::text AS actor_type
+           FROM audit_log WHERE entity_type = 'task' ORDER BY id DESC LIMIT 1`,
+      );
+      return filas.rows[0]?.actor_type;
+    }
+
+    it("una clave emitida como agente audita AGENT por REST", async () => {
+      // Lo que emite `apikey:create --agent`, y lo que va a usar `apps/mcp-stdio`
+      // en modo http: la misma API REST, el mismo handler, otro rotulo.
+      const claveAgente = await emitirClave(client, ["READ", "WRITE"], {
+        label: "stdio remoto",
+        agente: true,
+      });
+      const tablero = await sembrarTablero(taskman, { name: "Tablero" });
+
+      const respuesta = await crearCon(claveAgente, { boardId: tablero.id, titulo: "del agente" });
+
+      expect(respuesta.status).toBe(201);
+      expect(await actorDeLaUltimaTarea()).toBe("AGENT");
+    });
+
+    it("una CABECERA no puede rotular: se ignora y la clave normal sigue en API", async () => {
+      const tablero = await sembrarTablero(taskman, { name: "Tablero" });
+
+      const respuesta = await crearCon(claveTodo, {
+        boardId: tablero.id,
+        titulo: "con cabecera",
+        cabeceras: { "X-Actor-Type": "AGENT", "X-Actor": "AGENT", "X-Origin": "mcp" },
+      });
+
+      // 201: la cabecera no molesta, simplemente no existe para nadie.
+      expect(respuesta.status).toBe(201);
+      expect(await actorDeLaUltimaTarea()).toBe("API");
+    });
+
+    it("el CUERPO no puede rotular: 400, porque el contrato es estricto", async () => {
+      const tablero = await sembrarTablero(taskman, { name: "Tablero" });
+
+      const respuesta = await crearCon(claveTodo, {
+        boardId: tablero.id,
+        titulo: "con cuerpo",
+        extraEnCuerpo: { actor_type: "AGENT" },
+      });
+
+      // Se RECHAZA en vez de ignorarse, y es mejor asi: el cliente se entera de
+      // que lo que mando no hizo nada. Sale del `strictObject` de contracts, que
+      // ya estaba; lo que esta prueba fija es que este campo en particular no
+      // tiene un camino especial.
+      expect(respuesta.status).toBe(400);
+      expect((await leerError(respuesta)).error.code).toBe("VALIDATION_ERROR");
+      expect(await actorDeLaUltimaTarea()).toBeUndefined();
+    });
+
+    it("la QUERY no puede rotular: se ignora y la clave normal sigue en API", async () => {
+      const tablero = await sembrarTablero(taskman, { name: "Tablero" });
+
+      const respuesta = await crearCon(claveTodo, {
+        boardId: tablero.id,
+        titulo: "con query",
+        query: "?actor_type=AGENT",
+      });
+
+      // POST /api/tasks no lee query —el `leerConsulta` de la 6.4 esta en el GET—
+      // asi que no hay ni 400 ni efecto. Que no sea 400 no debilita nada: para
+      // rotular hace falta que ALGUIEN lea el valor, y nadie lo lee.
+      expect(respuesta.status).toBe(201);
+      expect(await actorDeLaUltimaTarea()).toBe("API");
+    });
+  });
+
   describe("validacion y autorizacion", () => {
     it("400 con un entity_type que no es una entidad del dominio", async () => {
       const respuesta = await consultarAuditoria(

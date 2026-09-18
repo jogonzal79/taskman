@@ -197,8 +197,10 @@ contador de pruebas no tiene ese commit.
   VarChar(24) y la 4.1 dice (16) —`tmk_live_` mas 6 caracteres son 15, asi que 16
   alcanza justo y 24 deja aire—; `hash Char(64)` es `keyHash VarChar(64)` y ADEMAS
   `@unique`; `scopes String[]` es el enum `Scope[]`, que es mas estricto; y hay un
-  `updatedAt` que la 4.1 no declara. La que SI falta es `lastUsedAt`, y esa tiene
-  su entrada arriba.
+  `updatedAt` que la 4.1 no declara; y desde el paso 12 de F4 hay un `actorType`
+  que la 4.1 tampoco declara, con el que la 7.4 deriva el `actor_type` de lo que
+  entra por REST (ver la seccion de abajo). La que SI falta es `lastUsedAt`, y
+  esa tiene su entrada arriba.
 - La VENTANA DE REVOCACION del cache de claves de la 7.1: una clave revocada
   sigue autenticando hasta 60 s. Es la consecuencia aceptada de cachear la fila
   de `api_key` y esta MEDIDA de punta a punta, no supuesta: con el servidor
@@ -752,6 +754,21 @@ motivo dejó de valer, ahí está el disparador para volver a mirarla.
   registro por intento y no se nota hasta que auditás en serio. Lo cubre la
   prueba de reintento de `packages/core/test/audit.test.ts`, que aborta el
   primer intento a propósito.
+- `actor_type` es una DERIVACION y ningun llamador puede elegirla (7.4). Cada
+  borde lo fija por construccion y con la fuente que ese borde SI puede ver:
+  `contextoDeUi` pone USER, `contextoDeMcp` y `contextoDeAgente` ponen AGENT
+  —/mcp y stdio saben por donde entro la peticion— y `contextoDeApi` lo LEE DE LA
+  CLAVE (`api_key.actor_type`), porque REST no lo sabe: una peticion del HttpPort
+  de la 8.1 y una de curl son la misma peticion en el cable. Que la fuente sea la
+  credencial y no una cabecera es lo que sostiene el invariante, porque la
+  credencial la emite quien administra (`apikey:create --agent`) y lo que un
+  cliente manda lo elige el cliente. MEDIDO: por cabecera se ignora, por cuerpo
+  es 400 —el `strictObject` de contracts— y por query se ignora. USER encima lo
+  prohibe la base (`api_key_actor_type_no_user`), asi que `apps/web/lib/actor.ts`
+  sigue siendo su unico productor. La LINEA DE LOG de la 11.1 usa la misma
+  derivacion y no una propia: si las dos no coincidieran, correlacionar por
+  `request_id` —que es lo que la 6.1 promete— devolveria dos actores para la
+  misma peticion.
 - (A partir de F1b) `packages/core` no importa Next, ni el SDK de MCP, ni nada
   de HTTP. Los adaptadores (REST, MCP) no contienen reglas de negocio. Ningún
   adaptador importa Prisma directamente.

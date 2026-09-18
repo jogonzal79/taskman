@@ -193,9 +193,23 @@ export interface Autenticacion extends ContextoPeticion {
  * El `ActorContext` de una peticion REST (7.4), para las operaciones que
  * escriben.
  *
- * `actorType` es API por construccion, igual que `contextoDeAgente` fija AGENT:
- * todo lo que pasa por aca entro por HTTP con una API key, asi que un handler
- * no puede registrarse como otra cosa ni por error ni a proposito.
+ * `actorType` SALE DE LA CLAVE (`api_key.actor_type`) y no es el literal "API"
+ * que era hasta el paso 12. El motivo es que este borde NO PUEDE VER el origen
+ * que la 7.4 le pide derivar: una peticion del HttpPort de la 8.1 en modo http y
+ * una de curl llegan por el mismo Route Handler y son identicas en el cable. Lo
+ * unico que las distingue es la CREDENCIAL, que la emite quien administra.
+ *
+ * SIGUE SIENDO UNA DERIVACION, que es la propiedad por la que se eligio esto
+ * sobre una cabecera de origen: el valor no entra por la peticion —ni por
+ * cabecera, ni por cuerpo, ni por query— sino por la fila que ya autentico. Un
+ * handler no puede registrarse como otra cosa, y un cliente tampoco: para
+ * auditar AGENT hay que tener una clave emitida como agente. El efecto lateral
+ * aceptado es que esa clave usada con curl tambien audita AGENT, y esta bien:
+ * es un rotulo que eligio una persona, no uno que forjo un cliente.
+ *
+ * USER no es alcanzable por aca, y no porque este modulo lo evite: lo prohibe el
+ * CHECK `api_key_actor_type_no_user` de la base. `lib/actor.ts` sigue siendo el
+ * unico productor de USER, como dice que es.
  *
  * Va como funcion y no como un campo mas de `Autenticacion` porque solo las
  * ESCRITURAS lo necesitan (7.4: las lecturas no se auditan). Es la misma
@@ -215,7 +229,7 @@ export interface Autenticacion extends ContextoPeticion {
  */
 export function contextoDeApi(auth: Autenticacion): ActorContext {
   return {
-    actorType: "API",
+    actorType: auth.clave.actorType,
     // La etiqueta y no el prefijo: es el nombre que eligio una persona al
     // emitir la clave, que es lo que hace legible el registro. Cual de las
     // claves fue va en `clientId`, que es justo lo que pide la 5.1.
@@ -245,6 +259,12 @@ type Handler<Args extends unknown[]> = (
  * proposito. No se puede montar un endpoint sin declarar que scope exige, asi
  * que la forma de dejar una ruta abierta por descuido —olvidarse de llamar a un
  * helper— no existe. Falla cerrado.
+ *
+ * El actor de la linea de log de la 11.1 lo decide la CLAVE, igual que el de la
+ * auditoria (ver `contextoDeApi`): el "API" que va aca es el del BORDE, y solo
+ * vale para las peticiones que no llegan a identificar ninguna. Los dos tienen
+ * que decir lo mismo o correlacionar por request_id devolveria dos actores
+ * distintos para la misma peticion, que se lee como un bug donde no lo hay.
  *
  * Tambien es el try/catch del borde REST (el de /mcp esta en `conAuthMcp`, con
  * la misma salida): cualquier fallo que escape del
@@ -277,7 +297,11 @@ export function conAuth<Args extends unknown[]>(scope: ScopeHttp, handler: Handl
  * ANTES QUE LA CLAVE se valida Origin (`validarOrigen`), que es del transporte.
  *
  * El actor de la linea de log es AGENT por construccion (7.4): todo lo que entra
- * por aca entro por MCP.
+ * por aca entro por MCP. A diferencia de `conAuth`, aca el rotulo de la clave NO
+ * se mira, y no es un olvido: este borde SI ve el origen que la 7.4 manda
+ * derivar, asi que una clave rotulada API usada contra /mcp sigue siendo una
+ * llamada MCP. Es la misma asimetria que ya tienen `contextoDeMcp` y
+ * `contextoDeApi`.
  */
 export function conAuthMcp<Args extends unknown[]>(handler: Handler<Args>) {
   return conLineaDeLog<Args>("AGENT", (request, ctx, args) =>
@@ -290,7 +314,7 @@ export function conAuthMcp<Args extends unknown[]>(handler: Handler<Args>) {
  * peticion de la 11.1 y la garantia de que las dos existen para TODA respuesta.
  */
 function conLineaDeLog<Args extends unknown[]>(
-  actorType: ActorType,
+  actorTypeDelBorde: ActorType,
   atenderPeticion: (request: Request, ctx: ContextoPeticion, args: Args) => Promise<Atencion>,
 ) {
   return async function (request: Request, ...args: Args): Promise<Response> {
@@ -310,10 +334,13 @@ function conLineaDeLog<Args extends unknown[]>(
      *
      * El estado y la duracion solo se saben aca, y el prefijo de la clave solo
      * existe si la peticion autentico: `atender` lo devuelve junto con la
-     * respuesta en vez de dejarlo en una variable mutable.
+     * respuesta en vez de dejarlo en una variable mutable. Por ese mismo camino
+     * viaja el actor rotulado en la clave, que es null cuando no hubo ninguna:
+     * ahi vale el del borde, que para REST es API y es lo honesto —no hay clave
+     * y la peticion entro por REST—.
      */
     registrarPeticion({
-      actorType,
+      actorType: atencion.actorType ?? actorTypeDelBorde,
       requestId: ctx.requestId,
       metodo: request.method,
       ruta: new URL(request.url).pathname,
@@ -326,10 +353,15 @@ function conLineaDeLog<Args extends unknown[]>(
   };
 }
 
-/** La respuesta, mas el prefijo de la clave si la peticion llego a autenticar. */
+/** La respuesta, mas lo que se aprendio de la clave si la peticion identifico una. */
 interface Atencion {
   readonly respuesta: Response;
   readonly clientId: string | null;
+  /**
+   * El actor que ROTULA la clave (7.4), o null si no se identifico ninguna o si
+   * el borde no lo mira. Null significa "vale el del borde", no "no hay actor".
+   */
+  readonly actorType: ActorType | null;
 }
 
 /**
@@ -344,13 +376,20 @@ async function atender<Args extends unknown[]>(
   args: Args,
 ): Promise<Atencion> {
   let clientId: string | null = null;
+  /**
+   * Viaja junto a `clientId` y por el mismo motivo: los dos son lo que se
+   * aprende de la clave, y los dos tienen que llegar a la linea de log tanto si
+   * el handler corrio como si la peticion murio en un 403 o un 429. En null
+   * mientras no haya clave, que es cuando vale el "API" del borde.
+   */
+  let actorType: ActorType | null = null;
 
   try {
     const servicio = crearServicio();
 
     const clave = leerBearer(request);
     if (clave === undefined) {
-      return { respuesta: noAutenticado(ctx), clientId };
+      return { respuesta: noAutenticado(ctx), clientId, actorType };
     }
 
       const resultado = await servicio.autenticar(clave, aScopeDeDominio(scope));
@@ -376,13 +415,15 @@ async function atender<Args extends unknown[]>(
        */
     if (resultado.ok || resultado.motivo === "SCOPE_INSUFICIENTE") {
       // Desde aca la peticion ya tiene una clave identificada, asi que su linea
-      // de log la lleva: un 403 y un 429 SI dicen de quien fueron.
+      // de log la lleva: un 403 y un 429 SI dicen de quien fueron, y con que
+      // actor.
       clientId = resultado.clave.prefix;
+      actorType = resultado.clave.actorType;
 
       const veredicto = consumir(resultado.clave.id, CUBO_POR_SCOPE[scope]);
 
       if (!veredicto.permitido) {
-        return { respuesta: limiteSuperado(veredicto, ctx), clientId };
+        return { respuesta: limiteSuperado(veredicto, ctx), clientId, actorType };
       }
     }
 
@@ -390,6 +431,7 @@ async function atender<Args extends unknown[]>(
       return {
         respuesta: await handler(request, { ...ctx, clave: resultado.clave }, ...args),
         clientId,
+        actorType,
       };
     }
 
@@ -401,12 +443,13 @@ async function atender<Args extends unknown[]>(
           ctx,
         ),
         clientId,
+        actorType,
       };
     }
 
-    return { respuesta: noAutenticado(ctx), clientId };
+    return { respuesta: noAutenticado(ctx), clientId, actorType };
   } catch (error: unknown) {
-    return { respuesta: respuestaDeFallo(error, ctx), clientId };
+    return { respuesta: respuestaDeFallo(error, ctx), clientId, actorType };
   }
 }
 
@@ -425,23 +468,30 @@ async function atenderConClave<Args extends unknown[]>(
   args: Args,
 ): Promise<Atencion> {
   let clientId: string | null = null;
+  /**
+   * SIEMPRE null, y es una constante con nombre y no un campo omitido: dice que
+   * este borde no mira el rotulo de la clave, asi que vale el AGENT del borde.
+   * Una peticion a /mcp con una clave rotulada API sigue siendo una llamada MCP
+   * (ver `conAuthMcp` y `contextoDeMcp`).
+   */
+  const actorType = null;
 
   try {
     const origenRechazado = validarOrigen(request, ctx);
     if (origenRechazado !== undefined) {
-      return { respuesta: origenRechazado, clientId };
+      return { respuesta: origenRechazado, clientId, actorType };
     }
 
     const servicio = crearServicio();
 
     const clave = leerBearer(request);
     if (clave === undefined) {
-      return { respuesta: noAutenticado(ctx), clientId };
+      return { respuesta: noAutenticado(ctx), clientId, actorType };
     }
 
     const resultado = await servicio.identificar(clave);
     if (!resultado.ok) {
-      return { respuesta: noAutenticado(ctx), clientId };
+      return { respuesta: noAutenticado(ctx), clientId, actorType };
     }
 
     clientId = resultado.clave.prefix;
@@ -449,9 +499,10 @@ async function atenderConClave<Args extends unknown[]>(
     return {
       respuesta: await handler(request, { ...ctx, clave: resultado.clave }, ...args),
       clientId,
+      actorType,
     };
   } catch (error: unknown) {
-    return { respuesta: respuestaDeFallo(error, ctx), clientId };
+    return { respuesta: respuestaDeFallo(error, ctx), clientId, actorType };
   }
 }
 

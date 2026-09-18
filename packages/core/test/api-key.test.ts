@@ -44,11 +44,13 @@ async function sembrarClave(args: {
   pepper?: string;
   revocada?: boolean;
   label?: string;
+  /** Lo que pone `--agent` de `apikey:create`. Omitido, la columna toma su DEFAULT. */
+  actorType?: "AGENT" | "API";
 }): Promise<string> {
   const id = uuid();
   await client.query(
-    `INSERT INTO api_key (id, label, prefix, key_hash, scopes, revoked_at)
-     VALUES ($1, $2, $3, $4, $5::"Scope"[], $6)`,
+    `INSERT INTO api_key (id, label, prefix, key_hash, scopes, revoked_at, actor_type)
+     VALUES ($1, $2, $3, $4, $5::"Scope"[], $6, $7::"ActorType")`,
     [
       id,
       args.label ?? "clave de prueba",
@@ -56,6 +58,9 @@ async function sembrarClave(args: {
       hashearClave(args.clave, args.pepper ?? PEPPER),
       args.scopes,
       args.revocada === true ? new Date() : null,
+      // El DEFAULT de la columna se ejercita en su propia prueba, con un INSERT
+      // que omite el campo; aca se escribe explicito para no depender de el.
+      args.actorType ?? "API",
     ],
   );
   return id;
@@ -216,6 +221,7 @@ describe("ApiKeyService.autenticar", () => {
       prefix: prefijoDe(clave),
       keyHash: hashearClave(clave, PEPPER),
       scopes: ["READ"],
+      actorType: "API",
       revokedAt: null,
     };
 
@@ -244,6 +250,7 @@ describe("ApiKeyService.identificar", () => {
       prefix: prefijoDe(clave),
       label: "agente",
       scopes: ["READ", "WRITE"],
+      actorType: "API",
     });
   });
 
@@ -257,6 +264,54 @@ describe("ApiKeyService.identificar", () => {
     for (const clave of [revocada, generarClave(), impostora]) {
       expect(await servicio().identificar(clave)).toEqual({ ok: false, motivo: "NO_AUTENTICADA" });
     }
+  });
+});
+
+describe("el rotulo de actor de la clave (7.4)", () => {
+  it("una clave emitida como agente lo trae en `identificar` y en `autenticar`", async () => {
+    const clave = generarClave();
+    await sembrarClave({ clave, scopes: ["READ", "WRITE"], actorType: "AGENT" });
+
+    const identificada = await servicio().identificar(clave);
+    const autenticada = await servicio().autenticar(clave, "WRITE");
+
+    expect(identificada.ok && identificada.clave.actorType).toBe("AGENT");
+    expect(autenticada.ok && autenticada.clave.actorType).toBe("AGENT");
+  });
+
+  it("una clave a la que el INSERT no le dice nada queda en API, que es lo de antes", async () => {
+    // Es la forma EXACTA que tiene una clave emitida antes de la migracion: la
+    // columna se agrego con DEFAULT 'API', asi que su fila quedo rellenada con
+    // el mismo valor que este INSERT produce. Por eso se inserta a mano y no con
+    // `sembrarClave`, que escribe el campo explicito: lo que se prueba es el
+    // DEFAULT de la columna, y escribirlo lo taparia.
+    const clave = generarClave();
+    await client.query(
+      `INSERT INTO api_key (id, label, prefix, key_hash, scopes)
+       VALUES ($1, $2, $3, $4, $5::"Scope"[])`,
+      [uuid(), "emitida antes", prefijoDe(clave), hashearClave(clave, PEPPER), ["READ"]],
+    );
+
+    const resultado = await servicio().identificar(clave);
+
+    expect(resultado.ok && resultado.clave.actorType).toBe("API");
+  });
+
+  it("USER lo RECHAZA LA BASE: ninguna clave puede rotularse como la UI", async () => {
+    // `apps/web/lib/actor.ts` promete ser el unico productor de USER, y lo que
+    // sostiene esa promesa es este CHECK: sin el, un UPDATE a mano en psql
+    // —que es como se revoca hoy (7.1)— dejaria escrituras REST diciendo que
+    // vinieron de la UI. Se prueba con SQL crudo a proposito: el camino que hay
+    // que cerrar no pasa por el script de emision.
+    const clave = generarClave();
+
+    await expect(
+      client.query(
+        `INSERT INTO api_key (id, label, prefix, key_hash, scopes, actor_type)
+         VALUES ($1, $2, $3, $4, $5::"Scope"[], 'USER'::"ActorType")`,
+        [uuid(), "imposible", prefijoDe(clave), hashearClave(clave, PEPPER), ["READ"]],
+      ),
+    ).rejects.toThrow(/api_key_actor_type_no_user/);
   });
 });
 

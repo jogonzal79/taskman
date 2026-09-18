@@ -266,6 +266,12 @@ describe("/mcp con clave: los scopes deciden el catalogo (8.1)", () => {
 
 describe("/mcp: actor y correlacion (7.4, 6.1, 11.1)", () => {
   it("una escritura queda AGENT, con la etiqueta, el prefijo y el request_id de la respuesta y del log", async () => {
+    // SIN `agente: true`, o sea rotulada API en `api_key.actor_type`, y aun asi
+    // todo lo de abajo dice AGENT. Desde el paso 12 eso no es un detalle del
+    // fixture: es la asimetria entre los dos bordes. /api deriva el actor de la
+    // CLAVE porque no puede ver por donde entro una peticion; /mcp lo fija por
+    // construccion porque si lo ve. Una clave "de cliente REST" usada contra
+    // /mcp sigue siendo una llamada MCP.
     const clave = await emitirClave(db, ["READ", "WRITE"], { label: "claude remoto" });
 
     const respuesta = await POST(

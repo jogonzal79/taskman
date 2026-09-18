@@ -123,12 +123,37 @@ model AuditLog {
   @@map("audit_log")
 }
 
+/// `actorType` NO esta en la 4.1: es un DESVIO declarado, como los otros de
+/// `ApiKey` que ya recoge CLAUDE.md. Existe porque la 7.4 deriva `actor_type`
+/// "del origen" y el origen que el borde REST puede ver es la CREDENCIAL: una
+/// peticion de `HttpPort` (8.1, modo http) y una de curl llegan por el mismo
+/// Route Handler y son indistinguibles en el cable. La alternativa —una cabecera
+/// que declare el origen— dejaria que cualquier cliente REST se registrara como
+/// agente, y ahi `actor_type` deja de ser una derivacion y pasa a ser una
+/// convencion (ver el comentario de `apps/web/lib/actor.ts`). Lo que esta
+/// columna rotula lo eligio quien EMITIO la clave, no quien la usa.
+///
+/// El tipo es el MISMO `ActorType` de `audit_log` y no un enum propio: el valor
+/// de esta columna es literalmente el que se escribe alli, asi que un enum
+/// aparte seria una tabla de traduccion de dos filas que se puede desincronizar.
+///
+/// USER queda fuera, y lo prohibe un CHECK en SQL crudo
+/// (`api_key_actor_type_no_user`): la UI no usa ninguna clave —invoca el nucleo
+/// en el mismo proceso (9.1)— asi que ninguna clave puede rotularse como ella.
+/// Prisma no sabe expresar un CHECK, por lo mismo que `api_key_scopes_nonempty`.
+///
+/// El DEFAULT es API y no es comodidad: es el unico valor que deja a las claves
+/// YA EMITIDAS comportandose igual que antes de existir esta columna, cuando
+/// `contextoDeApi` fijaba API a mano. Queda como DEFAULT de la columna ademas de
+/// relleno de la migracion, para que un INSERT que olvide el campo rotule de
+/// menos y no de mas.
 model ApiKey {
   id        String    @id @db.Uuid
   label     String    @db.VarChar(80)
   prefix    String    @unique @db.VarChar(24)
   keyHash   String    @unique @map("key_hash") @db.VarChar(64)
   scopes    Scope[]
+  actorType ActorType @default(API) @map("actor_type")
   revokedAt DateTime? @map("revoked_at") @db.Timestamptz(3)
   createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)

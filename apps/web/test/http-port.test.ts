@@ -123,7 +123,11 @@ beforeEach(async () => {
   await truncateAll(db);
   reiniciarLimiteDePeticiones();
 
-  claveCompleta = await emitirClave(db, ["READ", "WRITE", "DELETE"], { label: "clave del agente" });
+  // La etiqueta NO dice "agente" desde el paso 12: la palabra pasó a nombrar el
+  // rotulo de `api_key.actor_type`, y esta clave no lo tiene —audita API, como
+  // cualquier cliente REST—. Llamarla "del agente" haria leer AGENT donde dice
+  // API justo en las pruebas que separan las dos cosas.
+  claveCompleta = await emitirClave(db, ["READ", "WRITE", "DELETE"], { label: "clave de HttpPort" });
   claveLectura = await emitirClave(db, ["READ"], { label: "clave de solo lectura" });
 
   lineas = [];
@@ -562,6 +566,87 @@ describe("los codigos que produce el borde REST llegan al agente con su signific
     } finally {
       await cliente.close();
     }
+  });
+});
+
+// --- 3b. El actor de la auditoria, O2 del paso 12 ----------------------------
+
+describe("O2: lo que entra por HttpPort audita AGENT", () => {
+  /**
+   * EL PASO 12 EN UNA PRUEBA. `HttpPort` es un cliente REST como cualquier otro:
+   * el servidor no puede distinguir su POST del de curl, asi que "por donde
+   * entro" —lo que la 7.4 manda derivar— no es observable en el borde. Lo que
+   * si es observable es CON QUE CLAVE entro, y esa la emite quien administra.
+   *
+   * Por eso las dos mitades de este describe van juntas: con una clave de
+   * agente el mismo cliente audita AGENT, y con una normal audita API. La
+   * diferencia esta enteramente en la credencial, y no hay nada que el proceso
+   * pueda mandar para moverla.
+   */
+  async function actorDeLaTarea(titulo: string): Promise<string | undefined> {
+    const filas = await db.query<{ actor_type: string }>(
+      `SELECT a.actor_type::text AS actor_type
+         FROM audit_log a JOIN task t ON t.id::text = a.entity_id
+        WHERE a.entity_type = 'task' AND t.title = $1
+        ORDER BY a.id DESC LIMIT 1`,
+      [titulo],
+    );
+    return filas.rows[0]?.actor_type;
+  }
+
+  function puertoCon(apiKey: string): HttpPort {
+    return new HttpPort({ baseUrl: servidor.url, apiKey, logger: loggerCapturador() });
+  }
+
+  it("con una clave emitida como agente, una escritura queda AGENT", async () => {
+    const claveAgente = await emitirClave(db, ["READ", "WRITE"], {
+      label: "stdio remoto",
+      agente: true,
+    });
+    const detalle = await tablero("QA");
+
+    await puertoCon(claveAgente).createTask(
+      { boardId: detalle.id, columnKey: "TODO", title: "escrita por el agente" },
+      ctx(),
+    );
+
+    expect(await actorDeLaTarea("escrita por el agente")).toBe("AGENT");
+  });
+
+  it("con la clave normal de la suite, la MISMA escritura queda API", async () => {
+    // La contraprueba de la de arriba: mismo cliente, mismo endpoint, mismo
+    // cuerpo. Lo unico distinto es la clave, que es justamente lo que se quiso.
+    const detalle = await tablero("QA");
+
+    await httpPort.createTask(
+      { boardId: detalle.id, columnKey: "TODO", title: "escrita por un cliente REST" },
+      ctx(),
+    );
+
+    expect(await actorDeLaTarea("escrita por un cliente REST")).toBe("API");
+  });
+
+  it("el `ctx` del agente no lo mueve: el actor no viaja en la peticion", async () => {
+    // `TaskManagerPort` recibe un ActorContext y HttpPort NO lo manda (ver la
+    // nota de `createBoard` en http-port.ts). Aunque el proceso local se arme un
+    // contexto que diga AGENT, lo que queda escrito lo decide la clave. Es la
+    // misma propiedad que O4 fija para el request_id, sobre el otro campo.
+    const detalle = await tablero("QA");
+
+    await httpPort.createTask(
+      { boardId: detalle.id, columnKey: "TODO", title: "con ctx de agente" },
+      { ...ctx(), actorType: "AGENT", actorName: "me-declaro-agente" },
+    );
+
+    expect(await actorDeLaTarea("con ctx de agente")).toBe("API");
+
+    const filas = await db.query<{ actor_name: string }>(
+      `SELECT a.actor_name FROM audit_log a JOIN task t ON t.id::text = a.entity_id
+        WHERE t.title = $1 ORDER BY a.id DESC LIMIT 1`,
+      ["con ctx de agente"],
+    );
+    expect(filas.rows[0]?.actor_name).toBe("clave de HttpPort");
+    expect(filas.rows[0]?.actor_name).not.toBe("me-declaro-agente");
   });
 });
 

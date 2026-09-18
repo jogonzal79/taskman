@@ -1,4 +1,5 @@
 import { buscarClavePorPrefijo, type ApiKeyRow } from "../db/api-key-repository";
+import type { ActorType } from "../domain/actor";
 import { hashearClave, hashesIguales, prefijoDe, type Scope } from "../domain/api-key";
 import { conCache } from "./api-key-cache";
 
@@ -16,6 +17,19 @@ export interface ClaveAutenticada {
   prefix: string;
   label: string;
   scopes: readonly Scope[];
+  /**
+   * Con que tipo de actor audita esta clave (7.4). Va con el resto de lo que el
+   * borde necesita saber de ella y no como una consulta aparte: es un dato de la
+   * clave, igual que sus scopes, y viaja por el mismo camino ya cacheado.
+   *
+   * QUE HACE EL BORDE CON ESTO depende del borde, y los dos tienen razon:
+   * `contextoDeApi` lo lee, porque en REST una peticion del HttpPort de la 8.1 y
+   * una de curl son la misma peticion y la credencial es lo unico que las
+   * distingue; `contextoDeMcp` lo IGNORA y fija AGENT, porque ahi el borde ya
+   * sabe por donde entro. La 7.4 dice "se deriva del origen" y en /mcp el origen
+   * se ve; en /api, no.
+   */
+  actorType: ActorType;
 }
 
 /**
@@ -146,7 +160,13 @@ export class ApiKeyService {
 
     return {
       ok: true,
-      clave: { id: fila.id, prefix: fila.prefix, label: fila.label, scopes: fila.scopes },
+      clave: {
+        id: fila.id,
+        prefix: fila.prefix,
+        label: fila.label,
+        scopes: fila.scopes,
+        actorType: fila.actorType,
+      },
     };
   }
 }

@@ -179,6 +179,91 @@ describe("linea por peticion (11.1)", () => {
     expect(linea.campos["duration_ms"]).toBeGreaterThanOrEqual(0);
   });
 
+  describe("el actor_type, que despues del paso 12 lo rotula la clave", () => {
+    /**
+     * LA LINEA Y LA AUDITORIA TIENEN QUE DECIR LO MISMO, y por eso esto se probo
+     * en el mismo paso que movio el actor a la clave.
+     *
+     * Con `contextoDeApi` leyendo la columna y `conAuth` pasando todavia el
+     * literal "API" a su linea, una escritura de una clave de agente dejaria
+     * `audit_log.actor_type = AGENT` y `actor_type: "API"` en el log, para LA
+     * MISMA peticion y con EL MISMO request_id. Quien correlacionara las dos
+     * cosas —que es exactamente lo que la 6.1 promete que se puede hacer— veria
+     * dos actores y buscaria un bug que no existe. Ese hueco es mas dificil de
+     * encontrar que el problema original.
+     */
+    async function actoresAuditados(requestId: string): Promise<string[]> {
+      const filas = await client.query<{ actor_type: string }>(
+        `SELECT DISTINCT actor_type::text AS actor_type FROM audit_log WHERE request_id = $1`,
+        [requestId],
+      );
+      return filas.rows.map((fila) => fila.actor_type);
+    }
+
+    it("clave de agente: la linea y la auditoria dicen AGENT las dos", async () => {
+      const claveAgente = await emitirClave(client, ["WRITE"], {
+        label: "stdio remoto",
+        agente: true,
+      });
+
+      const respuesta = await crearTablero(
+        peticion({
+          metodo: "POST",
+          ruta: "/api/boards",
+          clave: claveAgente,
+          cuerpo: { name: "Del agente" },
+        }),
+      );
+
+      expect(respuesta.status).toBe(201);
+
+      const requestId = respuesta.headers.get("X-Request-Id") ?? "";
+      const linea = laPeticion();
+
+      expect(linea.campos["request_id"]).toBe(requestId);
+      expect(linea.campos["actor_type"]).toBe("AGENT");
+      // `toEqual` sobre el DISTINCT: si una de las escrituras de la misma
+      // transaccion rotulara distinto, aca saldrian dos valores.
+      expect(await actoresAuditados(requestId)).toEqual(["AGENT"]);
+    });
+
+    it("clave normal: la linea y la auditoria dicen API las dos, como siempre", async () => {
+      const respuesta = await crearTablero(
+        peticion({
+          metodo: "POST",
+          ruta: "/api/boards",
+          clave: claveWrite,
+          cuerpo: { name: "De la clave normal" },
+        }),
+      );
+
+      expect(respuesta.status).toBe(201);
+
+      const requestId = respuesta.headers.get("X-Request-Id") ?? "";
+
+      expect(laPeticion().campos["actor_type"]).toBe("API");
+      expect(await actoresAuditados(requestId)).toEqual(["API"]);
+    });
+
+    it("un 403 de una clave de agente TAMBIEN dice AGENT: el rotulo no depende del handler", async () => {
+      // El camino que es facil romper: el 403 sale antes de llamar al handler, y
+      // el rotulo viaja por `Atencion` junto al client_id justamente para que
+      // esta linea no quede con el valor del borde.
+      const claveAgente = await emitirClave(client, ["READ"], {
+        label: "agente sin escritura",
+        agente: true,
+      });
+
+      const respuesta = await crearTablero(
+        peticion({ metodo: "POST", ruta: "/api/boards", clave: claveAgente, cuerpo: { name: "No" } }),
+      );
+
+      expect(respuesta.status).toBe(403);
+      expect(laPeticion().campos["actor_type"]).toBe("AGENT");
+      expect(laPeticion().campos["client_id"]).toMatch(/^tmk_live_/);
+    });
+  });
+
   it("un 401 deja linea, con lo que se sepa: sin clave que identificar", async () => {
     const respuesta = await listarTableros(peticion({ ruta: "/api/boards" }));
 
