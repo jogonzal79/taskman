@@ -1,4 +1,4 @@
-import type { ZodType } from "zod";
+import { z, type ZodType } from "zod";
 
 import type { Scope } from "../domain/api-key";
 
@@ -33,8 +33,52 @@ export type McpToolResult = {
   isError?: boolean;
 };
 
-/** Esquema de entrada: el "raw shape" de Zod que consume `registerTool`. */
+/** Esquema de entrada: el "raw shape" de Zod con el que cada herramienta declara sus campos. */
 export type EsquemaEntrada = Record<string, ZodType>;
+
+/** El esquema CONSTRUIDO a partir de un `EsquemaEntrada`: lo que valida de verdad. */
+export type EntradaDeHerramienta<Shape extends EsquemaEntrada = EsquemaEntrada> = z.ZodObject<
+  Shape,
+  z.core.$strict
+>;
+
+/**
+ * EL UNICO lugar donde se decide que forma tiene la entrada de una herramienta:
+ * un objeto ESTRICTO, que rechaza las claves que el esquema no declara.
+ *
+ * Lo usan los dos que validan, `definirHandler` y `montarHerramientas`, y tiene
+ * que ser uno solo porque el SDK valida PRIMERO. `registerTool` recibe el
+ * esquema, lo aplica antes de invocar el handler y le entrega al handler el
+ * resultado del parse, no los argumentos originales. Con el "raw shape" el SDK lo
+ * envolvia en su propio `z.object`, que no es estricto: un argumento que la
+ * herramienta no declara se QUITABA ahi, en silencio, y al handler le llegaba la
+ * llamada como si nunca lo hubiera traido. Un `strictObject` solo en
+ * `definirHandler` no habria cambiado nada por stdio ni por /mcp.
+ *
+ * Que sea estricto es lo que el borde REST ya hace con los cuerpos y las
+ * consultas (`strictObject` en `packages/contracts`, `leerConsulta` en
+ * `apps/web`), y la asimetria importaba mas de lo que suena: en
+ * `MCP_PORT_MODE=http` el argumento recortado ni siquiera llegaba a la query, asi
+ * que la herramienta ACEPTABA lo que el endpoint, con esos mismos datos, habria
+ * rechazado con 400. Y estos argumentos los arma un modelo: `status: "DONE"`
+ * sobre list_tasks es exactamente el nombre que un modelo inventa, y un tablero
+ * entero devuelto como si estuviera filtrado es peor que un error.
+ *
+ * Lo que el protocolo manda por su cuenta NO pasa por aca: `_meta`, `task` y el
+ * resto viajan en `params`, al lado de `arguments`, no adentro. Y el cliente de
+ * la SDK no agrega nada adentro de `arguments`: si lo hiciera, ninguna llamada
+ * valida pasaria un esquema estricto, y las pasan en las tres suites que usan
+ * ese cliente, por los dos transportes. Lo unico que un objeto estricto rechaza
+ * es lo que el llamador escribio de mas.
+ *
+ * En el JSON Schema de tools/list esto sale como `additionalProperties: false`,
+ * que es la misma regla dicha en el idioma del cliente.
+ */
+export function esquemaDeEntrada<Shape extends EsquemaEntrada>(
+  shape: Shape,
+): EntradaDeHerramienta<Shape> {
+  return z.strictObject(shape);
+}
 
 export interface McpToolDefinition {
   name: string;
@@ -84,7 +128,8 @@ export interface McpToolDefinition {
    */
   anunciada?: boolean;
   /**
-   * Recibe los argumentos SIN validar y los valida contra `inputSchema`.
+   * Recibe los argumentos SIN validar y los valida contra `inputSchema`, con el
+   * mismo `esquemaDeEntrada` que el montaje le da al SDK.
    *
    * El SDK tambien valida antes de llamar, asi que en produccion la segunda
    * pasada no rechaza nada. Se hace igual para que la definicion sea

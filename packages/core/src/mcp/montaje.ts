@@ -1,4 +1,9 @@
-import type { EsquemaEntrada, McpToolDefinition, McpToolResult } from "./tool";
+import {
+  esquemaDeEntrada,
+  type EntradaDeHerramienta,
+  type McpToolDefinition,
+  type McpToolResult,
+} from "./tool";
 
 /**
  * EL MONTAJE de las herramientas sobre un servidor MCP, escrito UNA vez para los
@@ -38,7 +43,7 @@ export interface ServidorDeHerramientas {
     config: {
       title: string;
       description: string;
-      inputSchema: EsquemaEntrada;
+      inputSchema: EntradaDeHerramienta;
       annotations: McpToolDefinition["annotations"];
     },
     cb: (args: unknown) => Promise<McpToolResult>,
@@ -63,11 +68,17 @@ export function montarHerramientas(
       {
         title: herramienta.title,
         description: herramienta.description,
-        inputSchema: herramienta.inputSchema,
+        // EL ESQUEMA CONSTRUIDO y no el "raw shape". El SDK valida contra esto
+        // ANTES de invocar el handler y le pasa el resultado del parse: si
+        // recibiera el shape lo envolveria en su propio `z.object`, que no es
+        // estricto, y un argumento de mas moriria ahi en silencio sin que el
+        // `strictObject` del handler llegara a verlo (ver `esquemaDeEntrada`).
+        inputSchema: esquemaDeEntrada(herramienta.inputSchema),
         annotations: herramienta.annotations,
       },
       // El SDK ya valida contra `inputSchema` antes de llamar; el handler del
-      // nucleo vuelve a validar para ser autocontenido (ver `tool.ts`).
+      // nucleo vuelve a validar, con el mismo esquema, para ser autocontenido
+      // (ver `tool.ts`).
       (args) => herramienta.handler(args),
     );
 

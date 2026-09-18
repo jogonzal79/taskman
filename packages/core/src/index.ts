@@ -180,7 +180,9 @@ export {
   montarHerramientas,
 } from "./mcp/montaje";
 export type { ServidorDeHerramientas } from "./mcp/montaje";
+export { esquemaDeEntrada } from "./mcp/tool";
 export type {
+  EntradaDeHerramienta,
   EsquemaEntrada,
   McpTextContent,
   McpToolDefinition,

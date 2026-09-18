@@ -231,6 +231,40 @@ describe("/mcp con clave: los scopes deciden el catalogo (8.1)", () => {
     await cliente.close();
   });
 
+  it("un argumento que la herramienta no declara se rechaza por /mcp nombrandolo, y el listado lo anuncia", async () => {
+    // El mismo caso que motivo el cambio, por el otro transporte: antes el SDK
+    // envolvia el esquema en un `z.object` no estricto y `status` moria en
+    // silencio, asi que /mcp devolvia las dos tareas como si hubiera filtrado.
+    const tablero = await sembrarTablero(port(), { name: "Remoto" });
+    await sembrarTareas(port(), { boardId: tablero.id, columnKey: "TODO", prefijo: "pendiente", cantidad: 1 });
+    await sembrarTareas(port(), { boardId: tablero.id, columnKey: "DONE", prefijo: "hecha", cantidad: 1 });
+    const cliente = await conectar(await emitirClave(db, ["READ"]));
+
+    const rechazo = await cliente.callTool({
+      name: "list_tasks",
+      arguments: { board: "Remoto", status: "DONE" },
+    });
+    expect(rechazo.isError).toBe(true);
+    const texto = JSON.stringify(rechazo.content);
+    expect(texto).toContain("status");
+    expect(texto).not.toContain("pendiente");
+    expect(texto).not.toContain("hecha");
+
+    // Sin el argumento, la misma llamada ejecuta: lo rechazado era la clave.
+    const aceptada = await cliente.callTool({ name: "list_tasks", arguments: { board: "Remoto" } });
+    expect(aceptada.isError).toBeFalsy();
+    expect(JSON.stringify(aceptada.content)).toContain("pendiente-0");
+
+    // Y tools/list se lo dice al cliente antes de que llame, en las cinco que ve.
+    const { tools } = await cliente.listTools();
+    expect(tools).toHaveLength(5);
+    for (const tool of tools) {
+      expect(tool.inputSchema["additionalProperties"], tool.name).toBe(false);
+    }
+
+    await cliente.close();
+  });
+
   it("solo read, las cinco de lectura", async () => {
     const cliente = await conectar(await emitirClave(db, ["READ"]));
 

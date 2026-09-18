@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import { DomainError, isDomainError } from "../domain/errors";
 import type { EntornoMcp, Llamada } from "./llamada";
-import type { EsquemaEntrada, McpToolResult } from "./tool";
+import { esquemaDeEntrada, type EsquemaEntrada, type McpToolResult } from "./tool";
 
 /**
  * Formato de respuesta de la 8.5.
@@ -120,19 +120,44 @@ export function respuestaError(
   return resultado;
 }
 
-/** Un fallo de validacion de Zod, con la lista de campos y el motivo (6.4). */
+/**
+ * Un fallo de validacion de Zod, con la lista de campos y el motivo (6.4).
+ *
+ * Un argumento que la herramienta NO DECLARA es su propio caso, con el mismo
+ * criterio que `leerConsulta` en el borde REST: el nombre del que sobra va en el
+ * mensaje, para quien lee la respuesta, y como un campo mas de `details.fields`,
+ * para quien actua sobre ella. Zod lo reporta como una sola issue en la raiz con
+ * todas las claves juntas; asi cada clave sobrante queda nombrada por separado,
+ * en el mismo sitio en que se nombra un campo mal tipeado, en vez de en una
+ * entrada "(raiz)" que no dice a que corregir.
+ */
 function deZodError(error: z.ZodError): ErrorSerializado {
-  return {
-    code: "VALIDATION_ERROR",
-    message: "Los argumentos de la herramienta no son validos.",
-    details: {
-      fields: error.issues.map((issue) => ({
-        field: issue.path.join(".") || "(raiz)",
-        reason: issue.message,
-      })),
-    },
-    hint: "Corregi los campos de details.fields y volve a llamar a la herramienta.",
-  };
+  const sobrantes = [
+    ...new Set(
+      error.issues.flatMap((issue) => (issue.code === "unrecognized_keys" ? issue.keys : [])),
+    ),
+  ];
+
+  const fields = error.issues.flatMap((issue) =>
+    issue.code === "unrecognized_keys"
+      ? issue.keys.map((clave) => ({
+          field: clave,
+          reason: "La herramienta no acepta este argumento.",
+        }))
+      : [{ field: issue.path.join(".") || "(raiz)", reason: issue.message }],
+  );
+
+  const message =
+    sobrantes.length === 0
+      ? "Los argumentos de la herramienta no son validos."
+      : `Argumentos que la herramienta no acepta: ${sobrantes.map((clave) => `'${clave}'`).join(", ")}.`;
+
+  const hint =
+    sobrantes.length === 0
+      ? "Corregi los campos de details.fields y volve a llamar a la herramienta."
+      : "Quita el argumento o corregi su nombre mirando el esquema de la herramienta: aceptarlo sin aplicarlo seria hacer menos de lo que pediste.";
+
+  return { code: "VALIDATION_ERROR", message, details: { fields }, hint };
 }
 
 /**
@@ -196,9 +221,15 @@ export function definirHandler<Shape extends EsquemaEntrada>(
   entorno: EntornoMcp,
   herramienta: string,
   shape: Shape,
-  cuerpo: (args: z.output<z.ZodObject<Shape>>, llamada: Llamada) => Promise<McpToolResult>,
+  cuerpo: (
+    args: z.output<ReturnType<typeof esquemaDeEntrada<Shape>>>,
+    llamada: Llamada,
+  ) => Promise<McpToolResult>,
 ): (args: unknown) => Promise<McpToolResult> {
-  const esquema = z.object(shape);
+  // El MISMO esquema que el montaje le da al SDK (`esquemaDeEntrada`): estricto,
+  // asi que una clave de mas es VALIDATION_ERROR tambien para quien invoca el
+  // handler directo, sin pasar por el protocolo.
+  const esquema = esquemaDeEntrada(shape);
 
   return async (args: unknown): Promise<McpToolResult> => {
     const llamada: Llamada = { ctx: entorno.contexto(), logger: entorno.logger };

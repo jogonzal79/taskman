@@ -965,7 +965,7 @@ Traducción de los ejemplos de la sección 11 del documento funcional a secuenci
 | --- | --- |
 | Crea una tarea llamada Revisar HU-25 en el tablero QA y colócala en TODO. | create_task(board:"QA", column:"TODO", title:"Revisar HU-25") — una sola llamada, gracias a la resolución por nombre y a column_key. |
 | Mueve Revisar HU-25 a IN PROGRESS. | move_task(task:"Revisar HU-25", board:"QA", to_column:"IN_PROGRESS"). Si hay dos coincidencias, devuelve AMBIGUOUS_MATCH con los candidatos y el agente pregunta. |
-| Pon Revisar HU-25 con prioridad alta y fecha límite el viernes. | update_task(task:"Revisar HU-25", priority:"HIGH", due_date:"2026-09-11"). La resolución de el viernes a fecha concreta es responsabilidad del agente, no del servidor. |
+| Pon Revisar HU-25 con prioridad alta y fecha límite el viernes. | update_task(task:"Revisar HU-25", board:"QA", priority:"HIGH", due_date:"2026-09-11"). board es obligatorio porque la tarea viene por título: la resolución por título tiene siempre un tablero como ámbito (sección 8.3.1); con el id de la tarea sería innecesario. La resolución de el viernes a fecha concreta es responsabilidad del agente, no del servidor. |
 | Muéstrame todas las tareas pendientes del tablero EPX. | list_tasks(board:"EPX", column:"TODO") o list_tasks(board:"EPX") filtrando en el agente si se requiere excluir DONE. |
 | Mueve a TODO todas las tareas de EPX-25 que estén en BACKLOG. | list_tasks(board:"EPX-25", column:"BACKLOG") y después move_task por cada elemento. El agente resume el alcance antes de ejecutar (sección 8.3.3). |
 

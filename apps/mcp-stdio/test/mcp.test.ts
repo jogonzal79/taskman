@@ -194,6 +194,15 @@ describe("catalogo", () => {
     expect(sinDescripcion).toEqual([]);
   });
 
+  it("los once esquemas declaran additionalProperties: false, para que el cliente sepa que un argumento de mas se rechaza", async () => {
+    const { tools } = await cliente.listTools();
+
+    expect(tools).toHaveLength(11);
+    for (const tool of tools) {
+      expect(tool.inputSchema["additionalProperties"], tool.name).toBe(false);
+    }
+  });
+
   it("los esquemas declaran los campos de la 8.4", async () => {
     const { tools } = await cliente.listTools();
     const campos = (nombre: string): string[] => {
@@ -736,6 +745,26 @@ describe("list_tasks", () => {
     expect((salida.content as Array<{ text?: string }>)[0]?.text).toContain("limit");
   });
 
+  it("EL CASO QUE MOTIVO EL CAMBIO: status: 'DONE' no devuelve el tablero entero, devuelve un error que nombra status", async () => {
+    // `status` es el nombre que tiene el filtro en casi cualquier otro gestor;
+    // aca es `column`. Antes el argumento se descartaba en silencio y la
+    // herramienta contestaba las dos tareas como si hubiera acotado.
+    await sembrarTablero("QA");
+    await crear("QA", "TODO", "pendiente");
+    await crear("QA", "DONE", "hecha");
+
+    const salida = await cliente.callTool({
+      name: "list_tasks",
+      arguments: { board: "QA", status: "DONE" },
+    });
+
+    expect(salida.isError).toBe(true);
+    const texto = (salida.content as Array<{ text?: string }>)[0]?.text ?? "";
+    expect(texto).toContain('"status"');
+    expect(texto).not.toContain("pendiente");
+    expect(texto).not.toContain("hecha");
+  });
+
   it("avisa cuando hay mas tareas de las que entran en limit", async () => {
     await sembrarTablero("QA");
     await crear("QA", "TODO", "Uno");
@@ -769,6 +798,96 @@ describe("handler del nucleo", () => {
       Record<string, unknown>
     >;
     expect(campos.some((campo) => campo["field"] === "limit")).toBe(true);
+  });
+
+  it("un argumento que no declara es VALIDATION_ERROR con la clave NOMBRADA, como en el borde REST", async () => {
+    // Invocado directo, el handler es lo unico que valida, y es la respuesta de
+    // la 8.5 la que tiene que nombrar el sobrante: en el mensaje para quien lee
+    // y como campo de `details.fields` para quien actua sobre el.
+    const listTasks = crearHerramientas(crearCorePort(), { scopes: SCOPES }).find(
+      (herramienta) => herramienta.name === "list_tasks",
+    );
+    const salida = await listTasks?.handler({ board: "QA", status: "DONE" });
+
+    const cuerpo = extraerJson(salida?.content[0]?.text ?? "")["error"] as Record<string, unknown>;
+    expect(salida?.isError).toBe(true);
+    expect(cuerpo["code"]).toBe("VALIDATION_ERROR");
+    expect(cuerpo["message"]).toContain("'status'");
+
+    const campos = (cuerpo["details"] as Record<string, unknown>)["fields"] as Array<
+      Record<string, unknown>
+    >;
+    expect(campos).toEqual([{ field: "status", reason: expect.any(String) }]);
+  });
+});
+
+// --- Argumentos que la herramienta no declara ---------------------------------
+
+/**
+ * UNA LLAMADA MINIMA VALIDA POR HERRAMIENTA, sobre un tablero "QA" con las
+ * cuatro columnas de la 4.3 y una tarea "Tarea" en TODO. Es una TABLA y no una
+ * muestra a proposito: la forma del esquema se decide en un solo lugar
+ * (`esquemaDeEntrada`), pero lo que se afirma es que las once lo usan, y una
+ * herramienta que se registrara con otro esquema fallaria aca por su nombre.
+ *
+ * El orden importa para la segunda pasada, la que ejecuta cada llamada SIN el
+ * argumento de mas: `delete_task` va ultima porque se lleva la tarea.
+ */
+const LLAMADA_MINIMA: ReadonlyArray<readonly [string, Record<string, unknown>]> = [
+  ["list_boards", {}],
+  ["get_board", { board: "QA" }],
+  ["create_board", { name: "Nuevo" }],
+  ["create_column", { board: "QA", key: "REVIEW", name: "En revision" }],
+  ["list_tasks", { board: "QA" }],
+  ["search_tasks", { text: "Tarea" }],
+  ["get_task", { board: "QA", task: "Tarea" }],
+  ["create_task", { board: "QA", column: "TODO", title: "Otra" }],
+  ["update_task", { board: "QA", task: "Tarea", priority: "HIGH" }],
+  ["move_task", { board: "QA", task: "Tarea", to_column: "DONE" }],
+  ["delete_task", { board: "QA", task: "Tarea", confirm: true }],
+];
+
+describe("argumentos que la herramienta no declara", () => {
+  it("la tabla cubre las once de la 8.2, ni una menos", async () => {
+    const { tools } = await cliente.listTools();
+
+    expect(LLAMADA_MINIMA.map(([nombre]) => nombre).sort()).toEqual(
+      tools.map((tool) => tool.name).sort(),
+    );
+  });
+
+  it("en las ONCE, un argumento de mas se rechaza nombrandolo, y sin el la misma llamada ejecuta", async () => {
+    await sembrarTablero("QA");
+    await crear("QA", "TODO", "Tarea");
+    const auditadoAntes = await prisma.auditLog.count();
+
+    // Primera pasada: las once con un argumento inventado. Ninguna ejecuta.
+    for (const [nombre, argumentos] of LLAMADA_MINIMA) {
+      const salida = await cliente.callTool({
+        name: nombre,
+        arguments: { ...argumentos, argumento_inventado: "x" },
+      });
+
+      expect(salida.isError, `${nombre} acepto un argumento que no declara`).toBe(true);
+      // Lo rechaza el protocolo antes del handler, asi que no trae el bloque
+      // JSON de la 8.5 —igual que un `limit` fuera de rango— pero SI nombra la
+      // clave: es lo que el agente necesita para corregir la llamada.
+      const texto = (salida.content as Array<{ text?: string }>)[0]?.text ?? "";
+      expect(texto, nombre).toContain('"argumento_inventado"');
+    }
+
+    // Nada se escribio ni se borro: la unica tarea sigue, no hay tablero
+    // "Nuevo", y la auditoria no crecio.
+    expect(await prisma.task.count()).toBe(1);
+    expect(await prisma.board.count()).toBe(1);
+    expect(await prisma.auditLog.count()).toBe(auditadoAntes);
+
+    // Segunda pasada: las mismas once sin el argumento de mas. Todas ejecutan,
+    // lo que prueba que lo rechazado era la clave y no el resto de la llamada.
+    for (const [nombre, argumentos] of LLAMADA_MINIMA) {
+      const resultado = await llamar(nombre, argumentos);
+      expect(resultado.isError, `${nombre}: ${resultado.texto}`).toBe(false);
+    }
   });
 });
 

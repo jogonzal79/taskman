@@ -105,21 +105,6 @@ contador de pruebas no tiene ese commit.
   tildes se lee como roto; y la busqueda incremental mientras se escribe no es
   viable de entrada, porque `plainto_tsquery` no agrega `:*` y un prefijo no
   matchea (ver la entrada de arriba).
-- Un argumento DESCONOCIDO de una herramienta MCP se descarta en silencio. Es el
-  MISMO hueco que el borde REST cerro con `leerConsulta` —el esquema declara una
-  forma y el borde no la honra— en la otra superficie, y por eso se anota aca al
-  irse aquel: `definirHandler` (`packages/core/src/mcp/respuesta.ts`) arma el
-  esquema con `z.object(shape)`, y un `z.object` no estricto QUITA las claves de
-  mas en vez de rechazarlas. MEDIDO por /mcp: un `tools/call` de `list_tasks`
-  con `{ board: "Tablero", status: "DONE" }` devuelve 200 y el TABLERO ENTERO,
-  las dos tareas, sin una palabra sobre el `status`. El agente que lo mando cree
-  que acoto. El arreglo es una sola palabra —`strictObject`— pero NO es un
-  arreglo al pasar: toca las once herramientas a la vez, y a diferencia de una
-  query que escribe una persona, estos argumentos los arma un modelo, asi que
-  hay que ver primero si algun cliente manda campos de relleno que hoy se caen
-  solos. Va junto al paso que derive los esquemas de las herramientas de
-  `packages/contracts` (entrada de mas abajo), que es donde se decide que forma
-  tienen esas entradas.
 - `list_boards` y `list_tasks` devuelven `has_more` pero no el `cursor` (y
   `search_tasks` tiene el mismo hueco). El nucleo lo tiene —`Page.nextCursor`, y
   las herramientas lo leen para calcular `has_more`— pero lo descartan al

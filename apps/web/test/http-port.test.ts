@@ -399,6 +399,58 @@ describe("las once herramientas de la 8.2, por HttpPort contra el servidor", () 
  *   BOARD_NOT_FOUND es el ejemplo. Ahi si hay traduccion, y la unica diferencia
  *   admitida es `details.request_id`, que es O4.
  */
+describe("un argumento que la herramienta no declara: la asimetria con el endpoint, cerrada", () => {
+  /**
+   * EL MOTIVO DE CERRARLO ANTES DEL MERGE. Desde el paso 9, REST rechaza con 400
+   * un parametro de consulta que el contrato no declara. En modo http la
+   * herramienta traducia sus argumentos a esa misma consulta, pero el argumento
+   * de mas se recortaba ANTES de traducir —en el `z.object` no estricto con que
+   * el SDK envolvia el esquema— asi que nunca llegaba al cable: la herramienta
+   * ACEPTABA en silencio lo que el endpoint, con los mismos datos, rechazaba. Lo
+   * que se afirma aca es que las dos puertas dicen lo mismo, y que la
+   * herramienta lo dice sin salir del proceso.
+   */
+  it("list_tasks con status: 'DONE' se rechaza sin una sola peticion HTTP, igual que el endpoint rechaza ?status=", async () => {
+    const detalle = await tablero("Tablero");
+    await taskman.createTask({ boardId: detalle.id, columnKey: "TODO", title: "pendiente" }, ctx());
+    await taskman.createTask({ boardId: detalle.id, columnKey: "DONE", title: "hecha" }, ctx());
+    const peticionesAntes = peticionesHttp().length;
+
+    // 1. La herramienta, por HttpPort: error que nombra `status`, sin las tareas.
+    const porLaHerramienta = await porHttp.callTool({
+      name: "list_tasks",
+      arguments: { board: "Tablero", status: "DONE" },
+    });
+    expect(porLaHerramienta.isError).toBe(true);
+    const texto = (porLaHerramienta.content as Array<{ text?: string }>)[0]?.text ?? "";
+    expect(texto).toContain('"status"');
+    expect(texto).not.toContain("pendiente");
+    expect(texto).not.toContain("hecha");
+
+    // Y NO salio ninguna peticion: el rechazo es del esquema, antes del cable.
+    expect(peticionesHttp()).toHaveLength(peticionesAntes);
+
+    // 2. La MISMA llamada por CorePort da el MISMO texto: el agente no distingue
+    // la puerta tampoco cuando se equivoca.
+    const porElNucleo = await porCore.callTool({
+      name: "list_tasks",
+      arguments: { board: "Tablero", status: "DONE" },
+    });
+    expect(porElNucleo.content).toEqual(porLaHerramienta.content);
+
+    // 3. El endpoint al que HttpPort habria traducido la llamada rechaza el
+    // mismo nombre con 400, nombrandolo. Es lo que la herramienta ya dijo.
+    const respuesta = await fetch(`${servidor.url}/api/tasks?board_id=${detalle.id}&status=DONE`, {
+      headers: { Authorization: `Bearer ${claveCompleta}` },
+    });
+    expect(respuesta.status).toBe(400);
+    const cuerpo = (await respuesta.json()) as { error: { code: string; message: string } };
+    expect(cuerpo.error.code).toBe("VALIDATION_ERROR");
+    expect(cuerpo.error.message).toContain("'status'");
+    expect(JSON.stringify(cuerpo)).not.toContain("pendiente");
+  });
+});
+
 describe("un error de dominio se ve igual por las dos puertas", () => {
   it("AMBIGUOUS_MATCH es IDENTICO: mismo codigo, mismos candidatos y mismo hint", async () => {
     const detalle = await tablero("QA");
