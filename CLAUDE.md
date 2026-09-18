@@ -667,6 +667,19 @@ motivo dejó de valer, ahí está el disparador para volver a mirarla.
   sale VACIO, porque el blob normalizado es el mismo; un `git add` lo vuelve a
   dejar limpio sin stagear nada. O sea que ese ` M` no es un cambio de
   contenido, y buscarle uno es perder la tarde.
+- `process.exit()` DESPUÉS DE UN `fetch` ABORTA EL PROCESO en Windows. libuv
+  dispara `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING), file
+  src\win\async.c, line 76` y el proceso muere con 0xC0000409 (3221226505) en
+  vez de con el código que se le pasó. MEDIDO en el arranque de
+  `apps/mcp-stdio` en modo http cuando la sonda de scopes recibe un 401: el
+  mensaje sale entero por stderr —o sea que el síntoma NO es un mensaje
+  perdido— y lo único que miente es el código de salida, que quien lo mire lee
+  como un crash y no como una variable mal puesta. La salida es no llamar a
+  `process.exit()`: marcar `process.exitCode` y no montar el transporte, así el
+  loop se vacía y el proceso termina solo con el código correcto. Medido con el
+  servidor arriba y las conexiones keep-alive de undici abiertas: 1 ms, o sea
+  que "dejarlo terminar solo" no es esperar. Vale para cualquier proceso corto
+  que haga una petición y decida no seguir.
 - No mates procesos `node` con un `Stop-Process` amplio en esta máquina: se
   llevan puestos los servidores MCP de la sesión, que también son `node`.
   Filtrá por PID o por línea de comando.
@@ -962,10 +975,31 @@ motivo dejó de valer, ahí está el disparador para volver a mirarla.
   comparten mecanismo: el de scopes OMITE —el SDK responde "not found"— y el de
   la politica MARCA `anunciada: false` —el SDK responde "disabled"—. Llevar los
   scopes a `anunciada` es la forma de que uno deshaga al otro.
-- `apps/mcp-stdio` corre en modo `core` (MCP_PORT_MODE de la 8.1): habla con la
-  base por los servicios, en el mismo proceso, sin pasar por HTTP. La politica de
-  operaciones destructivas de la 8.3.2 se controla con MCP_DESTRUCTIVE_POLICY, y
-  el log estructurado es el de la 11.1: a stderr, nunca a stdout.
+- `apps/mcp-stdio` corre en los DOS modos de MCP_PORT_MODE (8.1). En `core`
+  habla con la base por los servicios, en el mismo proceso, sin pasar por HTTP;
+  en `http` habla con la API REST por `HttpPort` y NO abre ninguna conexion a la
+  base. La politica de operaciones destructivas de la 8.3.2 se controla con
+  MCP_DESTRUCTIVE_POLICY, y el log estructurado es el de la 11.1: a stderr, nunca
+  a stdout.
+- El esquema de la 11.2 de ese proceso es una UNION DISCRIMINADA por el modo, y
+  eso decide que variable es obligatoria donde: DATABASE_URL solo en `core`
+  —tal como dice la columna "Ambito" de la 11.2— y TASKMAN_API_URL y
+  TASKMAN_API_KEY solo en `http`. Lo que se gana no es validacion sino TIPO: la
+  rama que construye el `HttpPort` no compila sin las dos variables. Un objeto
+  plano con campos opcionales validaria lo mismo y devolveria el problema al
+  llamador.
+- EN MODO HTTP LOS SCOPES SE MIDEN, no se declaran. El catalogo de la 8.1 tiene
+  que ser el de la clave, y no hay endpoint que devuelva los scopes de una clave
+  —seria el numero dieciocho, fuera de la 6.2—, asi que `descubrirScopes()`
+  manda tres peticiones a `/api/tasks/sonda-de-scope` con GET, PATCH y DELETE:
+  403 es "no tiene ese scope" y el 400 del id invalido es "si lo tiene", porque
+  `conAuth` resuelve el scope ANTES del handler. DOS COSAS LO SOSTIENEN y las
+  dos viven en `apps/web`: que ese id no sea un UUID —por eso la sonda no puede
+  tocar nada— y que el rechazo del id sea VALIDATION_ERROR. Si lo segundo
+  cambiara, el scope pasa a "indeterminado" y se da por concedido con una linea
+  `mcp.scopes` de warn, que es la direccion segura: el agente ve de mas, no de
+  menos. Una variable `MCP_SCOPES` esta DESCARTADA: seria el cliente declarando
+  sobre una credencial que no emitio, justo lo que el paso 12 saco del cable.
 - stdout es el canal del protocolo: en `apps/mcp-stdio` todo diagnostico va a
   stderr. Un `console.log` suelto rompe la sesion MCP entera.
 - `apps/mcp-stdio` se empaqueta con esbuild porque `@taskman/core` y

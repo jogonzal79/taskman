@@ -19,6 +19,7 @@ import {
 import {
   DomainError,
   esCodigoDeDominio,
+  isDomainError,
   LOGGER_NULO,
   type ActorContext,
   type Board,
@@ -33,6 +34,7 @@ import {
   type MoveResult,
   type MoveTarget,
   type Page,
+  type Scope,
   type SearchScope,
   type Task,
   type TaskManagerPort,
@@ -126,6 +128,48 @@ interface Peticion<T> {
    * SOLO para la linea de log: NO viaja al servidor (ver O4, mas abajo).
    */
   readonly ctx?: ActorContext;
+}
+
+/**
+ * El recurso contra el que se sondean los scopes (ver `descubrirScopes`).
+ *
+ * El id NO ES UN UUID a proposito, y es lo unico que hace que estas tres
+ * peticiones sean seguras: los tres handlers de `/api/tasks/{id}` validan el
+ * parametro de ruta antes de cualquier otra cosa y devuelven 400, asi que ni
+ * siquiera llegan a mirar la base. El nombre se lee en el log del servidor y
+ * dice para que fue: tres lineas con `/api/tasks/sonda-de-scope` al arrancar un
+ * agente no son un cliente roto.
+ */
+const RUTA_SONDA = "/api/tasks/sonda-de-scope";
+
+interface Sonda {
+  readonly scope: Scope;
+  readonly metodo: "GET" | "PATCH" | "DELETE";
+}
+
+/**
+ * Un verbo por scope, los tres sobre el MISMO recurso: lo unico que cambia entre
+ * las tres peticiones es el scope que `conAuth` les exige (`read` en el GET,
+ * `write` en el PATCH, `delete` en el DELETE). El orden es el de `SCOPES`, para
+ * que la lista que sale de aca se lea igual que la que emite `apikey:create`.
+ */
+const SONDAS: readonly Sonda[] = [
+  { scope: "READ", metodo: "GET" },
+  { scope: "WRITE", metodo: "PATCH" },
+  { scope: "DELETE", metodo: "DELETE" },
+];
+
+type Veredicto = "concedido" | "denegado" | "sin-clave" | "indeterminado";
+
+export interface ScopesDeLaClave {
+  /** Los que la clave tiene, mas los que no se pudieron medir. */
+  readonly scopes: readonly Scope[];
+  /**
+   * Los que se dieron por concedidos sin poder medirlos. Vacio es el caso
+   * normal; con algo adentro, el catalogo puede tener de mas y quien arranca
+   * tiene que poder verlo en el log.
+   */
+  readonly indeterminados: readonly Scope[];
 }
 
 export class HttpPort implements TaskManagerPort {
@@ -258,6 +302,132 @@ export class HttpPort implements TaskManagerPort {
     }
 
     return url.toString();
+  }
+
+  // --- Los scopes de la clave (8.1) ------------------------------------------
+
+  /**
+   * Los scopes de la 7.2 que tiene la clave configurada, MEDIDOS contra el
+   * servidor con tres peticiones que no pueden tocar nada.
+   *
+   * PARA QUE. La 8.1 pide que el filtrado del catalogo ocurra en el LISTADO y no
+   * solo en la ejecucion, "para que el agente no planifique acciones que no
+   * puede completar". En modo core `apps/mcp-stdio` monta con los tres scopes
+   * porque no hay clave de la que leerlos; en modo http la hay, y sin esto el
+   * agente veria las once herramientas y descubriria el limite recien al
+   * ejecutar, con un FORBIDDEN_SCOPE. Util, pero no es lo que el DEBE pide.
+   *
+   * DE DONDE SALEN, que es la decision de este bloque. No hay endpoint que
+   * devuelva los scopes de una clave: los diecisiete de la 6.2 son de tableros,
+   * columnas, tareas, auditoria y health, y ninguno habla de la credencial. Las
+   * tres opciones eran:
+   *
+   * - UN ENDPOINT NUEVO de introspeccion (`GET /api/keys/current`). Es el diseno
+   *   limpio y es lo que haria un producto, pero es superficie publica que la
+   *   6.2 no tiene: un endpoint numero dieciocho, con su contrato, su OpenAPI,
+   *   sus pruebas y su scope —¿cual?, porque una clave sin `read` tambien
+   *   necesita leerse a si misma—. No se escribio.
+   * - UNA VARIABLE `MCP_SCOPES` en el `.mcp.json`. Es lo mas barato y es lo
+   *   peor: seria una DECLARACION del cliente sobre una credencial que no emitio
+   *   el, o sea justo lo que el paso 12 saco del cable al derivar `actor_type`
+   *   de la clave. Declarar de menos esconde herramientas que si se podian usar,
+   *   y declarar de mas devuelve el problema que esto viene a resolver, con un
+   *   dato mas que puede envejecer.
+   * - SONDEAR (ELEGIDA). El servidor ya sabe la respuesta y ya la dice: el 403
+   *   FORBIDDEN_SCOPE de `conAuth` es exactamente "esta clave no tiene este
+   *   scope". Lo unico que falta es preguntarselo sin hacer nada.
+   *
+   * POR QUE LA SONDA NO PUEDE TOCAR NADA, que es lo que la hace aceptable. El id
+   * de `RUTA_SONDA` NO ES UN UUID, asi que ningun handler puede encontrar una
+   * tarea con el: no existe hoy ni puede existir manana —los UUID los genera la
+   * aplicacion— y el handler lo rechaza con 400 antes de leer el cuerpo y antes
+   * de tocar la base. No es "improbable que borre algo", es imposible.
+   *
+   * POR QUE LA RESPUESTA MIDE EL SCOPE Y NADA MAS: `conAuth` resuelve el scope
+   * ANTES de invocar al handler, asi que el 403 y el 400 se excluyen. 403 es "no
+   * tenes el scope"; CUALQUIER otra cosa —el 400 del id invalido— significa que
+   * el scope alcanzo y la peticion llego al handler. Se sondea con los tres
+   * verbos del MISMO recurso para que la unica variable entre las tres sea el
+   * scope que cada uno exige.
+   *
+   * Se lee el CODIGO de dominio de cada respuesta y no el `granted_scopes` que el 403 trae
+   * en `details`, aunque ese traeria la lista entera de una: `granted_scopes` es
+   * un agregado de este repo sobre la 6.4 y no parte del contrato, mientras que
+   * "403 es scope insuficiente" si lo es. Tres medidas independientes de una
+   * cosa cada una, en vez de una medida de las tres que depende de un campo mas.
+   *
+   * LO QUE CUESTA: tres peticiones al arrancar, un lugar del cupo de lectura y
+   * dos del de escritura (7.3, `CUBO_POR_SCOPE` cobra `delete` del de
+   * escritura). Van en paralelo, asi que es un viaje de ida y vuelta.
+   *
+   * SI UNA SONDA NO SE PUEDE INTERPRETAR —429, 500, la red caida— su scope se da
+   * por CONCEDIDO y se devuelve en `indeterminados` para que el arranque lo
+   * registre. Es la direccion correcta del error: el agente vuelve a ver la
+   * herramienta y a recibir el 403 al ejecutarla, o sea el comportamiento de
+   * antes de este paso, en vez de perder herramientas que si tiene por un
+   * servidor que tosio una vez.
+   *
+   * UN 401 SI IMPIDE ARRANCAR, y por eso este metodo lanza: significa que el
+   * servidor rechazo la clave, no que no se pudo medir. Arrancar igual daria un
+   * servidor MCP que anuncia once herramientas y falla las once, que es el
+   * "fallo posterior en tiempo de ejecucion" que la 11.2 manda evitar. Que lo
+   * vea el servidor y no el esquema no lo hace otra cosa: TASKMAN_API_KEY tiene
+   * un valor invalido.
+   */
+  async descubrirScopes(): Promise<ScopesDeLaClave> {
+    const veredictos = await Promise.all(
+      SONDAS.map(async (sonda) => ({ scope: sonda.scope, veredicto: await this.#sondear(sonda) })),
+    );
+
+    if (veredictos.some(({ veredicto }) => veredicto === "sin-clave")) {
+      throw new Error(
+        `El servidor de ${this.#baseUrl} rechazo la clave con 401: revisa TASKMAN_API_KEY ` +
+          "(7.1, 11.2). Una clave revocada o de otra instalacion da lo mismo que una mal copiada.",
+      );
+    }
+
+    return {
+      scopes: veredictos.filter((v) => v.veredicto !== "denegado").map((v) => v.scope),
+      indeterminados: veredictos.filter((v) => v.veredicto === "indeterminado").map((v) => v.scope),
+    };
+  }
+
+  /** Una sonda. Nunca lanza: lo que no se entiende es `indeterminado`. */
+  async #sondear(sonda: Sonda): Promise<Veredicto> {
+    try {
+      await this.#pedir({ metodo: sonda.metodo, ruta: RUTA_SONDA });
+
+      // Inalcanzable con un id que no es un UUID, pero si algun dia lo fuera, un
+      // 2xx significa que el scope alcanzo, que es lo que se esta midiendo.
+      return "concedido";
+    } catch (error: unknown) {
+      if (!isDomainError(error)) {
+        return "indeterminado";
+      }
+
+      switch (error.code) {
+        case "FORBIDDEN_SCOPE":
+          return "denegado";
+        case "UNAUTHENTICATED":
+          return "sin-clave";
+        case "VALIDATION_ERROR":
+          // El 400 del id que no es un UUID: la peticion PASO el control de
+          // scope y llego al handler, que es lo unico que se estaba midiendo.
+          return "concedido";
+        default:
+          /**
+           * Todo lo demas es indeterminado, y la lista blanca es a proposito.
+           * Un 429 se cobra ANTES de resolver el scope (ver `atender` en
+           * `apps/web/lib/auth.ts`), asi que no llego a mirarlo; un 500 puede
+           * venir del handler o de antes de autenticar. Ninguno dice que la
+           * clave no tenga el scope: dicen que no se pudo preguntar. Y si algun
+           * dia el handler cambiara el codigo con que rechaza un id invalido,
+           * esto degrada a "concedido sin medir" con su linea de warn, en vez de
+           * esconder una herramienta que la clave si tenia.
+           */
+          return "indeterminado";
+      }
+    }
   }
 
   // --- Tableros --------------------------------------------------------------

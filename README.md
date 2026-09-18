@@ -21,10 +21,19 @@ el servidor MCP.
 
 ## Servidor MCP
 
-Las once herramientas del catálogo de la sección 8.2, completo, sobre el
-transporte stdio de la 8.1 en modo `core`: los servicios corren en el mismo
-proceso y hablan con PostgreSQL directamente, sin pasar por HTTP. El modo `http`
-de la 8.1 todavía no existe y el servidor falla al arrancar si se lo pide.
+Las once herramientas del catálogo de la sección 8.2, completo, sobre los dos
+transportes de la 8.1 y, en el de stdio, sobre los dos modos que la tabla de esa
+sección define:
+
+| `MCP_PORT_MODE` | Cómo habla con los datos | Cuándo |
+| --- | --- | --- |
+| `core` (por defecto) | Los servicios corren en este mismo proceso y hablan con PostgreSQL directamente, sin pasar por HTTP. Pide `DATABASE_URL`. | Claude Code en la misma máquina que la base. |
+| `http` | Un cliente de la API REST (`HttpPort`) con una API key. No toca la base y **no pide `DATABASE_URL`**. Pide `TASKMAN_API_URL` y `TASKMAN_API_KEY`. | Claude Code local contra un servidor, que la 8.1 llama el caso habitual. |
+
+Cambiar de modo no cambia el catálogo ni lo que hace cada herramienta: es el
+mismo registro del núcleo montado sobre otro puerto (ADR-003). Lo que sí cambia
+es **cuántas herramientas se ven**, porque en `http` hay una clave y sus scopes
+recortan el catálogo; más abajo, en su sección.
 
 | Entidad | Herramientas |
 | --- | --- |
@@ -59,6 +68,73 @@ Todas resuelven tableros, columnas y tareas por nombre además de por id, así q
 es ambiguo, la herramienta devuelve `AMBIGUOUS_MATCH` con los candidatos y no
 elige: hay que desambiguar.
 
+### Usarlo contra un servidor, por stdio (`MCP_PORT_MODE=http`)
+
+El mismo proceso de arriba, pero hablando con la API REST en vez de con la base.
+Es el escenario "Claude Code local contra servidor remoto" de la 8.1, y el
+bloque `env` es el de la 8.6: `DATABASE_URL` no va, y en su lugar van la URL y
+la clave.
+
+```json
+"taskman": {
+  "command": "node",
+  "args": ["./apps/mcp-stdio/dist/index.js"],
+  "env": {
+    "MCP_PORT_MODE": "http",
+    "TASKMAN_API_URL": "http://localhost:3000",
+    "TASKMAN_API_KEY": "tmk_live_PEGA_LA_CLAVE",
+    "MCP_DESTRUCTIVE_POLICY": "confirm",
+    "LOG_LEVEL": "info"
+  }
+}
+```
+
+La clave se emite igual que la de `/mcp`, y acá conviene con `--agent`:
+
+```powershell
+pnpm run apikey:create -- --agent "claude code por stdio" read write
+```
+
+`--agent` rotula la clave como `AGENT` en la auditoría de la 7.4, en vez del
+`API` por defecto. Hace falta porque el borde REST **no puede ver** por dónde
+entró una petición —la del `HttpPort` y la de `curl` son la misma en el cable—
+así que el tipo de actor sale de la credencial, que la elige quien emite
+(sección 7.4). Sin la bandera, todo lo que este servidor MCP escriba queda
+auditado como `API`. La bandera va antes o después de la etiqueta, y los scopes
+siguen siendo variádicos.
+
+**Qué cambia respecto del modo `core`:**
+
+- **El catálogo es el de la clave** (8.1). Con una clave `read write` se
+  anuncian **diez** herramientas y `delete_task` no aparece: el filtrado ocurre
+  en el listado y no sólo en la ejecución, para que el agente no planifique un
+  borrado que no puede completar. Es el mismo comportamiento que ya tenía
+  `/mcp`, que lee los scopes de la fila de la clave; acá no hay fila que leer
+  —este proceso sólo tiene la clave en claro— así que se **miden** al arrancar
+  con tres peticiones que no pueden tocar nada (`GET`, `PATCH` y `DELETE` sobre
+  `/api/tasks/sonda-de-scope`, un id que no es un UUID y que los tres handlers
+  rechazan con 400 antes de mirar la base). En el log del servidor se ven esas
+  tres líneas cada vez que arranca un agente; no son un cliente roto.
+- **La auditoría la escribe el servidor**, con el rótulo de la clave y su
+  prefijo como `client_id`, y el `request_id` que queda en `audit_log` es el del
+  servidor y no uno que elija este proceso.
+- **Rige el límite de la 7.3**, que se cobra por clave: 120 lecturas y 30
+  escrituras por minuto, compartido con todo lo que use esa misma clave.
+
+**Si no arranca**, el motivo sale en stderr y el proceso termina con código 1
+(sección 11.2), que es lo que Claude Code muestra como servidor `failed`:
+
+| Mensaje en stderr | Qué pasó |
+| --- | --- |
+| `TASKMAN_API_URL: falta` o `TASKMAN_API_KEY: falta` | Falta una de las dos del bloque `env`. El mensaje las lista todas juntas, no de a una por reinicio. |
+| `TASKMAN_API_URL="…": se esperaba una URL absoluta http:// o https://` | Una URL sin esquema, o con uno que no sirve. Se valida al arrancar y no en la primera llamada. |
+| `rechazo la clave con 401: revisa TASKMAN_API_KEY` | La clave no existe, está revocada o la borró un `verify`. Arrancar igual daría once herramientas que fallan las once. |
+
+Si el servidor **no responde** —está apagado, o la URL apunta a otro lado— el
+arranque no falla: los scopes no se pueden medir, se dan por concedidos, queda
+una línea `mcp.scopes` de nivel `warn` diciendo cuáles, y el catálogo sale
+completo. El agente se entera al primer intento, con el error de esa llamada.
+
 ### Usarlo como cliente remoto, por HTTP (`/mcp`)
 
 La app web sirve el mismo catálogo por Streamable HTTP en `/mcp` (sección 8.1),
@@ -86,6 +162,11 @@ un agente. Se muestra una sola vez.
 ```powershell
 pnpm run apikey:create -- "claude code remoto" read write
 ```
+
+Acá `--agent` no hace falta y por eso no está: `/mcp` **sí** ve por dónde entró
+la petición y audita `AGENT` por construcción, mire lo que mire la clave. La
+bandera es para el modo `http` por stdio, donde lo que entra es una petición
+REST indistinguible de un `curl` (ver la sección anterior).
 
 **3. Registrar el servidor en Claude Code**, desde la raíz del repo:
 
@@ -197,7 +278,8 @@ Lo que escribe es log estructurado en JSON, una línea por evento (sección 11.1
 
 | `evt` | Cuándo | Campos propios |
 | --- | --- | --- |
-| `mcp.ready` | Al arrancar | `mode`, `transport`, `destructivePolicy`, `logLevel` |
+| `mcp.ready` | Al arrancar | `mode`, `transport`, `scopes`, `destructivePolicy`, `logLevel` |
+| `mcp.scopes` | Sólo en modo `http`, y sólo si algún scope no se pudo medir | `scopes` y `undetermined`: los que se dan por concedidos sin haberlos medido, o sea las herramientas que el catálogo puede tener de más |
 | `mcp.tool` | Una por invocación de herramienta | `tool`, `durationMs`, `outcome` (`ok`, `domain_error`, `error`) y `code` solo si hubo error de dominio |
 | `mcp.resolve` | Una por resolución por nombre (sección 8.3.1) | `entity`, `strategy` (`uuid`, `exact`, `partial`), `matches` y `resolvedId` solo si hubo exactamente una |
 | `mcp.resolve.ref` | Igual que la anterior, pero solo en `debug` | `reference`: el texto crudo que mandó el agente, que para una tarea es su título |

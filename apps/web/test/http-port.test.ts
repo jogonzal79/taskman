@@ -13,6 +13,7 @@ import {
   type CorePort,
   type DomainError,
   type Logger,
+  type Scope,
   type TaskManagerPort,
 } from "@taskman/core";
 import { HttpPort } from "@taskman/mcp-stdio/http-port";
@@ -22,6 +23,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { reiniciarLimiteDePeticiones, LIMITE_POR_CUBO } from "../lib/rate-limit";
 import {
   connectDb,
+  contarFilas,
   ctx,
   emitirClave,
   port,
@@ -88,16 +90,19 @@ function loggerCapturador(): Logger {
  * pase. Es el `crearServidorMcp` de `apps/mcp-stdio` sin lo unico propio del
  * transporte stdio (de donde sale el nombre del cliente), que aca no se mide.
  *
- * LOS TRES SCOPES SIEMPRE, tambien cuando la clave es de solo lectura: el
- * filtrado de la 8.1 es del catalogo y hoy `apps/mcp-stdio` lo monta con
- * `SCOPES` porque en modo core no hay clave de la que leerlos. Pasar los de la
- * clave es del paso 13, junto con MCP_PORT_MODE. Montando las once contra una
- * clave que no alcanza se mide justo lo que este paso decide: que ve el agente
- * cuando el servidor le dice que no.
+ * LOS TRES SCOPES POR DEFECTO, tambien cuando la clave es de solo lectura:
+ * montando las once contra una clave que no alcanza se mide que ve el agente
+ * cuando el servidor le dice que no, que es lo que afirma el bloque de codigos
+ * del borde. El CATALOGO recortado por los scopes de la clave —lo que la 8.1
+ * pide y lo que `apps/mcp-stdio` hace en modo http— se mide en su propio bloque,
+ * pasandolos explicitos.
  */
-async function conectar(puerto: TaskManagerPort): Promise<McpClient> {
+async function conectar(
+  puerto: TaskManagerPort,
+  scopes: readonly Scope[] = SCOPES,
+): Promise<McpClient> {
   const server = new McpServer(IDENTIDAD_SERVIDOR_MCP, { instructions: INSTRUCCIONES_MCP });
-  montarHerramientas(server, crearHerramientas(puerto, { scopes: SCOPES }));
+  montarHerramientas(server, crearHerramientas(puerto, { scopes }));
 
   const [delCliente, delServidor] = InMemoryTransport.createLinkedPair();
   const cliente = new McpClient({ name: "prueba-http-port", version: "0.0.0" });
@@ -824,5 +829,159 @@ describe("el puerto devuelve tipos del dominio, no la forma del borde", () => {
   it("falla al construir si falta la URL o la clave, no en la primera llamada", () => {
     expect(() => new HttpPort({ baseUrl: "", apiKey: "k" })).toThrow(/TASKMAN_API_URL/);
     expect(() => new HttpPort({ baseUrl: "http://x", apiKey: "  " })).toThrow(/TASKMAN_API_KEY/);
+  });
+});
+
+// --- 7. Los scopes de la clave, y el catalogo que producen -------------------
+
+/**
+ * EL FILTRADO DEL CATALOGO DE LA 8.1 EN MODO HTTP: "un cliente MCP sin scope
+ * delete no ve disponible la herramienta delete_task: el filtrado ocurre en el
+ * listado de herramientas, no solo en la ejecucion, para que el agente no
+ * planifique acciones que no puede completar".
+ *
+ * Ese DEBE ya se cumplia en /mcp, que lee los scopes de la fila de la clave que
+ * autentico. Por stdio en modo http no hay fila que leer —este proceso solo
+ * tiene la clave en claro— asi que los scopes se MIDEN contra el servidor con
+ * tres sondas. El razonamiento de por que sondear y no agregar un endpoint de
+ * introspeccion esta entero en `descubrirScopes`; lo que se mide aca es que el
+ * mecanismo da la respuesta correcta y que no toca nada al darla.
+ *
+ * VA CONTRA EL SERVIDOR DE VERDAD, como el resto de la suite: lo que se afirma
+ * es una relacion entre lo que `conAuth` responde y lo que el catalogo muestra,
+ * y un doble de `fetch` afirmaria lo que el doble diga.
+ */
+describe("los scopes de la clave, medidos contra el servidor (8.1)", () => {
+  function puertoCon(clave: string): HttpPort {
+    return new HttpPort({ baseUrl: servidor.url, apiKey: clave, logger: loggerCapturador() });
+  }
+
+  async function herramientasDe(clave: string): Promise<string[]> {
+    const puerto = puertoCon(clave);
+    const { scopes } = await puerto.descubrirScopes();
+    const cliente = await conectar(puerto, scopes);
+
+    try {
+      return (await cliente.listTools()).tools.map((herramienta) => herramienta.name);
+    } finally {
+      await cliente.close();
+    }
+  }
+
+  it("una clave con los tres scopes los devuelve los tres, sin nada sin medir", async () => {
+    expect(await puertoCon(claveCompleta).descubrirScopes()).toEqual({
+      scopes: ["READ", "WRITE", "DELETE"],
+      indeterminados: [],
+    });
+  });
+
+  it("una clave de solo lectura devuelve solo read", async () => {
+    expect(await puertoCon(claveLectura).descubrirScopes()).toEqual({
+      scopes: ["READ"],
+      indeterminados: [],
+    });
+  });
+
+  it("CON UNA CLAVE SIN delete, delete_task NO APARECE EN EL LISTADO", async () => {
+    const sinBorrado = await emitirClave(db, ["READ", "WRITE"], { label: "agente sin borrado" });
+
+    const conBorrado = await herramientasDe(claveCompleta);
+    const nombres = await herramientasDe(sinBorrado);
+
+    // Las once menos una, y la que falta es la que la clave no puede usar.
+    expect(conBorrado).toContain("delete_task");
+    expect(conBorrado).toHaveLength(11);
+    expect(nombres).not.toContain("delete_task");
+    expect(nombres).toHaveLength(10);
+
+    // Y el resto del catalogo esta entero: lo que se recorta es un scope, no
+    // una lista escrita a mano.
+    expect(nombres).toEqual(conBorrado.filter((nombre) => nombre !== "delete_task"));
+  });
+
+  it("una clave de solo lectura ve las cinco de lectura y ninguna que escriba", async () => {
+    expect(await herramientasDe(claveLectura)).toEqual([
+      "list_boards",
+      "get_board",
+      "list_tasks",
+      "search_tasks",
+      "get_task",
+    ]);
+  });
+
+  it("sondear NO ESCRIBE NADA: ni tareas, ni tableros, ni auditoria", async () => {
+    /**
+     * La propiedad que hace aceptable sondear con un DELETE. El id de la sonda
+     * no es un UUID, asi que los tres handlers lo rechazan con 400 antes de
+     * mirar la base: no es improbable que borre algo, es imposible.
+     */
+    const detalle = await tablero("QA");
+    await taskman.createTask({ boardId: detalle.id, columnKey: "TODO", title: "no se toca" }, ctx());
+
+    const tableros = await contarFilas(db, "board");
+    const tareas = await contarFilas(db, "task");
+    const auditoria = await contarFilas(db, "audit_log");
+
+    await puertoCon(claveCompleta).descubrirScopes();
+
+    expect(await contarFilas(db, "board")).toBe(tableros);
+    expect(await contarFilas(db, "task")).toBe(tareas);
+    expect(await contarFilas(db, "audit_log")).toBe(auditoria);
+
+    // Las tres sondas ocurrieron, sobre el mismo recurso y con los tres verbos:
+    // si alguna se hubiera saltado, el conteo de arriba pasaria por no hacer
+    // nada en vez de por no poder hacer nada.
+    const sondas = peticionesHttp().filter((linea) => linea["route"] === "/api/tasks/sonda-de-scope");
+    expect(sondas.map((linea) => linea["method"])).toEqual(["GET", "PATCH", "DELETE"]);
+    expect(sondas.map((linea) => linea["status"])).toEqual([400, 400, 400]);
+  });
+
+  it("una clave que el servidor rechaza NO deja arrancar, nombrando la variable", async () => {
+    // Es el caso que vale la pena separar de "no se pudo medir": el servidor
+    // contesto, y contesto que la clave no sirve. Arrancar igual daria un
+    // servidor MCP que anuncia once herramientas y falla las once.
+    await expect(puertoCon("tmk_live_noexiste").descubrirScopes()).rejects.toThrow(
+      /TASKMAN_API_KEY/,
+    );
+  });
+
+  it("una clave revocada es el mismo caso que una que no existe", async () => {
+    const revocada = await emitirClave(db, ["READ", "WRITE"], { revocada: true });
+
+    await expect(puertoCon(revocada).descubrirScopes()).rejects.toThrow(/401/);
+  });
+
+  it("lo que no se puede medir se da por concedido, y se dice cual", async () => {
+    /**
+     * La direccion correcta del error: el agente vuelve a ver la herramienta y
+     * a recibir el 403 al ejecutarla —el comportamiento de antes de este paso—
+     * en vez de perder herramientas que si tenia porque el servidor tosio.
+     *
+     * Se provoca con un `fetch` que contesta 500 al PATCH y deja pasar el resto:
+     * un 500 puede venir del handler o de antes de autenticar, asi que no dice
+     * nada sobre el scope.
+     */
+    const real = globalThis.fetch;
+    const conCaida = new HttpPort({
+      baseUrl: servidor.url,
+      apiKey: claveLectura,
+      logger: loggerCapturador(),
+      fetch: async (entrada, init) =>
+        init?.method === "PATCH"
+          ? new Response(
+              JSON.stringify({
+                error: { code: "INTERNAL_ERROR", message: "se cayo", request_id: "req_x" },
+              }),
+              { status: 500, headers: { "X-Request-Id": "req_x" } },
+            )
+          : real(entrada, init),
+    });
+
+    // La clave es de solo lectura: `write` se le concede sin haberlo medido, y
+    // `delete` —que si se pudo medir— sigue fuera.
+    expect(await conCaida.descubrirScopes()).toEqual({
+      scopes: ["READ", "WRITE"],
+      indeterminados: ["WRITE"],
+    });
   });
 });
