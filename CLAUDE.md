@@ -563,6 +563,45 @@ motivo dejó de valer, ahí está el disparador para volver a mirarla.
   el costo no es una variable sino mover la clase a su propio paquete
   (`packages/api-client`), que es lo que esa misma cabecera anticipa.
 
+- **Sin confirmación para el borrado de tablero, porque no hay herramienta MCP
+  que se la pida.** La 5.2 exige, para `delete (tablero)`, "scope delete y
+  confirmación explícita en la capa MCP"
+  (`docs/especificacion-tecnica-v1.0.md:377`), y esa capa NO TIENE A QUÉ
+  aplicársela: el catálogo de la 8.2 son once herramientas
+  (`docs/especificacion-tecnica-v1.0.md:694-706`) y ninguna borra tableros —la
+  única destructiva es `delete_task`—. El repo sigue a la 8.2: el registro monta
+  esas once y entre ellas no hay un `delete_board`
+  (`packages/core/src/mcp/registry.ts:97-109`), y `CorePort.deleteBoard` existe
+  SOLO para el endpoint REST, con ese motivo escrito al lado
+  (`packages/core/src/mcp/core-port.ts:134-146`). O sea que acá la
+  especificación se contradice sola, como en el desvío de la autenticación de la
+  UI, y lo que se declara no es una decisión de no hacer algo sino cuál de las
+  dos secciones se siguió.
+  La frase de la 5.2 tiene DOS MITADES y no corren la misma suerte. Un tablero
+  sí se borra, por `DELETE /api/boards/{id}` de la 6.2
+  (`docs/especificacion-tecnica-v1.0.md:481`), y ahí la primera mitad se cumple
+  entera: el endpoint exige el scope `delete`
+  (`apps/web/app/api/boards/[id]/route.ts:235`), y que una clave `write` reciba
+  403 y una `delete` 204 sobre el MISMO tablero lo mide
+  `apps/web/test/boards-id.test.ts:409`. Lo que ese endpoint no pide es
+  confirmación, y no es un olvido: la 5.2 la ubica en la CAPA MCP y no en REST,
+  la 8.3.2 define `confirm: true` para herramientas y no para endpoints, y la
+  fila de la 6.2 no lleva ningún parámetro de ese tipo. Pedirla en REST sería
+  inventar un campo que ninguna sección define.
+  LO QUE LA 5.2 PIDE ADEMÁS SÍ ESTÁ, y conviene no leer este desvío como que
+  falta: el borrado escribe UN ÚNICO evento de auditoría con el recuento de lo
+  que se llevó la cascada, leyendo las columnas y contando las tareas ANTES del
+  DELETE (`packages/core/src/services/board-service.ts:254-276`). Lo mide
+  `packages/core/test/audit.test.ts:349`, que exige exactamente una fila y
+  `cascade: { tasks: 3 }` dentro de su `before_data`.
+  REGLA PARA EL FUTURO, que es el motivo de escribir esto: el día que se agregue
+  una herramienta MCP de borrado de tablero, esa herramienta DEBE seguir la
+  8.3.2 —`confirm: true`, `CONFIRMATION_REQUIRED` con el detalle completo cuando
+  falte, y sujeta a `MCP_DESTRUCTIVE_POLICY`— tal como ya lo hace `delete_task`
+  (`packages/core/src/mcp/tools/delete-task.ts:76-95`). Ahí la frase de la 5.2
+  deja de estar sin destinatario y pasa a ser obligatoria. Disparador:
+  exactamente eso, y entonces esta entrada se borra.
+
 ## Entorno
 
 - Windows 11, PowerShell. La ruta del proyecto contiene un espacio: entrecomillá
