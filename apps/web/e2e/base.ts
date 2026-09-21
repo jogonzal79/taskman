@@ -476,6 +476,67 @@ export async function creacionesDeTablero(nombre: string): Promise<ActorAuditado
   );
 }
 
+/**
+ * Una tarea ENTERA, con las mismas claves en snake_case que `before_data` de un
+ * DELETE (`tareaCompleta` en `domain/audit.ts`): es la fila que ese registro
+ * tiene que reproducir.
+ *
+ * `due_date` sale por `to_char`, por lo mismo que en `columnaEnLaBase`: como
+ * DATE, el driver la ancla a la medianoche LOCAL y la corre un dia. Los dos
+ * instantes salen como `Date`, que para `timestamptz` si es exacto, y quien
+ * compara los pasa por `toISOString`, que es el formato del registro.
+ */
+export interface TareaEntera {
+  readonly id: string;
+  readonly board_id: string;
+  readonly column_id: string;
+  readonly title: string;
+  readonly description: string | null;
+  readonly priority: string;
+  readonly due_date: string | null;
+  readonly position: number;
+  readonly created_at: Date;
+  readonly updated_at: Date;
+}
+
+export async function tareaEntera(id: string): Promise<TareaEntera | undefined> {
+  const filas = await consultar<TareaEntera>(
+    `SELECT id, board_id, column_id, title, description, priority::text AS priority,
+            to_char(due_date, 'YYYY-MM-DD') AS due_date, position, created_at, updated_at
+       FROM task
+      WHERE id = $1`,
+    [id],
+  );
+  return filas[0];
+}
+
+/** Un registro de `audit_log` tal como esta en la base. */
+export interface RegistroDeAuditoria {
+  readonly action: string;
+  readonly entity_type: string;
+  readonly actor_type: string;
+  readonly actor_name: string;
+  readonly client_id: string | null;
+  readonly request_id: string | null;
+  readonly before_data: Record<string, unknown> | null;
+  readonly after_data: Record<string, unknown> | null;
+}
+
+/** Los registros de `audit_log` de una accion sobre una entidad, en orden. */
+export async function auditoriaDe(
+  accion: string,
+  entityId: string,
+): Promise<RegistroDeAuditoria[]> {
+  return consultar<RegistroDeAuditoria>(
+    `SELECT action, entity_type, actor_type::text AS actor_type, actor_name, client_id,
+            request_id, before_data, after_data
+       FROM audit_log
+      WHERE action = $1 AND entity_id = $2
+      ORDER BY id ASC`,
+    [accion, entityId],
+  );
+}
+
 /** El id de un tablero por su nombre. Lo pide el cuerpo de POST /api/tasks. */
 export async function idDeTablero(nombre: string = TABLERO): Promise<string> {
   const filas = await consultar<{ id: string }>(`SELECT id FROM board WHERE name = $1`, [nombre]);

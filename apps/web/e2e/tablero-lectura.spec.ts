@@ -344,8 +344,13 @@ test("por debajo de 1024 px sale el aviso, no una version degradada", async ({ p
  *   CT-09  Filtrar por prioridad y por vencidas.              CUBIERTO, en
  *          `filtros.spec.ts`, incluido que el conjunto filtrado por vencidas y el
  *          que la UI marca como vencido sean el mismo.
- *   CT-10  Operacion destructiva y su registro en audit_log.  Falta: el borrado
- *          desde la UI ya existe (CT-05), lo que no se comprueba desde aca es el
- *          `before_data` completo. Es una lectura de `audit_log`, que `e2e/base.ts`
- *          ya podria hacer.
+ *   CT-10  Operacion destructiva y su registro en audit_log.  CUBIERTO, en
+ *          `auditoria.spec.ts`: se borra una tarea desde el panel y se lee
+ *          `audit_log` por SQL. Afirma la forma de la 7.4 para un DELETE —la
+ *          entidad entera antes, nada despues— y el actor USER que esa seccion
+ *          le da a la UI. "Completo" se compara con IGUALDAD EXACTA contra la
+ *          fila leida de la base ANTES de borrar, no con un subconjunto, asi
+ *          que un campo de menos en el serializador la hace caer: contraprueba
+ *          hecha quitando `description` de `tareaCompleta`. Lo que NO afirma:
+ *          el `request_id` ni el `actor_name` del registro.
  */
