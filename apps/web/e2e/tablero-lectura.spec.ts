@@ -337,10 +337,17 @@ test("por debajo de 1024 px sale el aviso, no una version degradada", async ({ p
  *          archivo que necesitan un cambio de agente siguen por el registro
  *          directo, a proposito: miden la pantalla, y asi un /mcp roto hace caer
  *          SOLO este caso (contraprueba hecha).
- *   CT-08  Clave sin scope delete contra la UI de borrado.    Falta: la UI no usa
- *          la API ni claves (9.1), asi que este escenario no tiene superficie aca
- *          —es el desvio "la UI no tiene autenticacion" de CLAUDE.md—; el scope
- *          si esta cubierto en la suite de contrato de `apps/web/test`.
+ *   CT-08  Clave sin scope delete contra la UI de borrado.    CUBIERTO, en la
+ *          suite de contrato y no aca: `tasks-id.test.ts:927`,
+ *          `columns-id.test.ts:843` y `boards-id.test.ts:409`, una por endpoint
+ *          que borra. Las tres afirman las DOS mitades de la 10.2 —el 403 con
+ *          `required_scope: "delete"` y `granted_scopes: ["write"]`, y que no se
+ *          altera nada— y cierran con el 204 de una clave `delete`, asi que lo
+ *          unico que cambia entre los dos es la clave; FORBIDDEN_SCOPE lo
+ *          nombran las de columna y tablero. Que no sea e2e NO es un hueco: la
+ *          UI no usa claves ni su propia API (9.1), el desvio "la UI no tiene
+ *          autenticacion" de CLAUDE.md; y el "la UI de eliminacion POR API" de
+ *          la 10.2 se lee como el endpoint de borrado, no como la pantalla.
  *   CT-09  Filtrar por prioridad y por vencidas.              CUBIERTO, en
  *          `filtros.spec.ts`, incluido que el conjunto filtrado por vencidas y el
  *          que la UI marca como vencido sean el mismo.
