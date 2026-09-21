@@ -178,7 +178,9 @@ test("vaciar la descripcion la borra y no vuelve al recargar; editar otro campo 
   await expect(descripcion).toHaveValue("Hay que contestarle antes del viernes.");
 
   await descripcion.fill("");
-  await descripcion.blur();
+  // El blur guarda: se espera la respuesta antes de recargar, o la recarga le
+  // gana al guardado y lo pierde.
+  await esperandoAlServidor(page, () => descripcion.blur());
   await expect(campoDelPanel(page, "Descripcion")).toHaveValue("");
 
   await page.reload();
