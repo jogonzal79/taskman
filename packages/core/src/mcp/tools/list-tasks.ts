@@ -79,7 +79,8 @@ export function definirListTasks(port: TaskManagerPort, entorno: EntornoMcp): Mc
     description:
       "Lista las tareas de un tablero, opcionalmente filtradas por columna, prioridad o vencimiento. " +
       "Devuelve el estado de cada columna en orden, con el id de cada tarea, para poder mover o actualizar despues sin volver a consultar. " +
-      "Es la herramienta con la que se resuelve una operacion masiva: primero listar, despues mover una por una.",
+      "Es la herramienta con la que se resuelve una operacion masiva: primero listar, despues mover una por una. " +
+      "Antes de la primera escritura de una operacion masiva, mostrale al usuario la lista de tareas que se van a tocar, con su titulo y su columna, y que se hara con ellas.",
     inputSchema: shape,
     scope: "READ",
     annotations: {

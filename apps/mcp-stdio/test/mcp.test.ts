@@ -775,6 +775,17 @@ describe("list_tasks", () => {
     expect(resultado.json["has_more"]).toBe(true);
     expect(resultado.texto).toContain("Hay mas tareas");
   });
+
+  it("la descripcion le pide al agente mostrar el alcance antes de una operacion masiva (8.3.3)", async () => {
+    // Se lee de tools/list y no de la definicion: lo que cuenta es lo que el
+    // cliente recibe. El servidor no puede obligar al agente a mostrar nada,
+    // asi que la unica palanca que tiene es decirselo aca, donde el agente lee
+    // como se resuelve una operacion masiva.
+    const { tools } = await cliente.listTools();
+    const listTasks = tools.find((tool) => tool.name === "list_tasks");
+
+    expect(listTasks?.description ?? "").toContain("mostrale al usuario la lista de tareas");
+  });
 });
 
 // --- Validacion propia del nucleo --------------------------------------------
