@@ -346,23 +346,94 @@ describe("DELETE deja en before_data lo que se perdio", () => {
     expect(fila.before_data?.["cascade"]).toEqual({ tasks: 2, reassigned_to: t.done });
   });
 
-  it("un tablero, con el recuento de lo que se llevo en cascada (5.2)", async () => {
-    const t = await sembrar();
-    await insertTasks(db, { boardId: t.boardId, columnId: t.todo, prefijo: "t", cantidad: 3 });
+  it("un tablero, con el recuento (5.2) y los IDS (7.4) de lo que se llevo en cascada", async () => {
+    // Siembra propia, con ids FIJOS y DOS columnas, en vez de `sembrar()`: el
+    // orden en que la implementacion LEE las tareas es el canonico
+    // `(column_id, id)` y el orden en que las REGISTRA es ascendente por id, y
+    // este fixture existe para que esos dos ordenes NO puedan coincidir. La
+    // columna que va primero al leer lleva el id de tarea mas alto.
+    //
+    // Con las tres tareas en UNA columna —como estaba antes— los dos ordenes
+    // son el mismo para cualquier sorteo de UUID, no por mala suerte sino por
+    // construccion, y entonces esta prueba pasa igual aunque el servicio no
+    // ordene nada. Medido: sacandole el `.sort()` al servicio, 24 de 24 verdes.
+    const columnaQueSeLeePrimero = "00000000-0000-4000-8000-000000000000";
+    const columnaQueSeLeeDespues = "ffffffff-ffff-4fff-8fff-ffffffffffff";
+    const idAlto = "99999999-9999-4999-8999-999999999999";
+    const idBajo = "11111111-1111-4111-8111-111111111111";
+    const idMedio = "55555555-5555-4555-8555-555555555555";
 
-    await tableros.delete(t.boardId, ctx());
+    const boardId = await insertBoard(db, "Personal");
+    await insertColumn(db, { boardId, key: "TODO", position: 0, id: columnaQueSeLeePrimero });
+    await insertColumn(db, { boardId, key: "DONE", position: 1, id: columnaQueSeLeeDespues });
+    await insertTask(db, {
+      boardId,
+      columnId: columnaQueSeLeePrimero,
+      title: "alta",
+      position: 0,
+      id: idAlto,
+    });
+    await insertTask(db, {
+      boardId,
+      columnId: columnaQueSeLeeDespues,
+      title: "baja",
+      position: 0,
+      id: idBajo,
+    });
+    await insertTask(db, {
+      boardId,
+      columnId: columnaQueSeLeeDespues,
+      title: "media",
+      position: 1,
+      id: idMedio,
+    });
+    const porId = [idAlto, idBajo, idMedio].sort();
+
+    // PRECONDICION, y no un comentario: si alguien toca el fixture y los dos
+    // ordenes vuelven a coincidir, esta prueba deja de decir nada sobre el
+    // orden de `task_ids` y tiene que caer ACA, con el motivo escrito, en vez
+    // de seguir verde por una razon equivocada. Se lee de la base con el MISMO
+    // ORDER BY que usa `lockBoardTaskIds`, no de nuestra idea de como ordena
+    // PostgreSQL los uuid.
+    const comoSeLeen = await db.query<{ id: string }>(
+      `SELECT id FROM task WHERE board_id = $1 ORDER BY column_id, id`,
+      [boardId],
+    );
+    expect(
+      comoSeLeen.rows.map((fila) => fila.id),
+      "el fixture dejo de invertir el orden: leer por (column_id, id) y ordenar por id " +
+        "dan lo mismo con estos ids, asi que la prueba ya no puede ver si el servicio ordena",
+    ).not.toEqual(porId);
+
+    await tableros.delete(boardId, ctx());
 
     const fila = await unico();
     expect([fila.action, fila.entity_type, fila.entity_id]).toEqual([
       "DELETE",
       "board",
-      t.boardId,
+      boardId,
     ]);
     expect(fila.after_data).toBeNull();
     expect(fila.before_data?.["name"]).toBe("Personal");
     expect((fila.before_data?.["columns"] as unknown[]).length).toBe(2);
-    expect(fila.before_data?.["cascade"]).toEqual({ tasks: 3 });
+    // Igualdad EXACTA de la lista, y no un toContain ni un length: se prepara
+    // un soft delete sobre estos ids, asi que un id de mas —uno que sobrevivio
+    // al borrado— es tan grave como uno de menos. `toEqual` sobre arrays es
+    // sensible a longitud y a orden, que son las dos formas de equivocarse.
+    expect(fila.before_data?.["cascade"]).toEqual({ tasks: 3, task_ids: porId });
     expect(await contarFilas(db, "task")).toBe(0);
+  });
+
+  it("un tablero SIN tareas dice tasks 0 y una lista vacia, no una lista ausente", async () => {
+    // El caso que rompe un `if (ids.length > 0)` mal puesto: quien lea el
+    // registro tiene que poder hacer `cascade.task_ids.length` sin preguntar
+    // primero si la clave esta.
+    const t = await sembrar();
+
+    await tableros.delete(t.boardId, ctx());
+
+    const fila = await unico();
+    expect(fila.before_data?.["cascade"]).toEqual({ tasks: 0, task_ids: [] });
   });
 });
 
@@ -554,6 +625,104 @@ describe("un reintento produce un solo registro", () => {
 
     const fila = await unico();
     expect([fila.action, fila.entity_id]).toEqual(["CREATE", tarea.id]);
+  });
+});
+
+describe("los ids de la cascada son los que se borraron, no los que se leyeron", () => {
+  /**
+   * Fuerza el entrelazado que hace inexacta una lectura sin bloqueo: OTRA
+   * sesion borra una tarea del tablero DESPUES de que el borrado abrio su
+   * snapshot y ANTES de que lea las tareas.
+   *
+   * La perturbacion se cuela justo antes del unico `$queryRaw` del borrado, que
+   * es la lectura bloqueante: para entonces `findBoard` ya corrio —o sea que el
+   * snapshot de REPEATABLE READ ya esta fijado— y todavia no hay ninguna fila
+   * de `task` bloqueada, asi que el DELETE de la otra sesion no espera a nadie.
+   *
+   * Y ocurre UNA sola vez, en el primer intento: si se repitiera en cada
+   * reintento no se mediria la exactitud sino el presupuesto de reintentos, que
+   * es el mismo motivo por el que el aborto de arriba tambien se limita al
+   * primero.
+   *
+   * Determinista a proposito, como el de arriba y por lo mismo: con dos
+   * operaciones simultaneas de verdad el entrelazado que importa ocurre casi
+   * siempre, y "casi siempre" en una prueba de exactitud significa que a veces
+   * no prueba nada.
+   */
+  function borraUnaTareaAntesDeLaLectura(
+    real: PrismaClient,
+    borrar: () => Promise<void>,
+  ): { cliente: PrismaClient; intentos: () => number } {
+    let intentos = 0;
+    let perturbado = false;
+
+    function conPerturbacion(tx: object): object {
+      return new Proxy(tx, {
+        get(objetivo, propiedad, receptor: unknown) {
+          const valor = Reflect.get(objetivo, propiedad, receptor);
+          if (propiedad !== "$queryRaw" || perturbado) {
+            return valor;
+          }
+
+          return async (...argumentos: unknown[]) => {
+            perturbado = true;
+            await borrar();
+            return (valor as (...a: unknown[]) => unknown).apply(objetivo, argumentos);
+          };
+        },
+      });
+    }
+
+    const cliente = new Proxy(real, {
+      get(objetivo, propiedad, receptor: unknown) {
+        if (propiedad !== "$transaction") {
+          return Reflect.get(objetivo, propiedad, receptor);
+        }
+
+        return async (cuerpo: (tx: unknown) => Promise<unknown>, opciones: unknown) =>
+          (objetivo.$transaction as unknown as (
+            fn: (tx: unknown) => Promise<unknown>,
+            opciones: unknown,
+          ) => Promise<unknown>)(async (tx: unknown) => {
+            intentos += 1;
+            return cuerpo(conPerturbacion(tx as object));
+          }, opciones);
+      },
+    }) as PrismaClient;
+
+    return { cliente, intentos: () => intentos };
+  }
+
+  it("una tarea borrada por otra sesion no queda en task_ids", async () => {
+    const t = await sembrar();
+    const ids = await insertTasks(db, {
+      boardId: t.boardId,
+      columnId: t.todo,
+      prefijo: "t",
+      cantidad: 3,
+    });
+    const [, , tercera] = ids as [string, string, string];
+    const supervivientes = ids.filter((id) => id !== tercera).sort();
+
+    const { cliente, intentos } = borraUnaTareaAntesDeLaLectura(prisma, async () => {
+      await db.query("DELETE FROM task WHERE id = $1", [tercera]);
+    });
+    const conCarrera = new BoardService(new BoardRepository(new TransactionRunner(cliente)));
+
+    await conCarrera.delete(t.boardId, ctx());
+
+    // Dos intentos: el primero no pudo bloquear una fila que ya no estaba y
+    // salio por 40001. Sin el FOR UPDATE de `lockBoardTaskIds` este borrado
+    // terminaria en UN intento y registraria los tres ids, uno de ellos de una
+    // tarea que este borrado no se llevo.
+    expect(intentos()).toBe(2);
+
+    const fila = await unico();
+    expect(fila.before_data?.["cascade"]).toEqual({
+      tasks: 2,
+      task_ids: supervivientes,
+    });
+    expect(await contarFilas(db, "task")).toBe(0);
   });
 });
 

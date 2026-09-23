@@ -73,8 +73,31 @@ export interface BoardTransaction extends AuditTransaction, EscrituraIdempotente
   rewriteBoardColumns(boardId: string, orderedColumnIds: readonly string[]): Promise<void>;
   readBoardColumns(boardId: string): Promise<Column[]>;
   countTasksInColumn(columnId: string): Promise<number>;
-  /** Para el recuento de entidades eliminadas que la 5.2 pide al borrar un tablero. */
-  countTasksInBoard(boardId: string): Promise<number>;
+
+  /**
+   * Los ids de las tareas del tablero, BLOQUEADAS, en orden canonico
+   * `(column_id, id)`. La 5.2 pide registrar el RECUENTO de lo que se lleva la
+   * cascada, no los ids; los ids van ademas, con la forma `{ count, entity_ids }`
+   * que la 7.4 le da a BULK_DELETE, para saber QUE tareas se perdieron.
+   *
+   * El FOR UPDATE no sobra, y es lo unico que hace exacta la lista. Una lectura
+   * sin bloqueo se resuelve en el snapshot de REPEATABLE READ, y ese snapshot
+   * puede incluir una tarea que otra transaccion ya borro y commiteo: la
+   * cascada no la encuentra —para ella no existe— asi que no hay con que
+   * chocar, el borrado commitea y el registro nombra una tarea que sobrevivio.
+   * MEDIDO: leyendo sin bloqueo, un delete_task concurrente deja 3 ids
+   * registrados contra 2 tareas borradas de verdad; con FOR UPDATE ese mismo
+   * entrelazado da 40001, el runner reintenta y quedan 2 y 2.
+   *
+   * El otro lado —una tarea CREADA despues del snapshot— ya lo cerraba la
+   * cascada sola: el trigger de la FK la ve con el snapshot mas reciente,
+   * falla el crosscheck contra el de la transaccion y aborta con 40001.
+   *
+   * El orden es el canonico de la 5.4, el mismo de `lockColumnTasks` y
+   * `lockTasksOfColumns`, y NO es para la salida: quien registra los ids los
+   * ordena por id, que es un orden total que sobrevive a las columnas.
+   */
+  lockBoardTaskIds(boardId: string): Promise<string[]>;
 
   // Para el reassignTo de `ColumnService.delete`, que mueve tareas entre
   // columnas dentro de la misma transaccion que borra la columna.
@@ -231,8 +254,17 @@ function crearBoardTransaction(tx: Prisma.TransactionClient): BoardTransaction {
       return tx.task.count({ where: { columnId } });
     },
 
-    async countTasksInBoard(boardId) {
-      return tx.task.count({ where: { boardId } });
+    // El parametro UUID va casteado, como en todo el SQL crudo del proyecto: el
+    // adapter lo bindea como texto y PostgreSQL no compara uuid = text.
+    async lockBoardTaskIds(boardId) {
+      const filas = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id
+          FROM task
+         WHERE board_id = ${boardId}::uuid
+         ORDER BY column_id, id
+           FOR UPDATE
+      `;
+      return filas.map((fila) => fila.id);
     },
 
     async lockTasksOfColumns(columnIds) {

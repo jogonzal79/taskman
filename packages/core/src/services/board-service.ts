@@ -249,7 +249,9 @@ export class BoardService {
    *
    * La cascada la hace la FK `ON DELETE CASCADE`, verificada en F1a (T4). El
    * servicio no la replica: hacerlo a mano abriria la posibilidad de que las
-   * dos versiones se separen.
+   * dos versiones se separen. Lo que el servicio SI hace es bloquear antes las
+   * tareas que la cascada se va a llevar, para poder nombrarlas: ver el
+   * comentario de la lectura, abajo.
    */
   async delete(boardId: string, ctx: ActorContext): Promise<void> {
     await this.#boards.inTransaction(async (tx) => {
@@ -260,16 +262,34 @@ export class BoardService {
 
       // Se lee lo que se va a perder ANTES de borrarlo: despues del DELETE ya
       // no hay de donde sacarlo, y la 5.2 pide el recuento de las entidades
-      // eliminadas en cascada.
+      // eliminadas en cascada. De las tareas se registran ademas los IDS, que
+      // es lo que permite saber QUE se perdio y no solo cuanto.
+      //
+      // Y por eso la lectura de las tareas BLOQUEA, mientras la de las columnas
+      // no: los ids tienen que ser exactamente los que la cascada se lleva, ni
+      // uno mas ni uno menos, y una lectura sin bloqueo no da eso. Ve el
+      // snapshot de REPEATABLE READ, que todavia incluye una tarea que otra
+      // transaccion ya borro y commiteo; la cascada, que mira las filas vivas,
+      // no la encuentra y no tiene con que chocar, asi que el borrado commitea
+      // y el registro nombra una tarea que sigue existiendo. Con FOR UPDATE esa
+      // fila ya no se puede bloquear, sale 40001 y el runner reintenta con un
+      // snapshot nuevo. MEDIDO en los dos sentidos: sin bloqueo, 3 ids
+      // registrados contra 2 tareas borradas; con bloqueo, 2 y 2 en dos
+      // intentos. El caso inverso —una tarea CREADA despues del snapshot— no
+      // necesita nada de esto: la cascada la ve y aborta sola con 40001.
       const columnas = await tx.readBoardColumns(boardId);
-      const tareas = await tx.countTasksInBoard(boardId);
+      const tareas = await tx.lockBoardTaskIds(boardId);
 
       await tx.deleteBoard(boardId);
       await this.#audit.registrar(
         tx,
         ctx,
         borrado("board", boardId, tableroConColumnas({ ...actual, columns: columnas }), {
-          tasks: tareas,
+          tasks: tareas.length,
+          // Ordenados por id y no en el orden de bloqueo: `column_id` es justo
+          // lo que esta por dejar de existir, asi que un orden que dependa de
+          // el no se puede reconstruir desde el registro.
+          task_ids: [...tareas].sort(),
         }),
       );
     });
